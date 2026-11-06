@@ -1,0 +1,244 @@
+import { norm } from './text';
+
+export type RemoteKind = 'remote' | 'hybrid' | 'onsite' | 'unknown';
+export type CaEligibility = 'confirmed' | 'us_wide' | 'state_restricted' | 'not_us' | 'unknown';
+
+export interface LocationInput {
+  locations: string[];
+  workplaceType?: string | null;
+  isRemote?: boolean | null;
+  restrictions?: string[] | null;
+  description?: string | null;
+}
+
+export interface LocationVerdict {
+  remote: RemoteKind;
+  ca: CaEligibility;
+  note: string;
+  states: string[];
+  remoteLabel: string;
+}
+
+const STATE_NAMES: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS',
+  kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA',
+  michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT',
+  nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND',
+  ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI',
+  'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT',
+  vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV',
+  wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC',
+};
+
+const STATE_CODES = new Set(Object.values(STATE_NAMES));
+
+/** Two-letter codes that are also common words/abbreviations; require context. */
+const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO', 'LA', 'MS', 'MD', 'PA', 'VA', 'AR', 'ID', 'MT', 'NE']);
+
+const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us[- ]remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
+const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
+const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
+const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work from home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
+const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
+
+function detectStates(text: string): string[] {
+  const found = new Set<string>();
+  const lower = ` ${text.toLowerCase()} `;
+  for (const [name, code] of Object.entries(STATE_NAMES)) {
+    if (lower.includes(` ${name} `) || lower.includes(`, ${name}`) || lower.includes(`${name},`)) {
+      found.add(code);
+      continue;
+    }
+    // "Remote - TX", "(TX)", "TX, USA"
+    const codeRe = new RegExp('[\\s,\\-()]' + code + '(?=[\\s,\\-)|])');
+    if (codeRe.test(text)) {
+      const ambiguous = AMBIGUOUS_CODES.has(code) && !/(,|\(|remote|united states)/i.test(text);
+      if (!ambiguous) found.add(code);
+    }
+  }
+  return [...found];
+}
+
+function residencyRestriction(description: string): string[] {
+  const matches = description.match(
+    /(?:must|required to|need to|have to)\s+(?:be\s+)?(?:reside|live|be located|be based)\s+in\s+([A-Z][A-Za-z .]{2,28})/g,
+  );
+  if (!matches) return [];
+  const states = new Set<string>();
+  for (const raw of matches) {
+    for (const code of detectStates(raw)) states.add(code);
+  }
+  return [...states];
+}
+
+/**
+ * Decides (a) whether a role is genuinely remote and (b) whether a California
+ * resident may take it. Restricted or unprovable eligibility never reaches the
+ * salary tabs.
+ */
+export function evaluateLocation(input: LocationInput): LocationVerdict {
+  const locations = (input.locations ?? []).map((l) => String(l ?? '').trim()).filter(Boolean);
+  const restrictions = (input.restrictions ?? []).map((r) => String(r ?? '').trim()).filter(Boolean);
+  const locText = locations.join(' | ');
+  const restrictionText = restrictions.join(' | ');
+  const scopeText = `${locText} | ${restrictionText}`;
+  const workplace = String(input.workplaceType ?? '').toLowerCase();
+  const description = (input.description ?? '').slice(0, 25_000);
+  const descLower = description.toLowerCase();
+
+  const labels = [...locations, ...restrictions].join(', ') || 'Not stated';
+
+  // --- Remote determination -------------------------------------------------
+  let remote: RemoteKind = 'unknown';
+  if (/hybrid/.test(workplace) || (HYBRID_MARKERS.test(locText) && !/fully remote|100% remote/i.test(locText))) {
+    remote = 'hybrid';
+  } else if (/onsite|on-site|in[- ]person/.test(workplace)) {
+    remote = 'onsite';
+  } else if (workplace === 'remote' || input.isRemote === true) {
+    remote = 'remote';
+  } else if (REMOTE_MARKERS.test(scopeText)) {
+    remote = REMOTE_MARKERS.test(locText) || restrictions.length > 0 ? 'remote' : 'unknown';
+  } else if (!locations.length && !restrictions.length) {
+    remote = 'unknown';
+  } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
+    remote = 'hybrid';
+  } else {
+    remote = 'onsite';
+  }
+
+  if (remote !== 'remote') {
+    return {
+      remote,
+      ca: 'unknown',
+      note: remote === 'hybrid'
+        ? `Hybrid schedule (${labels}) \u2014 excluded: fully remote only.`
+        : remote === 'onsite'
+          ? `On-site role (${labels}) \u2014 excluded: fully remote only.`
+          : 'Work arrangement not stated.',
+      states: detectStates(scopeText),
+      remoteLabel: labels,
+    };
+  }
+
+  // --- California eligibility ----------------------------------------------
+  const listedStates = detectStates(scopeText);
+  const residencyStates = residencyRestriction(description);
+  const allStates = [...new Set([...listedStates, ...residencyStates])];
+
+  if (allStates.includes('CA')) {
+    return {
+      remote,
+      ca: 'confirmed',
+      note: 'Posting names California as an eligible work location.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  if (residencyStates.length) {
+    return {
+      remote,
+      ca: 'state_restricted',
+      note: `Posting requires residency in ${residencyStates.join(', ')} \u2014 California not eligible.`,
+      states: residencyStates,
+      remoteLabel: labels,
+    };
+  }
+
+  const hasUsScope = US_MARKERS.test(scopeText)
+    || restrictions.some((r) => /united states|worldwide|anywhere|global/i.test(r))
+    || usEligibilityFromText(description);
+  const hasRegionScope = REGION_MARKERS.test(scopeText);
+
+  if (allStates.length && !allStates.includes('CA')) {
+    // A remote posting that lists specific states but not California is a restriction.
+    if (!hasUsScope) {
+      return {
+        remote,
+        ca: 'state_restricted',
+        note: `Remote but limited to ${allStates.join(', ')} \u2014 California not listed.`,
+        states: allStates,
+        remoteLabel: labels,
+      };
+    }
+  }
+
+  if (hasUsScope && !hasRegionScope) {
+    return {
+      remote,
+      ca: 'us_wide',
+      note: US_MARKERS.test(scopeText)
+        ? 'US-wide remote posting with no state restriction stated; California residents may apply.'
+        : 'Posting states US-only eligibility and names no excluded states; California residents may apply.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  if (hasRegionScope && !hasUsScope) {
+    return {
+      remote,
+      ca: 'not_us',
+      note: `Remote role scoped to ${labels} outside the United States \u2014 excluded.`,
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  if (hasUsScope && hasRegionScope) {
+    return {
+      remote,
+      ca: 'us_wide',
+      note: 'Multi-region remote posting that includes the United States.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  if (/worldwide|anywhere|global/i.test(scopeText)) {
+    return {
+      remote,
+      ca: 'us_wide',
+      note: 'Worldwide remote posting \u2014 California eligible.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  return {
+    remote,
+    ca: 'unknown',
+    note: `Remote, but the posting does not state whether California is eligible (${labels}).`,
+    states: allStates,
+    remoteLabel: labels,
+  };
+}
+
+export function caLabel(ca: CaEligibility): string {
+  switch (ca) {
+    case 'confirmed': return 'CA confirmed';
+    case 'us_wide': return 'US-wide remote';
+    case 'state_restricted': return 'State-restricted';
+    case 'not_us': return 'Non-US';
+    default: return 'Unverified';
+  }
+}
+
+export { detectStates, TEXAS_HQ_TRAP, norm };
+
+/**
+ * True only when the posting text states US eligibility in so many words.
+ * A bare "Remote" location with no US statement stays unverified on purpose.
+ */
+function usEligibilityFromText(description: string): boolean {
+  if (!description) return false;
+  const text = description.slice(0, 12_000);
+  return /(?:must|should|required to|need to)\s+(?:be\s+)?(?:reside|live|be based|be located|work)\s+(?:in\s+)?(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
+    || /\b(?:u\.?s\.?|united states)[- ](?:based|only|remote)\b/i.test(text)
+    || /remote\s+(?:within|in|across)\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
+    || /(?:authorized|eligible)\s+to\s+work\s+in\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
+    || /open\s+to\s+(?:candidates\s+)?(?:residing\s+in\s+)?(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text);
+}

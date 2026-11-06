@@ -1,0 +1,43 @@
+{
+  "name": "remote-pm-radar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Continuously updating remote Project & Program Management job radar with verified employer links, salary bands and application tracking.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=cjs --packages=external --outfile=dist/server.js",
+    "build:client": "vite build",
+    "start": "node dist/server.js",
+    "dev": "npm run build && npm start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/selftest.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "seed:employers": "tsx scripts/seed-employers.ts",
+    "refresh": "tsx scripts/refresh.ts"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.24.2",
+    "playwright": "^1.49.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
