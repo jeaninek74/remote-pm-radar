@@ -1,5 +1,37 @@
 # Deploying Remote PM Radar
 
+## Live now (Render + Neon)
+
+| Piece | Where | Address |
+| --- | --- | --- |
+| Web app | Render, Docker, free plan | https://remote-pm-radar.onrender.com |
+| Database | Neon, Postgres 18, free plan | project `remote-pm-radar` |
+| Code | GitHub (public) | https://github.com/jeaninek74/remote-pm-radar |
+
+The Render service carries `DATABASE_URL` (Neon), `ENABLE_CRON=1`, `JOB_WINDOW_DAYS=14` and
+`EMPLOYERS_PER_RUN=600`. On boot it migrates the schema and seeds the employer registry (501
+employers); the first production refresh added 298 roles in one pass.
+
+Two consequences of the free plans, stated plainly:
+
+- The Render web instance sleeps after roughly 15 minutes without traffic. The first visit then
+  takes 30–60 seconds to wake, and the four-hour cron cannot fire while it is asleep, so refreshes
+  happen on wake or when **Refresh jobs now** is pressed. The Starter plan ($7/month) keeps it awake
+  and makes the schedule dependable.
+- Neon suspends its compute when idle and resumes on the next query; the first request after a quiet
+  spell is a little slower.
+
+Every push to `master` redeploys the service automatically.
+
+### Why the repository is public
+
+Render could not read the private repository because its GitHub app was not connected to the
+`my job board` team. Switching the repository to public unblocked the first deploy. It contains
+application code only — no credentials, keys or personal documents; the database URL lives in
+Render's environment, not in Git. To restore privacy, connect the Render GitHub app to the team and
+run `gh repo edit jeaninek74/remote-pm-radar --visibility private`; auto-deploy keeps working once
+that app has repository access.
+
 The app is a single Node service (Express API + built React client) plus a Postgres database.
 The container serves everything on one port, so any Node host works.
 
