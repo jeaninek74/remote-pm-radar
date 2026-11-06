@@ -49,6 +49,14 @@ export default function App() {
     const [bootstrap, jobPayload] = await Promise.all([loadBootstrap(), loadJobs()]);
     setBoot(bootstrap);
     setJobs(jobPayload.jobs);
+    // Land on a tab that actually has roles instead of an empty first impression.
+    setTab((current) => {
+      if (current !== 'tab1') return current;
+      const hasTab1 = jobPayload.jobs.some((job) => job.bucket === 'tab1');
+      const hasTab2 = jobPayload.jobs.some((job) => job.bucket === 'tab2');
+      if (!hasTab1 && hasTab2) return 'tab2';
+      return current;
+    });
     setRefreshing(bootstrap.refreshing);
     if (bootstrap.refreshing && bootstrap.runs[0]) {
       setProgress(bootstrap.runs[0].progress ?? 'Refreshing…');
