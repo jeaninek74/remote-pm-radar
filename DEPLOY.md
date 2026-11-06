@@ -12,6 +12,17 @@ The Render service carries `DATABASE_URL` (Neon), `ENABLE_CRON=1`, `JOB_WINDOW_D
 `EMPLOYERS_PER_RUN=600`. On boot it migrates the schema and seeds the employer registry (501
 employers); the first production refresh added 298 roles in one pass.
 
+### Free scheduling (no paid plan needed)
+
+`.github/workflows/refresh.yml` replaces an always-on cron at zero cost. Every four hours GitHub
+Actions wakes the sleeping Render instance, starts a refresh, waits for it to finish and prints the
+board totals in the run log. It can also be started by hand from the Actions tab. Verified working:
+run `42312495969` woke the service and completed in 1m24s.
+
+Free-tier limits worth knowing: scheduled workflows can start a few minutes late, they pause after
+60 days without repository activity (any commit restarts them), and the first visit after a long
+quiet spell still takes 30–60 seconds because the instance has to boot.
+
 Two consequences of the free plans, stated plainly:
 
 - The Render web instance sleeps after roughly 15 minutes without traffic. The first visit then
