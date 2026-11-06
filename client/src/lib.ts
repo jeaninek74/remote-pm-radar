@@ -29,11 +29,38 @@ export function startRefresh(): Promise<{ runId: number; alreadyRunning: boolean
   return api('/api/refresh', { method: 'POST', body: JSON.stringify({}) });
 }
 
-export function refreshStatus(): Promise<{
-  run: (Run & { id: number }) | null;
-  refreshing: boolean;
-}> {
-  return api('/api/refresh/status');
+export interface RunStatus {
+  id: number;
+  status: string;
+  progress: string | null;
+  newJobs: number;
+  addedTab1: number;
+  addedTab2: number;
+  queued: number;
+}
+
+export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshing: boolean }> {
+  const raw = await api<{
+    run: {
+      id: number; status: string; progress: string | null; new_jobs: number;
+      added_tab1: number; added_tab2: number; queued: number;
+    } | null;
+    refreshing: boolean;
+  }>('/api/refresh/status');
+  return {
+    refreshing: raw.refreshing,
+    run: raw.run
+      ? {
+        id: raw.run.id,
+        status: raw.run.status,
+        progress: raw.run.progress,
+        newJobs: raw.run.new_jobs,
+        addedTab1: raw.run.added_tab1,
+        addedTab2: raw.run.added_tab2,
+        queued: raw.run.queued,
+      }
+      : null,
+  };
 }
 
 /* ------------------------------------------------------------- formatting */

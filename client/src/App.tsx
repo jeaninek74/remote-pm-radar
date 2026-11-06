@@ -72,7 +72,7 @@ export default function App() {
         await loadAll();
         const finished = status.run;
         if (finished) {
-          notify(`Refresh complete — ${finished.new_jobs} new leads, ${finished.added_tab1 + finished.added_tab2} placed in salary tabs.`);
+          notify(`Refresh complete — ${finished.newJobs} new leads, ${finished.addedTab1 + finished.addedTab2} placed in salary tabs.`);
         }
       }
     } catch {

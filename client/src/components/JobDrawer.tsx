@@ -124,7 +124,7 @@ export function JobDrawer({ job, onClose, onUpdated }: Props) {
               <Fact label="Last verified" value={dateTimeLabel(job.lastVerifiedAt)} />
               <Fact label="Link check" value={`${job.linkStatus ?? 'not checked'} · ${dateLabel(job.linkVerifiedAt)}`} />
               <Fact label="Link type" value={job.linkType === 'employer' ? 'Direct employer posting' : 'Job-board listing'} />
-              <Fact label="Black-owned verification" value={job.blackOwned} narrow />
+              <Fact label="Black-owned verification" value={job.blackOwned} />
               <Fact label="Ownership source" value={job.ownershipSource ?? '—'} wide />
             </dl>
           </div>
