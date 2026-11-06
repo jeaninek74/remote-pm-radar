@@ -27,6 +27,10 @@ function isPayOnlyBlocker(job: Job): boolean {
 }
 
 interface Props {
+  profile?: {
+    boardName: string;
+    bands: { tab1: { label: string }; tab2: { label: string } };
+  };
   jobs: Job[];
   refreshing: boolean;
   progress: string;
@@ -36,7 +40,15 @@ interface Props {
   onOpen: (id: number) => void;
 }
 
-export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen }: Props) {
+/** Splits a board name so the last word can be accented, e.g. "Remote PM Radar". */
+function splitTitle(name: string) {
+  const parts = name.trim().split(' ');
+  if (parts.length < 2) return <>{name}</>;
+  const last = parts.pop();
+  return <>{parts.join(' ')} <span>{last}</span></>;
+}
+
+export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen }: Props) {
   const [tab, setTab] = useState<BoardTab>('tab1');
   const [category, setCategory] = useState<Category>('all');
   const [q, setQ] = useState('');
@@ -81,7 +93,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       <header className="simple-head">
         <div>
           <h1 className="simple-title">
-            Remote PM <span>Radar</span>
+            {profile ? splitTitle(profile.boardName) : <>Remote PM <span>Radar</span></>}
           </h1>
           <p className="simple-sub">
             {tab1.length + tab2.length} salary-verified roles · {nopay.length} more where pay is not published
@@ -110,7 +122,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             onClick={() => { setTab(item.key); setCategory('all'); setQ(''); }}
           >
             <span className="tab-name">{item.name}</span>
-            <span className="tab-range">{item.range}</span>
+            <span className="tab-range">{item.key === 'tab1' ? profile?.bands.tab1.label ?? item.range : item.key === 'tab2' ? profile?.bands.tab2.label ?? item.range : item.range}</span>
             <span className="tab-count">{tabCount(item.key)}</span>
           </button>
         ))}

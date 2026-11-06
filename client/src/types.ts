@@ -146,5 +146,14 @@ export interface Bootstrap {
   cronEnabled: boolean;
   cronExpression: string;
   windowDays: number;
+  profile: {
+    boardName: string;
+    owner: string;
+    roleFamily: string;
+    windowDays: number;
+    bands: { tab1: { min: number; max: number | null; label: string }; tab2: { min: number; max: number | null; label: string } };
+    eligibleStates: string[];
+    source: string;
+  };
   refreshing: boolean;
 }

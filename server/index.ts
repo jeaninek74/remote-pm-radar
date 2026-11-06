@@ -9,6 +9,7 @@ import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
 import { buildCsv, buildWorkbook } from './export';
+import { describeProfile } from './profile';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CRON_ENABLED = process.env.ENABLE_CRON !== '0';
@@ -66,11 +67,16 @@ app.get('/api/bootstrap', async (_req, res, next) => {
       cronEnabled: CRON_ENABLED,
       cronExpression: CRON_EXPRESSION,
       windowDays: RULES.windowDays,
+      profile: describeProfile(),
       refreshing: isRefreshing(),
     });
   } catch (err) {
     next(err);
   }
+});
+
+app.get('/api/profile', (_req, res) => {
+  res.json(describeProfile());
 });
 
 app.get('/api/jobs', async (_req, res, next) => {

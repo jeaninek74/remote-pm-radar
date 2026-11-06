@@ -271,6 +271,7 @@ export default function App() {
     return (
       <>
         <SimpleBoard
+          profile={boot?.profile}
           jobs={jobs}
           refreshing={refreshing}
           progress={progress}

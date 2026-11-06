@@ -1,0 +1,12 @@
+{
+  "boardName": "Remote Data Radar",
+  "owner": "Example Candidate",
+  "roleFamily": "Remote analytics and data engineering roles, United States",
+  "windowDays": 10,
+  "bands": {
+    "tab1": { "min": 95000, "max": 120000, "label": "$95K–$120K" },
+    "tab2": { "min": 140000, "max": null, "label": "$140K+" }
+  },
+  "eligibleStates": ["CA", "NY", "TX"],
+  "requireEligibleState": true
+}

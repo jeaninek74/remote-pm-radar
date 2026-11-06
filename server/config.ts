@@ -6,11 +6,15 @@
  * is auditable in one place.
  */
 
+import { PROFILE } from './profile';
+
 export const APP = {
-  name: 'Remote PM Radar',
-  owner: 'Jeanine Kendricks',
+  name: PROFILE.boardName,
+  owner: PROFILE.owner,
   version: '1.0.0',
 };
+/** Active search profile — the per-candidate data the engine runs on. */
+export { PROFILE };
 
 export const RULES = {
   /**
@@ -19,14 +23,16 @@ export const RULES = {
    * 6 Nov 2026 because seven days produced three roles against 638 PM postings. Override
    * with JOB_WINDOW_DAYS (7 restores the original rule).
    */
-  windowDays: Number(process.env.JOB_WINDOW_DAYS ?? 14),
+  windowDays: PROFILE.windowDays,
   /** Tab 1: verified minimum annual base salary inside this inclusive range. */
-  tab1Min: 110_000,
-  tab1Max: 130_000,
+  tab1Min: PROFILE.bands.tab1.min,
+  tab1Max: PROFILE.bands.tab1.max ?? PROFILE.bands.tab1.min,
+  tab1Label: PROFILE.bands.tab1.label,
   /** Tab 2: verified minimum annual base salary at or above this. No upper cap. */
-  tab2Min: 150_000,
+  tab2Min: PROFILE.bands.tab2.min,
+  tab2Label: PROFILE.bands.tab2.label,
   /** Day range a job is heard about: window plus a grace period for the archive. */
-  archiveDays: Number(process.env.JOB_WINDOW_DAYS ?? 14) + 14,
+  archiveDays: PROFILE.windowDays + 14,
   /** Hours used to annualise hourly contract rates (never presented as guaranteed salary). */
   hoursPerYear: 2080,
 };

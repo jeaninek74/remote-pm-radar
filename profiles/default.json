@@ -1,0 +1,12 @@
+{
+  "boardName": "Remote PM Radar",
+  "owner": "Jeanine Kendricks",
+  "roleFamily": "Remote project, program and delivery roles in the United States",
+  "windowDays": 14,
+  "bands": {
+    "tab1": { "min": 110000, "max": 130000, "label": "$110K–$130K" },
+    "tab2": { "min": 150000, "max": null, "label": "$150K+" }
+  },
+  "eligibleStates": ["CA"],
+  "requireEligibleState": true
+}
