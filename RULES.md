@@ -1,0 +1,141 @@
+# Standing rules and candidate profile
+
+This file is the source of truth for this project. It is read before any change to the board, the
+matching engine or the employer registry. If a chat instruction and this file disagree, the newer
+instruction wins and this file is updated in the same commit.
+
+Last updated: 6 November 2026.
+
+---
+
+## 1. What the product is
+
+A working, continuously updating job finder — not a one-time search and not a mockup. It searches
+employer career sites directly, discovers employers of every size, and has a real REFRESH JOBS NOW
+button. It stores everything in Postgres and refreshes on a four-hour schedule.
+
+## 2. Non-negotiable requirements
+
+1. Fully remote positions only.
+2. Employers must accept California residents working remotely.
+3. Original posting date inside the posting window (see §4).
+4. Two salary tabs: **$110,000–$130,000** and **$150,000+ with no ceiling**.
+5. Technical and nontechnical project/program management have **equal** priority.
+6. Employers across all 50 states.
+7. Every industry.
+8. Startups, small companies, midsize companies, major corporations, consulting firms, nonprofits,
+   government contractors.
+9. Actively discover Black-owned businesses hiring project and program managers.
+10. Prioritise employers hiring urgently.
+11. Verified, direct employer application links.
+12. Automatic recurring refresh.
+13. Functional REFRESH JOBS NOW button.
+14. Match every role against both of Jeanine's resumes.
+15. No duplicate, expired, misleading or unverified listing in an active salary tab.
+16. Application statuses and personal notes survive every refresh.
+17. Simple enough to operate without technical knowledge.
+
+Additional standing instructions:
+
+- **Do not pull jobs from job boards or aggregators.** Comb individual employers' own career sites.
+  Himalayas, Remotive and Remote OK were removed on 6 Nov 2026 for this reason.
+- **If a posting does not specify California, keep it on the site.** Do not exclude it. It is shown
+  with a `CA not stated` flag; only explicit California exclusions and non-US postings are dropped.
+- **The interface stays simple.** A plain list first — title, company, description, pay, date posted,
+  category, clickable link. The full dashboard is secondary.
+
+## 3. Salary classification
+
+Classify on the **published minimum**, never the maximum.
+
+| Published minimum | Placement |
+| --- | --- |
+| $110,000–$130,000 | Tab 1 |
+| $130,001–$149,999 | Neither tab (queue) |
+| $150,000+ | Tab 2, no cap |
+
+Hourly contracts are annualised at 2,080 hours and the hourly rate is shown; contract income is never
+presented as guaranteed salary. Nothing is estimated. No published salary means the queue.
+
+## 4. Posting window
+
+Seven days was the original rule and produced three roles against 638 project/program postings. On
+6 November 2026 Jeanine extended it to **14 days**. Implemented as `RULES.windowDays`, overridable with
+`JOB_WINDOW_DAYS`. A last-updated date is never accepted as a posting date.
+
+## 5. Sourcing policy
+
+| Layer | Behaviour |
+| --- | --- |
+| Machine-readable boards — Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee | Fetched every refresh |
+| Tracked employers — Workday, iCIMS, Taleo, Jobvite, bespoke portals | Stored with name, industry, size, state and a verified careers link that opens in one click |
+| Ownership watchlist | Black-owned employers tracked for openings |
+
+A tracked employer is a first-class record, not a gap: the company, its state and its link are in the
+database and the link is clickable. Absence of a public API never removes a company from the registry.
+
+## 6. Candidate profile — Jeanine Kendricks
+
+Distilled from both resumes and the master prompt. Matching must weigh all of it, and must not
+penalise technical experience when scoring a nontechnical role (or the reverse).
+
+**Executive and enterprise management** — senior project management, senior program management,
+enterprise portfolio management, PMO leadership, program governance, strategic initiatives, enterprise
+transformation, executive stakeholder management, operational leadership, risk and compliance
+management, budget and financial oversight.
+
+**Nontechnical business and operations** — business project management, business program management,
+business operations, marketing operations, procurement, vendor management, contract management,
+process improvement, organisational change, administrative operations, workforce planning, HR
+transformation, business services, client services, resource planning, cross-functional delivery.
+
+**Healthcare** — healthcare program management and operations, hospital systems, healthcare
+administration, Medicare and Medicaid programs, regulatory compliance, clinical systems
+implementations, electronic health records, Epic modernisation, healthcare technology transformation.
+
+**Technology** — IT project management, SaaS implementations, enterprise systems, Workday, PeopleSoft,
+Salesforce, ServiceNow, Cerner, Oracle, disaster recovery, IT infrastructure, digital transformation,
+AI product development, AI workflow automation, software implementation, agile delivery.
+
+**Construction, infrastructure and energy** — construction project management, federal construction
+programs, courthouse and government infrastructure, healthcare construction, construction operations,
+contractor and vendor management, construction budgets, renewable energy, solar installations, utility
+programs, manufacturing operations, supply chain, facilities and infrastructure projects.
+
+**Government and consulting** — federal government contracting, government program management, GSA
+projects, FDA-related program delivery, regulated programs, professional services, consulting, public
+sector programs, multimillion-dollar program delivery.
+
+**Documented employers** — Google Cloud Marketing through AlgoMarketing, Media Force, University of
+Minnesota Rochester, Palomar Health, Kaiser Permanente, RippleNami, Smoke Guard, O'Connor Management,
+Parsons, Verengo Solar, Southern California Edison. These are her employers; they are never hardcoded
+into the application and never presented as anything else.
+
+**Credentials** — graduate education in executive leadership, PMP, Lean Six Sigma Green Belt, agile
+project management, risk management.
+
+## 7. Honesty rules
+
+- Never invent a salary, posting date, ownership claim, urgency signal or qualification.
+- Never claim scheduled automation works without confirming it.
+- Unverified leads go to the queue with the blocking reason attached.
+- Black-owned labels require a citable source; no inference from names, photos or demographics.
+- Do not apply, contact recruiters or submit resumes without explicit authorisation.
+
+## 8. Where each rule lives in the code
+
+| Rule | File |
+| --- | --- |
+| Salary bands, window | `server/config.ts` |
+| Placement decisions | `server/engine/ingest.ts` |
+| Remote and California classification | `server/engine/location.ts` |
+| Salary parsing | `server/engine/salary.ts` |
+| Technical / nontechnical / hybrid | `server/engine/category.ts` |
+| Urgency | `server/engine/urgency.ts` |
+| Resume matching | `server/engine/match.ts` |
+| Employer boards | `server/engine/sources.ts` |
+| Machine-readable registry | `server/data/employers.seed.ts` |
+| Tracked employers with career links | `server/data/manual-employers.ts` |
+| Ownership records | `server/data/ownership.ts` |
+| Simple list | `client/src/components/SimpleBoard.tsx` |
+| Full dashboard | `client/src/App.tsx` |
