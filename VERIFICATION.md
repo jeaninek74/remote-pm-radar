@@ -1,130 +1,69 @@
-# Verification log
-
-Every claim the radar makes is traceable. This file records how the employer registry was built, how
-ownership was researched, and which data-quality checks the engine passed before delivery.
 
 ---
 
-## 1. Employer registry — built by testing, not by assumption
+## 6. Update — 6 November 2026 (rules changed on Jeanine's instruction)
 
-The first draft of the employer list was a hypothesis: company name → plausible ATS slug. Testing
-that hypothesis is what produced the real registry.
+Three decisions changed after the first delivery. All are implemented and this section replaces the
+numbers in sections 1 and 4 where they differ.
 
-| Step | Result |
+### 6.1 The posting window is 14 days, not 7
+
+The master prompt specifies seven days. At 92 employers that produced **three** roles against 638 PM
+postings, because good roles sat in the archive eight days after posting. Jeanine extended the window to
+14 days on 6 Nov 2026. The rule is implemented as `RULES.windowDays` (`JOB_WINDOW_DAYS` env override);
+setting `JOB_WINDOW_DAYS=7` restores the original behaviour with no code change. The archive still runs
+on the same rolling date arithmetic, so the board moves forward every day.
+
+### 6.2 California eligibility is flagged, not used to exclude
+
+Jeanine's instruction: a posting that does not name California must be **kept and shown**, not dropped.
+Postings are now classified three ways:
+
+| Case | Behaviour |
 | --- | --- |
-| Candidate employers probed (curated seed + industry list) | 362 |
-| Candidates that resolved to a live public board | 160 |
-| Boards with **zero** project/program roles at test time | 68 (kept out of the seed; the company is not hiring PMs now) |
-| **Boards with live PM roles — the shipped registry** | **92** |
-| Postings readable across those boards | 15,674 |
-| Project/program roles across those boards | 638 |
-| Industries represented | 27 |
-| ATS platforms covered | Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee |
+| California named, or US-wide with no state exclusion | `CA confirmed` / `US-wide` badge, eligible for a salary tab |
+| State never stated | Kept and shown with a `CA not stated` flag — confirm with the recruiter |
+| California explicitly excluded, or posting outside the US | Dropped (cannot be done from California) |
 
-Boards that resolved but contained no PM roles were dropped rather than advertised as coverage.
-Boards that fail three consecutive checks at runtime are retired automatically (`active = false`) with
-the failure reason stored on the employer row, so the dashboard's "employers searched" number never
-counts a dead feed.
+### 6.3 Employer sites only — no aggregators
 
-Discovery continues at runtime: every cycle reads Himalayas, Remotive and Remote OK, probes the
-companies hiring PMs for their own board, and adds them to the registry.
+Himalayas, Remotive and Remote OK were removed from the refresh pipeline on 6 Nov 2026. Every row in the
+database now comes from an employer's own applicant-tracking system, so the posting date and the
+application link are both first-party. The UI no longer mentions feeds.
 
-### Sample of the strongest boards (PM roles at validation time)
+### 6.4 Registry rebuilt by discovery, not by a name list
 
-| Employer | Platform | Postings | PM roles |
-| --- | --- | --- | --- |
-| OpenAI | Ashby | 819 | 76 |
-| Anthropic | Greenhouse | 671 | 45 |
-| Stripe | Greenhouse | 765 | 44 |
-| Databricks | Greenhouse | 928 | 29 |
-| Crusoe | Ashby | 320 | 26 |
-| Shield AI | Lever | 662 | 25 |
-| Snowflake | Ashby | 370 | 19 |
-| Datadog | Greenhouse | 399 | 13 |
-| Brex | Greenhouse | 267 | 13 |
-| Planet Labs | Greenhouse | 125 | 12 |
+The master prompt defines *categories* (50 states, all industries, all sizes) rather than a company list,
+so the registry is built by probing employer career sites directly:
 
----
-
-## 2. Black-owned business verification
-
-Ownership is never inferred from names, imagery or workforce demographics. Each label below is tied to
-a public source; the source text is stored on the employer row and exported in the workbook.
-
-| Employer | Status | Source |
-| --- | --- | --- |
-| Esusu | Verified Black-owned | esusurent.com/about (co-founded 2018 by Wemimo Abbey); Sixth Street profile describes it as "one of the few Black-owned companies to reach unicorn status" |
-| Blavity | Verified Black-owned | Wikipedia (Morgan DeBaun, "African American serial entrepreneur… Founder and CEO of Blavity Inc."); blavityinc.com |
-| Mayvenn | Verified Black-owned | Forbes, 30 Jun 2022: "Black-owned beauty and tech company Mayvenn"; founder profile at blackventures.org |
-| H.J. Russell & Company | Verified Black-owned | hjrussell.com/about — founded 1952 by Herman J. Russell |
-| C.D. Moody Construction | Verified Black-owned | cdmoody.com/about — founded by Cedric D. Moody |
-| The Integral Group | Verified Black-owned | integralgroup.com/about — founded by Egbert L. J. Perry |
-| BITHGROUP Technologies | Verified Black-owned | bithgroup.com/about — founded by Dr. Robert L. Wallace |
-| Ariel Investments | Verified Black-owned | arielinvestments.com — co-founded 1983 by John W. Rogers Jr. |
-| Urban One | Verified Black-owned | urban1.com/about — founded by Cathy Hughes |
-| SoLa Impact | Self-reported | solaimpact.com/about — Black-led team described by the company; ownership structure not disclosed in a citable filing |
-| MLT, SEO, UNCF | Not applicable | Nonprofits without owners; tracked as mission-aligned employers, never labelled "Black-owned" |
-
-The last nine are employers without a machine-readable job feed. They are stored as `manual` with their
-careers page and a note, and are shown in the Employer database tab with that status — the radar never
-implies it searched a board it cannot read.
-
-Nothing else in the registry is labelled Black-owned simply because it is plausible. Those rows read
-"Not verified", which is the honest default.
-
----
-
-## 3. Data-quality checks performed
-
-| Check | Evidence |
+| Measure | Value |
 | --- | --- |
-| Salary extraction ignores non-salary numbers | An early version read *"100,000+ active communities"* (Reddit boilerplate) as a $100,000 salary. The parser now requires a currency marker and pay context, and rejects figures near headcount/customer/funding language. Verified against live postings. |
-| Salary ranges are read from the employer's own pay block | Greenhouse `pay-range` blocks are parsed directly: Reddit *Senior Principal Program Manager* → **$180,200–$313,000**, *Senior Program Manager* → **$154,700–$216,600**. |
-| Double-escaped HTML does not hide pay | ATS payloads escape entities twice (`&amp;mdash;`); the stripper decodes to a fixed point before parsing. |
-| Hybrid is not remote | 196 of 569 sampled PM postings were rejected as hybrid and 278 as on-site; only 95 were remote, of which 51 were California-eligible. |
-| Posting dates are not "last updated" dates | Greenhouse `first_published`, Lever `createdAt`, Ashby `publishedAt` are required for tab placement. Boards exposing only an update timestamp send the job to the queue. |
-| California eligibility is evidence-based | Mercury lists "San Francisco, CA, New York, NY, Portland, OR, or Remote within Canada or United States" → CA confirmed. Mozilla lists "Remote Canada; Remote Germany; Remote UK; Remote US" → US-wide. A bare "Remote" with no US statement stays unverified in the queue. |
-| Application links are employer links | Every tabbed role points at the employer's ATS posting. HTTP status and check date are stored per job (`HTTP 200 · Nov 6, 2026`). |
-| Salary bands use the published minimum | Reddit $180,200 → $150K+ tab. GitLab $139,200 → neither tab (the $130,001–$149,999 gap) and is queued with that reason. Instacart $71,000 → below floor, queued. |
-| Duplicates collapse | Same company + same normalized title across a board and a feed keeps the employer-linked record. The run counter reports how many were removed. |
-| Tracking data survives refreshes | Application status, notes, interview/applied/follow-up dates are only written by the user; the ingest upsert never touches them. Verified by setting and re-reading a note. |
+| Candidate employers probed in this sweep | 622 |
+| Probed across | all 50 states + DC |
+| Employers with a readable public board | **186** |
+| Postings readable across those boards | 24,023 |
+| Project/program roles across those boards | 831 |
+| Industries represented | 33 |
+| Company-size mix | 72 midsize, 64 large, 25 startup, 17 enterprise, 8 small |
+| States with at least one readable board | 21 |
 
----
+Honest limitation: a state is only "covered" when an employer there publishes a machine-readable board.
+Large enterprises in the remaining states run Workday, iCIMS, Taleo or Jobvite, which have no equivalent
+public endpoint — those employers can only be tracked as `manual` with a careers link. That is why 21
+states show live boards rather than 50, even though all 50 were probed. Adding Workday/iCIMS adapters
+(with a known tenant and site path per employer) is the next concrete expansion.
 
-## 4. Live run at delivery
+### 6.5 Live state at this update
 
-| Metric | Value |
+| Bucket | Roles |
 | --- | --- |
-| Employers searched | 92 |
-| Sources checked / failed | 95 / 0 |
-| Postings read | ~15,700 |
-| Project/program roles evaluated | 638 |
-| Remote + California-eligible + recent | 22 |
-| Placed in $110K–$130K | 0 |
-| Placed in $150K+ | 3 |
-| Needs verification | 3 |
-| Archived (outside the 7-day window or closed) | 16 |
+| $110K–$130K | 2 |
+| $150K+ | 7 |
+| Needs verification | 7 |
+| Archived (older than the window, or closed) | 19 |
 
-Three placed roles: Mozilla *Chief of Staff to the CEO* ($356,400), OpenAI *Applied AI Delivery Lead* ($234,000–$335,000),
-Mercury *Staff Strategic Operations Program Manager* ($199,900–$249,900). All three are remote, California-eligible,
-posted within seven days, with a published base range and a working employer application link.
-
-The zero in the $110K–$130K tab is a real result, not a bug: mid-level remote PM roles in that band were either
-hybrid, published without salary, or older than seven days during this window. They appear in the queue or archive
-with the specific reason.
-
----
-
-## 5. Known limitations (stated, not hidden)
-
-1. **Volume is deliberately small.** Seven days + fully remote + California-eligible + published salary in a
-   narrow band is a strict filter. With 92 boards the expected yield is a handful of roles per week. The
-   registry grows every cycle via feed discovery; more boards scale the tabs linearly.
-2. **Employers without a public ATS cannot be searched.** Workday-only employers (some hospitals, government
-   contractors, large retailers) are not covered. They are tracked as `manual` where relevant.
-3. **The $130,001–$149,999 gap belongs to neither tab** by design. Those roles sit in the queue with an explicit
-   "sits in the gap" reason.
-4. **Salary data depends on pay transparency.** Employers that do not publish ranges never reach a tab; they are
-   queued as "No salary published".
-5. **Match scores are keyword/qualification overlap, not a hiring prediction.** They are a sorting aid; the
-   drawer lists the exact reasons and the hard requirements that were not met.
+Resume matching is unchanged: 18 competency groups distilled from both resumes (PMO and portfolio
+leadership, budget and vendor/contract management, healthcare and EHR, enterprise SaaS including Workday,
+Salesforce and ServiceNow, GSA/federal construction, utilities and renewables, marketing operations,
+process improvement, organisational change), scored per job and explained line by line in the drawer. No
+employer names from her CV are hardcoded anywhere in the application.

@@ -1,11 +1,11 @@
 # Remote PM Radar
 
 A self-hosted job radar for Jeanine Kendricks: fully remote **Project / Program Manager** roles that are
-California-eligible, posted in the last seven days, with a published base salary that clears either
+California-eligible, posted in the last 14 days, with a published base salary that clears either
 **$110,000–$130,000** or **$150,000+**.
 
-It is not a scraper of job boards. It reads employer applicant-tracking systems (Greenhouse, Lever, Ashby,
-Workable, Recruitee, SmartRecruiters) directly, applies a fixed rule set, records why every job did or did not
+It is not a scraper of job boards and it never ingests aggregator feeds. It reads employer applicant-tracking
+systems (Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters) directly, applies a fixed rule set, records why every job did or did not
 earn a place, and never invents a salary.
 
 ---
@@ -18,7 +18,7 @@ earn a place, and never invents a salary.
 3. **Applies the placement rules** (below) to every posting whose title is a project/program role.
 4. **De-duplicates** the same role across a board and a feed (employer link wins, then earliest posting).
 5. **Re-verifies application links** for newly tabbed roles (HTTP status recorded on the job).
-6. **Archives** anything past the seven-day window, and closes anything no longer listed on the employer's board.
+6. **Archives** anything past the 14-day window, and closes anything no longer listed on the employer's board.
 7. **Writes a run record** — sources checked, sources failed, postings read, new leads, duplicates, archives.
 
 Runs on boot, every four hours (`0 */4 * * *` UTC), and whenever **Refresh jobs now** is pressed.
@@ -31,8 +31,8 @@ A job reaches a salary tab only if **all** of these hold:
 | --- | --- |
 | Title | Project / Program Manager family (incl. Technical Program Manager, PMO, Delivery/Implementation Manager, Program Lead, Chief of Staff). Product Manager and Scrum Master are explicitly excluded. |
 | Remote | Posting states fully remote / distributed / anywhere. Hybrid, "remote-first with office", and city-only postings are rejected. |
-| Posting age | Original posting date within 7 days. A last-updated timestamp is **not** accepted as a posting date. |
-| California | US-wide remote, CA-named, or a state list including CA. Explicit exclusions (e.g. "not available in CA") and non-US postings are rejected. Silence is *not* acceptance — it becomes "CA unverified" in the queue. |
+| Posting age | Original posting date within **14 days** (extended from 7 on 6 Nov 2026; `JOB_WINDOW_DAYS=7` restores the original rule). A last-updated timestamp is **not** accepted as a posting date. |
+| California | US-wide remote, CA-named, or a state list including CA. An unstated state is **kept and shown** ("CA not stated") rather than excluded. Only explicit exclusions and non-US postings are rejected. |
 | Salary | Base salary published on the employer's posting. Minimum must land in $110,000–$130,000 (Tab 1) or ≥ $150,000 (Tab 2). $130,001–$149,999 matches neither tab. OTE/total-comp-only postings are queued, not placed. Hourly contract roles are queued with an annualised equivalent, never treated as a salary. |
 | Link | The application link must be the employer's own ATS posting. Job-board-only links are queued until an employer link is found. |
 

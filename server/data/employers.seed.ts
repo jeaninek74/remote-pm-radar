@@ -28,6 +28,9 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Financial Services
   ['Stripe', 'greenhouse', 'stripe', 'Financial Services', 'Enterprise', 'CA'],
 
+  // ------------------------------------------------------------ Defense
+  ['SpaceX', 'greenhouse', 'spacex', 'Defense', 'Enterprise', 'CA'],
+
   // ------------------------------------------------------------ Software
   ['Databricks', 'greenhouse', 'databricks', 'Software', 'Enterprise', 'CA'],
 
@@ -37,8 +40,11 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Defense
   ['Shield AI', 'lever', 'shieldai', 'Defense', 'Midsize', 'CA'],
 
-  // ------------------------------------------------------------ Cloud Services
-  ['Snowflake', 'ashby', 'snowflake', 'Cloud Services', 'Enterprise', 'MT'],
+  // ------------------------------------------------------------ Software
+  ['Snowflake', 'ashby', 'snowflake', 'Software', 'Large', 'CA'],
+
+  // ------------------------------------------------------------ Technology
+  ['Pure Storage', 'greenhouse', 'purestorage', 'Technology', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Financial Services
   ['Brex', 'greenhouse', 'brex', 'Financial Services', 'Large', 'CA'],
@@ -50,10 +56,12 @@ const RAW: Row[] = [
   ['Planet Labs', 'greenhouse', 'planetlabs', 'Defense', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Manufacturing
+  ['Formlabs', 'greenhouse', 'formlabs', 'Manufacturing', 'Midsize', 'MA'],
   ['Lucid Motors', 'greenhouse', 'lucidmotors', 'Manufacturing', 'Enterprise', 'CA'],
 
   // ------------------------------------------------------------ Software
   ['MongoDB', 'greenhouse', 'mongodb', 'Software', 'Enterprise', 'NY'],
+  ['Relativity', 'greenhouse', 'relativity', 'Software', 'Large', 'IL'],
 
   // ------------------------------------------------------------ Human Resources Services
   ['Justworks', 'greenhouse', 'justworks', 'Human Resources Services', 'Large', 'NY'],
@@ -69,6 +77,9 @@ const RAW: Row[] = [
 
   // ------------------------------------------------------------ Cybersecurity
   ['Okta', 'greenhouse', 'okta', 'Cybersecurity', 'Large', 'CA'],
+
+  // ------------------------------------------------------------ Financial Services
+  ['Block', 'greenhouse', 'block', 'Financial Services', 'Large', 'CA'],
 
   // ------------------------------------------------------------ AI
   ['Scale AI', 'greenhouse', 'scaleai', 'AI', 'Large', 'CA'],
@@ -96,25 +107,31 @@ const RAW: Row[] = [
   ['Redwood Materials', 'greenhouse', 'redwoodmaterials', 'Renewable Energy', 'Midsize', 'NV'],
 
   // ------------------------------------------------------------ Software
+  ['Appian', 'greenhouse', 'appian', 'Software', 'Midsize', 'VA'],
+  ['Cohere', 'ashby', 'cohere', 'Software', 'Midsize', 'CA'],
+  ['Cursor', 'ashby', 'cursor', 'Software', 'Startup', 'CA'],
   ['GitLab', 'greenhouse', 'gitlab', 'Software', 'Large', 'CA'],
   ['Qualtrics', 'greenhouse', 'qualtrics', 'Software', 'Enterprise', 'UT'],
 
+  // ------------------------------------------------------------ Cybersecurity
+  ['Zscaler', 'greenhouse', 'zscaler', 'Cybersecurity', 'Large', 'CA'],
+
   // ------------------------------------------------------------ Financial Services
   ['Affirm', 'greenhouse', 'affirm', 'Financial Services', 'Large', 'CA'],
+  ['Altruist', 'greenhouse', 'altruist', 'Financial Services', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Software
   ['Intercom', 'greenhouse', 'intercom', 'Software', 'Midsize', 'CA'],
+  ['Writer', 'ashby', 'writer', 'Software', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Financial Services
   ['Robinhood', 'greenhouse', 'robinhood', 'Financial Services', 'Large', 'CA'],
-
-  // ------------------------------------------------------------ Hospitality
-  ['Airbnb', 'greenhouse', 'airbnb', 'Hospitality', 'Enterprise', 'CA'],
 
   // ------------------------------------------------------------ Software
   ['Asana', 'greenhouse', 'asana', 'Software', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Technology
+  ['Airbnb', 'greenhouse', 'airbnb', 'Technology', 'Large', 'CA'],
   ['Reddit', 'greenhouse', 'reddit', 'Technology', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Transportation
@@ -126,6 +143,9 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Banking
   ['Mercury', 'greenhouse', 'mercury', 'Banking', 'Midsize', 'CA'],
 
+  // ------------------------------------------------------------ Consumer Products
+  ['Hasbro', 'greenhouse', 'hasbro', 'Consumer Products', 'Large', 'RI'],
+
   // ------------------------------------------------------------ Defense
   ['Palantir', 'lever', 'palantir', 'Defense', 'Enterprise', 'CO'],
 
@@ -135,8 +155,18 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Government
   ['OpenGov', 'ashby', 'opengov', 'Government', 'Midsize', 'CA'],
 
+  // ------------------------------------------------------------ Financial Services
+  ['Juniper Square', 'ashby', 'junipersquare', 'Financial Services', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Government Services
+  ['Nava PBC', 'greenhouse', 'navapbc', 'Government Services', 'Midsize', 'DC'],
+
   // ------------------------------------------------------------ Software
   ['Dropbox', 'greenhouse', 'dropbox', 'Software', 'Enterprise', 'CA'],
+  ['Toast', 'greenhouse', 'toast', 'Software', 'Large', 'MA'],
+
+  // ------------------------------------------------------------ Technology
+  ['Match Group', 'lever', 'matchgroup', 'Technology', 'Large', 'TX'],
 
   // ------------------------------------------------------------ AI
   ['Sierra', 'ashby', 'sierra', 'AI', 'Midsize', 'CA'],
@@ -151,6 +181,7 @@ const RAW: Row[] = [
   ['Duolingo', 'greenhouse', 'duolingo', 'Education', 'Midsize', 'PA'],
 
   // ------------------------------------------------------------ Financial Services
+  ['Bottomline Technologies', 'greenhouse', 'bottomlinetechnologies', 'Financial Services', 'Large', 'NH'],
   ['Carta', 'greenhouse', 'carta', 'Financial Services', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Healthcare
@@ -165,9 +196,13 @@ const RAW: Row[] = [
   ['Figma', 'greenhouse', 'figma', 'Software', 'Large', 'CA'],
   ['Fivetran', 'greenhouse', 'fivetran', 'Software', 'Large', 'CA'],
   ['Gorgias', 'ashby', 'gorgias', 'Software', 'Midsize', 'CA'],
+  ['Snorkel AI', 'greenhouse', 'snorkelai', 'Software', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ AI
   ['Perplexity', 'ashby', 'perplexity', 'AI', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Cloud Services
+  ['Fastly', 'greenhouse', 'fastly', 'Cloud Services', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Consulting
   ['Thoughtworks', 'greenhouse', 'thoughtworks', 'Consulting', 'Enterprise', 'IL'],
@@ -178,6 +213,7 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Financial Services
   ['Bill.com', 'greenhouse', 'billcom', 'Financial Services', 'Large', 'CA'],
   ['Chime', 'greenhouse', 'chime', 'Financial Services', 'Large', 'CA'],
+  ['Nasdaq', 'greenhouse', 'nasdaq', 'Financial Services', 'Enterprise', 'NY'],
 
   // ------------------------------------------------------------ Healthcare
   ['Headway', 'ashby', 'headway', 'Healthcare', 'Midsize', 'NY'],
@@ -205,17 +241,27 @@ const RAW: Row[] = [
   ['Arcadia', 'lever', 'arcadia', 'Renewable Energy', 'Midsize', 'DC'],
 
   // ------------------------------------------------------------ Software
+  ['Abridge', 'ashby', 'abridge', 'Software', 'Startup', 'PA'],
   ['Elastic', 'greenhouse', 'elastic', 'Software', 'Large', 'CA'],
+  ['Lucid Software', 'greenhouse', 'lucidsoftware', 'Software', 'Midsize', 'UT'],
   ['Mixpanel', 'greenhouse', 'mixpanel', 'Software', 'Midsize', 'CA'],
+  ['OneTrust', 'greenhouse', 'onetrust', 'Software', 'Large', 'GA'],
 
   // ------------------------------------------------------------ Technology
   ['Discord', 'greenhouse', 'discord', 'Technology', 'Large', 'CA'],
+  ['Roblox', 'greenhouse', 'roblox', 'Technology', 'Large', 'CA'],
+
+  // ------------------------------------------------------------ Banking
+  ['Relay', 'ashby', 'relay', 'Banking', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Biotechnology
   ['Insitro', 'ashby', 'insitro', 'Biotechnology', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Construction
   ['Fieldwire', 'greenhouse', 'fieldwire', 'Construction', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Consumer Products
+  ['Peloton', 'greenhouse', 'peloton', 'Consumer Products', 'Large', 'NY'],
 
   // ------------------------------------------------------------ Education
   ['Instructure', 'ashby', 'instructure', 'Education', 'Large', 'UT'],
@@ -232,6 +278,8 @@ const RAW: Row[] = [
   ['Abound', 'ashby', 'abound', 'Healthcare', 'Startup', 'KY'],
   ['Maven Clinic', 'greenhouse', 'mavenclinic', 'Healthcare', 'Midsize', 'NY'],
   ['Omada Health', 'greenhouse', 'omadahealth', 'Healthcare', 'Midsize', 'CA'],
+  ['Unite Us', 'greenhouse', 'uniteus', 'Healthcare', 'Midsize', 'NY'],
+  ['Zocdoc', 'greenhouse', 'zocdoc', 'Healthcare', 'Midsize', 'NY'],
 
   // ------------------------------------------------------------ Hospitality
   ['Mindbody', 'greenhouse', 'mindbody', 'Hospitality', 'Large', 'CA'],
@@ -239,21 +287,119 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Human Resources Services
   ['Handshake', 'ashby', 'handshake', 'Human Resources Services', 'Midsize', 'CA'],
 
+  // ------------------------------------------------------------ Media
+  ['Hearst', 'greenhouse', 'hearst', 'Media', 'Enterprise', 'NY'],
+
   // ------------------------------------------------------------ Nonprofit
   ['Charity: Water', 'lever', 'charitywater', 'Nonprofit', 'Midsize', 'NY'],
   ['Code for America', 'greenhouse', 'codeforamerica', 'Nonprofit', 'Midsize', 'CA'],
   ['Wikimedia Foundation', 'greenhouse', 'wikimedia', 'Nonprofit', 'Midsize', 'CA'],
+  ['iMentor', 'lever', 'imentor', 'Nonprofit', 'Small', 'NY'],
 
   // ------------------------------------------------------------ Renewable Energy
   ['ChargePoint', 'greenhouse', 'chargepoint', 'Renewable Energy', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Software
+  ['Ambience Healthcare', 'ashby', 'ambiencehealthcare', 'Software', 'Startup', 'CA'],
   ['Collibra', 'greenhouse', 'collibra', 'Software', 'Midsize', 'NY'],
+  ['PlanetScale', 'greenhouse', 'planetscale', 'Software', 'Startup', 'CA'],
+  ['Replit', 'ashby', 'replit', 'Software', 'Midsize', 'CA'],
+  ['Salesloft', 'greenhouse', 'salesloft', 'Software', 'Midsize', 'GA'],
   ['Smartsheet', 'greenhouse', 'smartsheet', 'Software', 'Large', 'WA'],
   ['Squarespace', 'greenhouse', 'squarespace', 'Software', 'Large', 'NY'],
+  ['Temporal', 'ashby', 'temporal', 'Software', 'Midsize', 'WA'],
+  ['Together AI', 'greenhouse', 'togetherai', 'Software', 'Startup', 'CA'],
+  ['Vanta', 'ashby', 'vanta', 'Software', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Technology
+  ['Groupon', 'greenhouse', 'groupon', 'Technology', 'Large', 'IL'],
+
+  // ------------------------------------------------------------ Travel
+  ['TripAdvisor', 'greenhouse', 'tripadvisor', 'Travel', 'Large', 'MA'],
 
   // ------------------------------------------------------------ Utilities
   ['EnergyHub', 'greenhouse', 'energyhub', 'Utilities', 'Midsize', 'NY'],
+
+  // ------------------------------------------------------------ Banking
+  ['Found', 'greenhouse', 'found', 'Banking', 'Startup', 'CA'],
+  ['Novo', 'ashby', 'novo', 'Banking', 'Startup', 'NY'],
+
+  // ------------------------------------------------------------ Consumer Products
+  ['Away', 'ashby', 'away', 'Consumer Products', 'Midsize', 'NY'],
+  ['Glossier', 'greenhouse', 'glossier', 'Consumer Products', 'Midsize', 'NY'],
+
+  // ------------------------------------------------------------ E-Commerce
+  ['Rent the Runway', 'greenhouse', 'renttherunway', 'E-Commerce', 'Midsize', 'NY'],
+
+  // ------------------------------------------------------------ Education
+  ['Springboard', 'greenhouse', 'springboard', 'Education', 'Small', 'CA'],
+
+  // ------------------------------------------------------------ Financial Services
+  ['AngelList', 'lever', 'angellist', 'Financial Services', 'Midsize', 'CA'],
+  ['Current', 'greenhouse', 'current', 'Financial Services', 'Midsize', 'NY'],
+  ['Range', 'greenhouse', 'range', 'Financial Services', 'Startup', 'CA'],
+  ['SoFi', 'greenhouse', 'sofi', 'Financial Services', 'Enterprise', 'CA'],
+  ['Vise', 'ashby', 'vise', 'Financial Services', 'Startup', 'NY'],
+  ['Wealthfront', 'lever', 'wealthfront', 'Financial Services', 'Midsize', 'CA'],
+  ['Wealthsimple', 'ashby', 'wealthsimple', 'Financial Services', 'Large', 'NY'],
+
+  // ------------------------------------------------------------ Government Services
+  ['Agile Six', 'greenhouse', 'agilesix', 'Government Services', 'Small', 'CA'],
+  ['Oddball', 'greenhouse', 'oddball', 'Government Services', 'Small', 'CA'],
+
+  // ------------------------------------------------------------ Healthcare
+  ['Firefly Health', 'workable', 'firefly-health', 'Healthcare', 'Startup', 'MA'],
+  ['Forward', 'greenhouse', 'forward', 'Healthcare', 'Startup', 'CA'],
+  ['ShiftKey', 'ashby', 'shiftkey', 'Healthcare', 'Midsize', 'TX'],
+  ['Trusted Health', 'ashby', 'trustedhealth', 'Healthcare', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Insurance
+  ['Ethos', 'greenhouse', 'ethos', 'Insurance', 'Midsize', 'CA'],
+  ['Ladder', 'ashby', 'ladder', 'Insurance', 'Midsize', 'CA'],
+  ['MetLife', 'lever', 'metlife', 'Insurance', 'Enterprise', 'NY'],
+  ['Sure', 'lever', 'sure', 'Insurance', 'Startup', 'CA'],
+
+  // ------------------------------------------------------------ Media
+  ['The New York Times', 'greenhouse', 'thenewyorktimes', 'Media', 'Large', 'NY'],
+  ['Vox Media', 'greenhouse', 'voxmedia', 'Media', 'Midsize', 'NY'],
+
+  // ------------------------------------------------------------ Nonprofit
+  ['DonorsChoose', 'greenhouse', 'donorschoose', 'Nonprofit', 'Small', 'NY'],
+  ['ProPublica', 'greenhouse', 'propublica', 'Nonprofit', 'Small', 'NY'],
+  ['Saga Education', 'greenhouse', 'sagaeducation', 'Nonprofit', 'Small', 'NY'],
+  ['The Trevor Project', 'lever', 'thetrevorproject', 'Nonprofit', 'Small', 'CA'],
+
+  // ------------------------------------------------------------ Retail
+  ['Dillard\'s', 'greenhouse', 'dillards', 'Retail', 'Enterprise', 'AR'],
+
+  // ------------------------------------------------------------ Software
+  ['Airbyte', 'ashby', 'airbyte', 'Software', 'Midsize', 'CA'],
+  ['Amplitude', 'ashby', 'amplitude', 'Software', 'Large', 'CA'],
+  ['Calendly', 'greenhouse', 'calendly', 'Software', 'Midsize', 'GA'],
+  ['ClickHouse', 'ashby', 'clickhouse', 'Software', 'Midsize', 'CA'],
+  ['Descript', 'greenhouse', 'descript', 'Software', 'Midsize', 'CA'],
+  ['Hex', 'ashby', 'hex', 'Software', 'Startup', 'CA'],
+  ['Hightouch', 'ashby', 'hightouch', 'Software', 'Startup', 'CA'],
+  ['Hugging Face', 'workable', 'huggingface', 'Software', 'Midsize', 'NY'],
+  ['Labelbox', 'greenhouse', 'labelbox', 'Software', 'Midsize', 'CA'],
+  ['Linear', 'ashby', 'linear', 'Software', 'Startup', 'CA'],
+  ['Nabla', 'ashby', 'nabla', 'Software', 'Startup', 'NY'],
+  ['Neon', 'ashby', 'neon', 'Software', 'Startup', 'CA'],
+  ['Netlify', 'greenhouse', 'netlify', 'Software', 'Midsize', 'CA'],
+  ['New Relic', 'greenhouse', 'newrelic', 'Software', 'Large', 'OR'],
+  ['Outreach', 'lever', 'outreach', 'Software', 'Midsize', 'WA'],
+  ['PostHog', 'ashby', 'posthog', 'Software', 'Startup', 'DE'],
+  ['Render', 'ashby', 'render', 'Software', 'Startup', 'CA'],
+  ['Sprout Social', 'greenhouse', 'sproutsocial', 'Software', 'Large', 'IL'],
+  ['Suki', 'greenhouse', 'suki', 'Software', 'Startup', 'CA'],
+  ['Supabase', 'ashby', 'supabase', 'Software', 'Startup', 'DE'],
+  ['Vercel', 'greenhouse', 'vercel', 'Software', 'Midsize', 'CA'],
+  ['Weave', 'greenhouse', 'weave', 'Software', 'Midsize', 'UT'],
+
+  // ------------------------------------------------------------ Technology
+  ['Angi', 'ashby', 'angi', 'Technology', 'Large', 'IN'],
+  ['CarGurus', 'greenhouse', 'cargurus', 'Technology', 'Large', 'MA'],
+  ['GoDaddy', 'greenhouse', 'godaddy', 'Technology', 'Large', 'AZ'],
 ];
 
 export const SEED_EMPLOYERS: SeedEmployer[] = RAW.map(([name, ats, slug, industry, size, hq]) => ({

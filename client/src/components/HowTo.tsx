@@ -1,4 +1,4 @@
-export function HowTo({ onClose }: { onClose: () => void }) {
+export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays: number }) {
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div className="modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="How to use Remote PM Radar">
@@ -22,9 +22,16 @@ export function HowTo({ onClose }: { onClose: () => void }) {
           <h3>2. Check the two salary tabs</h3>
           <p>
             A role only reaches a tab when it is <em>fully remote</em>, <em>California-eligible</em>, posted in the
-            <em> last seven days</em>, has a <em>verified direct employer application link</em>, and publishes a
+            <em> last {windowDays} days</em>, has a <em>verified direct employer application link</em>, and publishes a
             <em> base salary whose minimum</em> falls in the band: $110,000–$130,000 for the first tab, $150,000+ for
             the second. Nothing is estimated or annualised into a tab.
+          </p>
+          <p>
+            California eligibility is flagged, not assumed. A posting that names California, or is US-wide with no
+            state exclusion, is marked <em>CA confirmed</em> or <em>US-wide</em>. A role whose posting never says who
+            may live where still appears on the board with a <em>CA not stated</em> flag — confirm with the recruiter
+            before applying. Only postings that explicitly exclude California, or sit outside the United States,
+            are dropped.
           </p>
 
           <h3>3. Read the match score before the job description</h3>
@@ -56,8 +63,8 @@ export function HowTo({ onClose }: { onClose: () => void }) {
 
           <h3>7. Work the verification queue weekly</h3>
           <p>
-            The queue holds roles that look promising but fail a rule — no published salary, unclear California
-            eligibility, only a last-updated date, or a job-board-only link. Each row explains its own blocker.
+            The queue holds roles that look promising but fail a hard rule — no published salary, only a last-updated
+            date, a minimum in the $130,000–$149,999 gap, or a job-board-only link. Each row explains its own blocker.
             Clear or ignore them; they never pollute the salary tabs.
           </p>
 

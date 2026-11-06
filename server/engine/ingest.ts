@@ -2,7 +2,7 @@ import { migrate, one, q } from '../db';
 import { REFRESH, RULES } from '../config';
 import { SEED_EMPLOYERS, WATCHLIST } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
-import { fetchBoard, FEEDS } from './sources';
+import { fetchBoard } from './sources';
 import { evaluateLocation } from './location';
 import { classifyCategory } from './category';
 import { classifySalary } from './salary';
@@ -100,7 +100,7 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   const postedAt = raw.postedAt ?? null;
   const age = daysBetween(postedAt);
 
-  if (age !== null && age > 20) return null;
+  if (age !== null && age > RULES.archiveDays) return null;
 
   const loc = evaluateLocation({
     locations: raw.locations,
@@ -111,6 +111,9 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   });
 
   if (loc.remote !== 'remote') return null;
+  // Only explicit exclusions are dropped. A posting that simply never mentions
+  // California is kept and flagged, because most US-remote roles accept CA
+  // applicants without saying so.
   if (loc.ca === 'not_us' || loc.ca === 'state_restricted') return null;
 
   const category = classifyCategory(raw.title, description);
@@ -128,14 +131,12 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   let reason = '';
 
   if (!postedAt) {
-    reason = 'Original posting date is not published \u2014 the seven-day rule cannot be verified.';
+    reason = `Original posting date is not published \u2014 the ${RULES.windowDays}-day rule cannot be verified.`;
   } else if (age !== null && age > RULES.windowDays - 1) {
     bucket = 'archived';
     reason = `Posted ${age} days ago \u2014 outside the ${RULES.windowDays}-day window.`;
   } else if (raw.postedConfidence !== 'confirmed') {
     reason = 'Board publishes only a last-updated date, so the original posting date is unverified.';
-  } else if (loc.ca === 'unknown') {
-    reason = loc.note;
   } else if (!salary) {
     reason = 'No salary published on the employer posting.';
   } else if (salary.isOTE) {
@@ -488,68 +489,9 @@ async function executeRun(runId: number): Promise<number> {
       await recordSource(`${employer.ats}:${employer.slug}`, employer.name, true, result.totalListed);
     });
 
-    // --- Feeds -------------------------------------------------------------
-    for (const feed of FEEDS) {
-      await progress(`Reading ${feed.label}`);
-      try {
-        const raws = await feed.run(REFRESH.feedPages);
-        counters.sourcesChecked += 1;
-        counters.jobsFetched += raws.length;
-        let feedMatched = 0;
-        for (const raw of raws) {
-          const key = companyKey(raw.company);
-          const employer = byCompany.get(key) ?? null;
-          const ev = evaluateRaw(raw, employer);
-          if (!ev) continue;
-          feedMatched += 1;
-          if (!ev.employerId && employer) ev.employerId = employer.id;
-          const outcome = await upsertJob(ev);
-          if (outcome.inserted) {
-            counters.newJobs += 1;
-            if (outcome.bucket === 'queue') counters.queued += 1;
-          }
-        }
-        counters.jobsMatched += feedMatched;
-        await recordSource(feed.id, feed.label, true, raws.length);
-      } catch (err) {
-        counters.sourcesFailed += 1;
-        counters.errors.push({ source: feed.id, message: (err as Error).message.slice(0, 160) });
-        await recordSource(feed.id, feed.label, false, 0, (err as Error).message.slice(0, 200));
-      }
-    }
-
-    // --- Employer discovery from feed companies ----------------------------
-    await progress('Discovering new employers');
-    const unknownCompanies = await q<{ company: string }>(
-      `SELECT DISTINCT j.company
-         FROM jobs j
-         LEFT JOIN employers e ON e.id = j.employer_id
-        WHERE e.id IS NULL
-          AND j.bucket = 'queue'
-          AND j.salary_min IS NOT NULL
-          AND j.first_seen_at > now() - INTERVAL '1 day'
-        LIMIT 40`,
-    );
-    let probes = 0;
-    for (const row of unknownCompanies) {
-      if (probes >= REFRESH.discoverPerRun) break;
-      const existing = await one<{ id: number }>(
-        `SELECT id FROM employers WHERE lower(regexp_replace(name,'[^a-zA-Z0-9]','','g')) = lower(regexp_replace($1,'[^a-zA-Z0-9]','','g')) LIMIT 1`,
-        [row.company],
-      );
-      if (existing) continue;
-      probes += 1;
-      const found = await probeAts(row.company);
-      if (!found) continue;
-      const inserted = await q<{ id: number }>(
-        `INSERT INTO employers (name, ats, slug, discovered_via, active, careers_url)
-         VALUES ($1,$2,$3,'Job-board discovery',TRUE,$4)
-         ON CONFLICT (ats, slug) DO NOTHING
-         RETURNING id`,
-        [row.company, found.ats, found.slug, careersUrlFor(found.ats, found.slug)],
-      );
-      if (inserted.length) counters.newEmployers += 1;
-    }
+    // Employer job boards only. Aggregator feeds are deliberately not ingested:
+    // every role must come from the employer's own career site so the link and
+    // the posting date are first-party.
 
     // --- Post-processing ---------------------------------------------------
     await progress('Removing duplicates');
@@ -558,7 +500,7 @@ async function executeRun(runId: number): Promise<number> {
     await progress('Flagging employers hiring several similar roles');
     await flagMultiRoleUrgency();
 
-    await progress('Applying the seven-day window');
+    await progress(`Applying the ${RULES.windowDays}-day window`);
     counters.archived += await archiveByAge();
 
     await progress(`Verifying ${linkCandidates.length} application links`);

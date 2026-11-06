@@ -25,6 +25,7 @@ const TAB_LABELS: Record<TabKey, string> = {
 
 export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
+  const windowDays = boot?.stats.windowDays ?? 14;
   const [jobs, setJobs] = useState<Job[]>([]);
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -163,7 +164,8 @@ export default function App() {
     if (tab === 'employers' || tab === 'history') return [];
     const needle = filters.q.trim().toLowerCase();
     const now = Date.now();
-    const withinMs = filters.within === '24h' ? 86_400_000 : filters.within === '72h' ? 3 * 86_400_000 : 7 * 86_400_000;
+    const windowMs = (boot?.stats.windowDays ?? 14) * 86_400_000;
+    const withinMs = filters.within === '24h' ? 86_400_000 : filters.within === '72h' ? 3 * 86_400_000 : windowMs;
 
     const filtered = tabJobs.filter((job) => {
       if (needle) {
@@ -246,7 +248,7 @@ export default function App() {
       return (
         <div className="empty">
           <h3>Nothing archived yet</h3>
-          <p>Roles move here when they pass the seven-day window or disappear from the employer's board.</p>
+          <p>Roles move here when they pass the {windowDays}-day window or disappear from the employer's board.</p>
         </div>
       );
     }
@@ -255,7 +257,7 @@ export default function App() {
         <h3>No verified roles in this tab yet</h3>
         <p>
           A role only appears here when the employer publishes a base salary in band, the posting is fully remote and
-          California-eligible, it was posted in the last seven days, and the application link is the employer's own.
+          California-eligible, it was posted in the last {windowDays} days, and the application link is the employer's own.
           Press <strong>Refresh jobs now</strong> to search the employer database.
         </p>
         <button className="btn" onClick={() => void triggerRefresh()} disabled={refreshing}>Refresh jobs now</button>
@@ -334,6 +336,7 @@ export default function App() {
           jobs={tabJobs}
           total={tabJobs.length}
           matched={visibleJobs.length}
+          windowDays={windowDays}
         />
       ) : null}
 
@@ -357,8 +360,9 @@ export default function App() {
 
       <footer className="footer">
         <div>
-          Sources: Greenhouse, Lever, Ashby, Workable, Recruitee and SmartRecruiters employer boards, plus
-          Himalayas, Remotive and Remote&nbsp;OK for discovery. Every placement decision is recorded in Refresh history.
+          Sources: employer career sites only — Greenhouse, Lever, Ashby, Workable, SmartRecruiters and Recruitee
+          boards, swept across all 50 states. No aggregator or job-board listings; every role links to the employer's
+          own posting. Every placement decision is recorded in Refresh history.
         </div>
         <div>
           Salary bands use the published minimum only. Ownership labels require a citable source.
@@ -369,7 +373,7 @@ export default function App() {
         <JobDrawer job={selected} onClose={() => setSelectedId(null)} onUpdated={handleUpdated} />
       ) : null}
 
-      {showHowTo ? <HowTo onClose={() => setShowHowTo(false)} /> : null}
+      {showHowTo ? <HowTo onClose={() => setShowHowTo(false)} windowDays={windowDays} /> : null}
 
       {toast ? <div className={`toast${toast.error ? ' error' : ''}`}>{toast.text}</div> : null}
     </div>

@@ -594,8 +594,3 @@ async function remoteok(): Promise<RawJob[]> {
   return jobs;
 }
 
-export const FEEDS: { id: string; label: string; run: (pages: number) => Promise<RawJob[]> }[] = [
-  { id: 'himalayas', label: 'Himalayas feed', run: himalayas },
-  { id: 'remotive', label: 'Remotive feed', run: () => remotive() },
-  { id: 'remoteok', label: 'Remote OK feed', run: () => remoteok() },
-];

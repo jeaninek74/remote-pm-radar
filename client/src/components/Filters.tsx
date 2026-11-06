@@ -11,7 +11,7 @@ export interface FilterState {
   blackOwned: boolean;
   employment: string;
   appStatus: string;
-  within: 'any' | '24h' | '72h' | '7d';
+  within: 'any' | '24h' | '72h' | 'window';
   minMatch: number;
   sort: 'match' | 'newest' | 'salary' | 'company';
 }
@@ -37,11 +37,12 @@ interface Props {
   jobs: Job[];
   total: number;
   matched: number;
+  windowDays: number;
 }
 
 const CATEGORIES: FilterState['category'][] = ['All', 'Nontechnical', 'Technical', 'Hybrid'];
 
-export function Filters({ value, onChange, jobs, total, matched }: Props) {
+export function Filters({ value, onChange, jobs, total, matched, windowDays }: Props) {
   const set = <K extends keyof FilterState>(key: K, next: FilterState[K]) => onChange({ ...value, [key]: next });
   const industries = uniqueValues(jobs, 'industry');
   const sizes = uniqueValues(jobs, 'companySize');
@@ -134,7 +135,7 @@ export function Filters({ value, onChange, jobs, total, matched }: Props) {
           <option value="any">Posted: any day in window</option>
           <option value="24h">Posted: last 24 hours</option>
           <option value="72h">Posted: last 3 days</option>
-          <option value="7d">Posted: last 7 days</option>
+          <option value="window">Posted: last {windowDays} days</option>
         </select>
 
         <label className={`toggle${value.blackOwned ? ' on' : ''}`}>

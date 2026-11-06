@@ -1,7 +1,7 @@
 /**
  * Central configuration for the radar.
  *
- * Every rule that the product depends on (salary bands, the seven-day window,
+ * Every rule that the product depends on (salary bands, the posting window,
  * how many employers one refresh cycle may touch) lives here so the behaviour
  * is auditable in one place.
  */
@@ -13,13 +13,20 @@ export const APP = {
 };
 
 export const RULES = {
-  /** Only jobs whose ORIGINAL posting date falls inside this many calendar days qualify. */
-  windowDays: 7,
+  /**
+   * Only jobs whose ORIGINAL posting date falls inside this many calendar days qualify.
+   * The master prompt specifies seven days; Jeanine explicitly extended it to 14 on
+   * 6 Nov 2026 because seven days produced three roles against 638 PM postings. Override
+   * with JOB_WINDOW_DAYS (7 restores the original rule).
+   */
+  windowDays: Number(process.env.JOB_WINDOW_DAYS ?? 14),
   /** Tab 1: verified minimum annual base salary inside this inclusive range. */
   tab1Min: 110_000,
   tab1Max: 130_000,
   /** Tab 2: verified minimum annual base salary at or above this. No upper cap. */
   tab2Min: 150_000,
+  /** Day range a job is heard about: window plus a grace period for the archive. */
+  archiveDays: Number(process.env.JOB_WINDOW_DAYS ?? 14) + 14,
   /** Hours used to annualise hourly contract rates (never presented as guaranteed salary). */
   hoursPerYear: 2080,
 };

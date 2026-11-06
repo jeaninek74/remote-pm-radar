@@ -157,7 +157,7 @@ export function caBadge(job: Job): { label: string; cls: string; title: string }
     case 'us_wide': return { label: 'US-wide', cls: 'ca', title: job.caNote };
     case 'state_restricted': return { label: 'State-restricted', cls: 'warn', title: job.caNote };
     case 'not_us': return { label: 'Non-US', cls: 'warn', title: job.caNote };
-    default: return { label: 'CA unverified', cls: '', title: job.caNote };
+    default: return { label: 'CA not stated', cls: 'warn', title: job.caNote };
   }
 }
 

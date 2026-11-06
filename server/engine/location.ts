@@ -211,7 +211,7 @@ export function evaluateLocation(input: LocationInput): LocationVerdict {
   return {
     remote,
     ca: 'unknown',
-    note: `Remote, but the posting does not state whether California is eligible (${labels}).`,
+    note: `Remote, but the posting never names California (${labels}). Jeanine's standing instruction is to keep these visible: eligibility is unconfirmed, so confirm with the recruiter before applying.`,
     states: allStates,
     remoteLabel: labels,
   };
@@ -223,7 +223,7 @@ export function caLabel(ca: CaEligibility): string {
     case 'us_wide': return 'US-wide remote';
     case 'state_restricted': return 'State-restricted';
     case 'not_us': return 'Non-US';
-    default: return 'Unverified';
+    default: return 'CA not stated';
   }
 }
 
