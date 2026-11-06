@@ -2,13 +2,13 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../types';
 import { ageLabel, caBadge, categoryLabel, dateLabel, salaryLabel, salarySubLabel } from '../lib';
 
-type SalaryTab = 'tab1' | 'tab2' | 'queue';
+type BoardTab = 'tab1' | 'tab2' | 'nopay';
 type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
 
-const TABS: { key: SalaryTab; name: string; range: string }[] = [
+const TABS: { key: BoardTab; name: string; range: string }[] = [
   { key: 'tab1', name: 'Tab 1', range: '$110K–$130K' },
   { key: 'tab2', name: 'Tab 2', range: '$150K+' },
-  { key: 'queue', name: 'Needs verification', range: 'found, not yet qualified' },
+  { key: 'nopay', name: 'Pay not published', range: 'remote, CA-eligible, no salary stated' },
 ];
 
 const CATEGORIES: { key: Category; label: string }[] = [
@@ -17,6 +17,14 @@ const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'Technical', label: 'Technical' },
   { key: 'Hybrid', label: 'Hybrid' },
 ];
+
+/** Roles held back only because the employer published no base salary. */
+function isPayOnlyBlocker(job: Job): boolean {
+  // Only roles where no base salary figure exists at all. A role whose published minimum merely falls
+  // in the $130,001-$149,999 gap is a different case and stays out of this tab.
+  if (job.salaryMin !== null && job.salaryMin !== undefined) return false;
+  return /salary|OTE|compensation/i.test(job.bucketReason ?? '');
+}
 
 interface Props {
   jobs: Job[];
@@ -29,14 +37,17 @@ interface Props {
 }
 
 export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen }: Props) {
-  const [tab, setTab] = useState<SalaryTab>('tab1');
+  const [tab, setTab] = useState<BoardTab>('tab1');
   const [category, setCategory] = useState<Category>('all');
   const [q, setQ] = useState('');
 
   const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
   const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
-  const queue = useMemo(() => jobs.filter((job) => job.bucket === 'queue'), [jobs]);
-  const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : queue;
+  const nopay = useMemo(
+    () => jobs.filter((job) => job.bucket === 'queue' && isPayOnlyBlocker(job)),
+    [jobs],
+  );
+  const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;
 
   const counts = useMemo(() => ({
     all: active.length,
@@ -51,7 +62,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       .filter((job) => {
         if (category !== 'all' && job.category !== category) return false;
         if (needle) {
-          const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt} ${job.bucketReason ?? ''}`.toLowerCase();
+          const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt}`.toLowerCase();
           if (!hay.includes(needle)) return false;
         }
         return true;
@@ -59,7 +70,11 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       .sort((a, b) => (b.matchScore - a.matchScore) || ((b.postedAt ?? '').localeCompare(a.postedAt ?? '')));
   }, [active, category, q]);
 
+  const visible = tab === 'nopay' ? shown.slice(0, 80) : shown;
   const current = TABS.find((item) => item.key === tab)!;
+
+  const tabCount = (key: BoardTab): number =>
+    key === 'tab1' ? tab1.length : key === 'tab2' ? tab2.length : nopay.length;
 
   return (
     <div className="simple-shell">
@@ -69,12 +84,8 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             Remote PM <span>Radar</span>
           </h1>
           <p className="simple-sub">
-            {tab1.length + tab2.length} verified roles · {queue.length} more found awaiting verification
+            {tab1.length + tab2.length} salary-verified roles · {nopay.length} more where pay is not published
             {lastRefresh ? ` · updated ${lastRefresh}` : ''}
-            <br />
-            <span className="simple-balance">
-              Tab 1: {tab1.length} in $110K–$130K · Tab 2: {tab2.length} at $150K+
-            </span>
           </p>
         </div>
         <div className="simple-actions">
@@ -95,12 +106,12 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             key={item.key}
             role="tab"
             aria-selected={tab === item.key}
-            className={`tab${tab === item.key ? ' on' : ''}`}
-            onClick={() => { setTab(item.key); setCategory('all'); }}
+            className={`tab${tab === item.key ? ' on' : ''}${item.key === 'nopay' ? ' mute' : ''}`}
+            onClick={() => { setTab(item.key); setCategory('all'); setQ(''); }}
           >
             <span className="tab-name">{item.name}</span>
             <span className="tab-range">{item.range}</span>
-            <span className="tab-count">{item.key === 'tab1' ? tab1.length : item.key === 'tab2' ? tab2.length : queue.length}</span>
+            <span className="tab-count">{tabCount(item.key)}</span>
           </button>
         ))}
       </div>
@@ -110,7 +121,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
           ? 'Roles whose published starting salary is between $110,000 and $130,000.'
           : tab === 'tab2'
             ? 'Roles whose published starting salary is $150,000 or more — no upper cap.'
-            : 'Every project or program role the search found that has not cleared the salary tabs yet, with the exact reason it is waiting.'}
+            : 'Fully remote, California-eligible project and program roles where the employer published no base salary. The pay is unknown, not estimated — open the posting to check before applying.'}
       </p>
 
       <div className="simple-controls">
@@ -134,22 +145,23 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
         </div>
       </div>
 
+      {tab === 'nopay' && shown.length > visible.length ? (
+        <p className="simple-balance" style={{ margin: '0 0 10px' }}>
+          Showing the 80 closest matches of {shown.length} — use the search box to narrow, or the full dashboard for the rest.
+        </p>
+      ) : null}
+
       {shown.length === 0 ? (
         <div className="simple-empty">
           <p>Nothing in {current.name} matches this view right now.</p>
           <p className="muted">
-            A role only enters a salary tab when it is fully remote, open to California, posted inside the window,
-            linked to the employer's own posting, and publishes a base salary inside {current.range}. Roles missing
-            any of that sit in Needs Verification on the full dashboard.
+            A role enters a salary tab only when it is fully remote, open to California, posted inside the window,
+            linked to the employer's own posting, and publishes a base salary inside {current.range}.
           </p>
         </div>
       ) : (
-        <>
-        {tab === 'queue' && shown.length > 60 ? (
-          <p className="simple-balance" style={{ margin: '0 0 8px' }}>Showing the 60 closest matches of {shown.length}.</p>
-        ) : null}
         <ul className="joblist">
-          {(tab === 'queue' ? shown.slice(0, 60) : shown).map((job) => {
+          {visible.map((job) => {
             const ca = caBadge(job);
             return (
               <li key={job.id} className="jobrow">
@@ -168,8 +180,12 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
                   <p className="jobrow-desc">{job.descriptionExcerpt}</p>
                 </div>
                 <div className="jobrow-side">
-                  <div className="jobrow-pay">{job.salaryMin ? salaryLabel(job) : 'Salary not published'}</div>
-                  <div className="jobrow-paysub">{job.salaryMin ? salarySubLabel(job) : (job.bucketReason ?? '')}</div>
+                  <div className={`jobrow-pay${job.salaryMin ? '' : ' muted-pay'}`}>
+                    {job.salaryMin ? salaryLabel(job) : 'Pay not published'}
+                  </div>
+                  <div className="jobrow-paysub">
+                    {job.salaryMin ? salarySubLabel(job) : 'Check the posting — the employer states no base salary.'}
+                  </div>
                   <div className="jobrow-meta">
                     <span>{dateLabel(job.postedAt)}</span>
                     <span className="dim">{ageLabel(job.postedAt).text}</span>
@@ -189,7 +205,6 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             );
           })}
         </ul>
-        </>
       )}
 
       <footer className="simple-foot">

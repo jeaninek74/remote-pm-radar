@@ -793,3 +793,6 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 .tab-count { font-size: 11.5px; background: #efe8db; color: #4b4339; border-radius: 999px; padding: 1px 7px; }
 .tab.on .tab-count { background: #f6e2d6; color: #8f3f1f; }
 .tab-note { margin: 10px 0 0; font-size: 12.2px; color: #8a8072; }
+.tab.mute .tab-range { font-style: italic; }
+.tab.mute.on { border-bottom-color: #8a8072; }
+.jobrow-pay.muted-pay { color: #8a8072; font-weight: 550; font-size: 13.5px; }
