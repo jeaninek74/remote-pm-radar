@@ -780,3 +780,16 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 
 .chip-count { margin-left: 6px; font-size: 11px; opacity: 0.62; }
 .simple-balance { display: inline-block; margin-top: 5px; font-size: 12.2px; color: #8a8072; }
+
+/* ---------- salary tabs ---------- */
+.tabs { display: flex; gap: 8px; margin: 20px 0 0; border-bottom: 1px solid #e6dfd3; }
+.tab { display: flex; align-items: baseline; gap: 8px; background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 10px 14px 12px; cursor: pointer; color: #6b6357; font-size: 14px; }
+.tab:hover { color: #2c2621; }
+.tab.on { color: #1d1915; border-bottom-color: #b4552d; }
+.tab-name { font-weight: 650; }
+.tab-range { font-size: 13px; color: #8a8072; }
+.tab.on .tab-range { color: #b4552d; }
+.tab-count { font-size: 11.5px; background: #efe8db; color: #4b4339; border-radius: 999px; padding: 1px 7px; }
+.tab.on .tab-count { background: #f6e2d6; color: #8f3f1f; }
+.tab-note { margin: 10px 0 0; font-size: 12.2px; color: #8a8072; }

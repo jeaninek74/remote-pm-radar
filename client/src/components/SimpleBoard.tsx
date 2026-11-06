@@ -2,12 +2,16 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../types';
 import { ageLabel, caBadge, categoryLabel, dateLabel, salaryLabel, salarySubLabel } from '../lib';
 
-type Lane = 'all' | 'tab1' | 'tab2' | 'Nontechnical' | 'Technical' | 'Hybrid';
+type SalaryTab = 'tab1' | 'tab2';
+type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
 
-const LANES: { key: Lane; label: string }[] = [
+const TABS: { key: SalaryTab; name: string; range: string }[] = [
+  { key: 'tab1', name: 'Tab 1', range: '$110K–$130K' },
+  { key: 'tab2', name: 'Tab 2', range: '$150K+' },
+];
+
+const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'all', label: 'All roles' },
-  { key: 'tab1', label: '$110K–$130K' },
-  { key: 'tab2', label: '$150K+' },
   { key: 'Nontechnical', label: 'Nontechnical' },
   { key: 'Technical', label: 'Technical' },
   { key: 'Hybrid', label: 'Hybrid' },
@@ -24,15 +28,16 @@ interface Props {
 }
 
 export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen }: Props) {
-  const [lane, setLane] = useState<Lane>('all');
+  const [tab, setTab] = useState<SalaryTab>('tab1');
+  const [category, setCategory] = useState<Category>('all');
   const [q, setQ] = useState('');
 
-  const active = useMemo(() => jobs.filter((job) => job.bucket === 'tab1' || job.bucket === 'tab2'), [jobs]);
+  const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
+  const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
+  const active = tab === 'tab1' ? tab1 : tab2;
 
   const counts = useMemo(() => ({
     all: active.length,
-    tab1: active.filter((job) => job.bucket === 'tab1').length,
-    tab2: active.filter((job) => job.bucket === 'tab2').length,
     Nontechnical: active.filter((job) => job.category === 'Nontechnical').length,
     Technical: active.filter((job) => job.category === 'Technical').length,
     Hybrid: active.filter((job) => job.category === 'Hybrid').length,
@@ -42,9 +47,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
     const needle = q.trim().toLowerCase();
     return active
       .filter((job) => {
-        if (lane === 'tab1' && job.bucket !== 'tab1') return false;
-        if (lane === 'tab2' && job.bucket !== 'tab2') return false;
-        if ((lane === 'Nontechnical' || lane === 'Technical' || lane === 'Hybrid') && job.category !== lane) return false;
+        if (category !== 'all' && job.category !== category) return false;
         if (needle) {
           const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt}`.toLowerCase();
           if (!hay.includes(needle)) return false;
@@ -52,7 +55,9 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
         return true;
       })
       .sort((a, b) => (b.matchScore - a.matchScore) || ((b.postedAt ?? '').localeCompare(a.postedAt ?? '')));
-  }, [active, lane, q]);
+  }, [active, category, q]);
+
+  const current = TABS.find((item) => item.key === tab)!;
 
   return (
     <div className="simple-shell">
@@ -62,12 +67,11 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             Remote PM <span>Radar</span>
           </h1>
           <p className="simple-sub">
-            {active.length} verified remote roles
+            {tab1.length + tab2.length} verified roles
             {lastRefresh ? ` · updated ${lastRefresh}` : ''}
             <br />
             <span className="simple-balance">
-              {counts.Nontechnical} nontechnical · {counts.Technical} technical · {counts.Hybrid} hybrid
-              — both lanes are searched with equal priority
+              Tab 1: {tab1.length} in $110K–$130K · Tab 2: {tab2.length} at $150K+
             </span>
           </p>
         </div>
@@ -83,6 +87,28 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
 
       {refreshing ? <div className="simple-progress">{progress || 'Searching employer boards…'}</div> : null}
 
+      <div className="tabs" role="tablist">
+        {TABS.map((item) => (
+          <button
+            key={item.key}
+            role="tab"
+            aria-selected={tab === item.key}
+            className={`tab${tab === item.key ? ' on' : ''}`}
+            onClick={() => setTab(item.key)}
+          >
+            <span className="tab-name">{item.name}</span>
+            <span className="tab-range">{item.range}</span>
+            <span className="tab-count">{item.key === 'tab1' ? tab1.length : tab2.length}</span>
+          </button>
+        ))}
+      </div>
+
+      <p className="tab-note">
+        {tab === 'tab1'
+          ? 'Roles whose published starting salary is between $110,000 and $130,000.'
+          : 'Roles whose published starting salary is $150,000 or more — no upper cap.'}
+      </p>
+
       <div className="simple-controls">
         <input
           className="simple-search"
@@ -91,11 +117,11 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
           onChange={(event) => setQ(event.target.value)}
         />
         <div className="simple-chips">
-          {LANES.map((item) => (
+          {CATEGORIES.map((item) => (
             <button
               key={item.key}
-              className={`chip${lane === item.key ? ' on' : ''}`}
-              onClick={() => setLane(item.key)}
+              className={`chip${category === item.key ? ' on' : ''}`}
+              onClick={() => setCategory(item.key)}
             >
               {item.label}
               <span className="chip-count">{counts[item.key]}</span>
@@ -106,10 +132,11 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
 
       {shown.length === 0 ? (
         <div className="simple-empty">
-          <p>No roles match this view right now.</p>
+          <p>Nothing in {current.name} matches this view right now.</p>
           <p className="muted">
-            The board only shows fully remote, California-eligible roles posted in the last 14 days with a published
-            base salary in one of the two bands. Try “All roles”, or press refresh to run a new search.
+            A role only enters a salary tab when it is fully remote, open to California, posted inside the window,
+            linked to the employer's own posting, and publishes a base salary inside {current.range}. Roles missing
+            any of that sit in Needs Verification on the full dashboard.
           </p>
         </div>
       ) : (
@@ -157,7 +184,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       )}
 
       <footer className="simple-foot">
-        Employer career sites only · every link opens the employer’s own posting · salaries are the published minimum
+        Employer career sites only · every link opens the employer's own posting · salaries are the published minimum
       </footer>
     </div>
   );
