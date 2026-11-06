@@ -32,7 +32,29 @@ Two consequences of the free plans, stated plainly:
 - Neon suspends its compute when idle and resumes on the next query; the first request after a quiet
   spell is a little slower.
 
-Every push to `master` redeploys the service automatically.
+### Deploys are triggered explicitly
+
+Because the service was created from a public Git URL rather than through Render's GitHub app, Render
+does not receive push webhooks, so a push alone does **not** deploy. Trigger one after pushing:
+
+```bash
+# from the agent, via the Render MCP tool
+trigger_deploy(serviceId: "srv-dbn60nm1egvs73cnp0k0")
+```
+
+or press **Manual Deploy → Deploy latest commit** in the Render dashboard. Connecting the Render
+GitHub app to the team restores automatic deploys.
+
+## Reusable for another person
+
+Candidate-specific values live in `profiles/*.json` and are loaded by `PROFILE_FILE`; the engine,
+ATS adapters and interface are generic. See [profiles/README.md](profiles/README.md). Example:
+
+```bash
+PROFILE_FILE=profiles/example-data-analyst.json DATABASE_URL=… node dist/server.js
+```
+
+That run rebrands the board and re-bands the tabs from the same code and database.
 
 ### Why the repository is public
 
