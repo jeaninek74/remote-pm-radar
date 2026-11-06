@@ -94,7 +94,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             role="tab"
             aria-selected={tab === item.key}
             className={`tab${tab === item.key ? ' on' : ''}`}
-            onClick={() => setTab(item.key)}
+            onClick={() => { setTab(item.key); setCategory('all'); }}
           >
             <span className="tab-name">{item.name}</span>
             <span className="tab-range">{item.range}</span>
