@@ -265,6 +265,9 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Biotechnology
   ['Insitro', 'ashby', 'insitro', 'Biotechnology', 'Midsize', 'CA'],
 
+  // ------------------------------------------------------------ CA
+  ['Nox Metals', 'Industrials', 'Startup', 'CA', 'ashby', 'nox-metals'],
+
   // ------------------------------------------------------------ Construction
   ['Fieldwire', 'greenhouse', 'fieldwire', 'Construction', 'Midsize', 'CA'],
 
@@ -336,6 +339,12 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Banking
   ['Found', 'greenhouse', 'found', 'Banking', 'Startup', 'CA'],
   ['Novo', 'ashby', 'novo', 'Banking', 'Startup', 'NY'],
+
+  // ------------------------------------------------------------ CA
+  ['Clara', 'Healthcare', 'Startup', 'CA', 'greenhouse', 'clara'],
+  ['Hedge', 'Fintech', 'Startup', 'CA', 'ashby', 'hedge'],
+  ['Pocket', 'Consumer', 'Startup', 'CA', 'ashby', 'pocket'],
+  ['Sila', 'B2B', 'Startup', 'CA', 'lever', 'sila'],
 
   // ------------------------------------------------------------ Cloud Services
   ['Kinsta', 'lever', 'kinsta', 'Cloud Services', 'Midsize', 'CA'],

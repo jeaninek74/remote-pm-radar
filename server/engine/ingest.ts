@@ -507,6 +507,43 @@ async function executeRun(runId: number): Promise<number> {
     // every role must come from the employer's own career site so the link and
     // the posting date are first-party.
 
+    // --- Employer discovery -------------------------------------------------
+    // Master prompt s.14: a refresh must discover additional employers, not only re-check known
+    // ones. We take a small batch from the discovery queue (fed by the portfolio sweep) and probe
+    // each company's own applicant-tracking system.
+    await progress('Discovering new employers');
+    try {
+      const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null }>(
+        `SELECT id, name, industry, hq_state FROM discovery_queue
+          WHERE status='pending' AND tries < 3
+          ORDER BY tries ASC, id ASC
+          LIMIT $1`,
+        [REFRESH.discoverPerRun ?? 12],
+      );
+      for (const row of pending) {
+        const found = await probeAts(row.name);
+        if (found) {
+          const inserted = await q<{ id: number }>(
+            `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+             VALUES ($1,$2,$3,$4,'Midsize',$5,$6,'Portfolio discovery',TRUE)
+             ON CONFLICT (ats, slug) DO NOTHING
+             RETURNING id`,
+            [row.name, found.ats, found.slug, row.industry, row.hq_state, careersUrlFor(found.ats, found.slug)],
+          );
+          if (inserted.length) counters.newEmployers += 1;
+          await q(
+            `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
+            [row.id, found.ats, found.slug],
+          );
+        } else {
+          await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
+        }
+      }
+      if (pending.length) await progress(`Probed ${pending.length} new employers`);
+    } catch (err) {
+      counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });
+    }
+
     // --- Post-processing ---------------------------------------------------
     await progress('Removing duplicates');
     counters.duplicates += await dedupeJobs();

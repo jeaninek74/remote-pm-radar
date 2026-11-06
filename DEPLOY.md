@@ -3,6 +3,21 @@
 The app is a single Node service (Express API + built React client) plus a Postgres database.
 The container serves everything on one port, so any Node host works.
 
+## Railway deployment (the permanent home)
+
+The repo is deployment-ready: `Dockerfile`, `railway.json`, health check at `/api/health`, and the
+server runs migrations plus the 14-day/CA-rule evaluation on boot.
+
+1. Railway → **New Project → Deploy from GitHub repo** → `jeaninek74/remote-pm-radar`.
+2. **New → Database → PostgreSQL** in the same project. Railway injects `DATABASE_URL`; the service
+   picks it up automatically on the next deploy.
+3. Settings → Networking → **Generate Domain**. That URL is the permanent site.
+4. Optional variables: `JOB_WINDOW_DAYS` (default 14), `EMPLOYERS_PER_RUN` (default 150),
+   `ENABLE_CRON` (default 1 — the four-hour refresh runs inside the service).
+
+The container binds `PORT` from Railway, waits for Postgres, migrates, seeds the 396-employer
+registry, and starts the cron job. First boot takes ~2 minutes because it runs the initial search.
+
 ## What is running right now
 
 A live instance is running in the Manus sandbox and is reachable at the preview URL provided with

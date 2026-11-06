@@ -81,6 +81,21 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS jobs_bucket_idx ON jobs (bucket);
 CREATE INDEX IF NOT EXISTS jobs_posted_idx ON jobs (posted_at DESC);
+
+-- Employer discovery queue: portfolio and directory companies waiting to be probed for a board.
+CREATE TABLE IF NOT EXISTS discovery_queue (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  industry TEXT,
+  hq_state TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  tries INTEGER NOT NULL DEFAULT 0,
+  found_ats TEXT,
+  found_slug TEXT,
+  checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS discovery_pending_idx ON discovery_queue (status, tries);
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs (company);
 CREATE INDEX IF NOT EXISTS jobs_employer_idx ON jobs (employer_id);
 
@@ -130,4 +145,19 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS link_status TEXT;
 CREATE INDEX IF NOT EXISTS jobs_bucket_idx ON jobs (bucket, match_score DESC);
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs (company);
 CREATE INDEX IF NOT EXISTS jobs_posted_idx ON jobs (posted_at DESC);
+
+-- Employer discovery queue: portfolio and directory companies waiting to be probed for a board.
+CREATE TABLE IF NOT EXISTS discovery_queue (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  industry TEXT,
+  hq_state TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  tries INTEGER NOT NULL DEFAULT 0,
+  found_ats TEXT,
+  found_slug TEXT,
+  checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS discovery_pending_idx ON discovery_queue (status, tries);
 `;
