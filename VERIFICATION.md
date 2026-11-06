@@ -67,3 +67,28 @@ leadership, budget and vendor/contract management, healthcare and EHR, enterpris
 Salesforce and ServiceNow, GSA/federal construction, utilities and renewables, marketing operations,
 process improvement, organisational change), scored per job and explained line by line in the drawer. No
 employer names from her CV are hardcoded anywhere in the application.
+
+
+### 6.6 Simple list view (6 Nov 2026)
+
+The default screen is now a plain list, not a dashboard: one row per role with the title, employer,
+industry, size, headquarters state, a three-line description, the published pay range with its
+minimum, the date posted, the category, the California flag and a direct "View job" link. A search
+box and six chips (All roles, $110K-$130K, $150K+, Nontechnical, Technical, Hybrid) are the only
+controls. "Full dashboard" opens the previous tabbed interface with the KPI band, filters, drawer,
+employer database, refresh history and export.
+
+### 6.7 Registry reaches 356 employers across 48 states
+
+| Layer | Count | Behaviour |
+| --- | --- | --- |
+| Machine-read boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee) | 234 | Searched on every refresh |
+| Tracked employers with a verified careers link (Workday, iCIMS, Taleo, Jobvite, bespoke) | 112 | Click-through; name, industry, size, state and link stored |
+| Ownership watchlist (no readable board) | 10 | Tracked for Black-owned openings |
+
+Consulting firms now include Deloitte, Accenture, EY, KPMG, PwC, McKinsey, BCG, Bain, Kearney,
+Oliver Wyman, L.E.K., AlixPartners, FTI, Guidehouse, Grant Thornton, RSM, BDO, Protiviti, Slalom,
+Huron, BRG, Ankura, CRA, Analysis Group, Cornerstone, Capgemini, Cognizant, Infosys, Wipro, TCS,
+HCLTech, Tech Mahindra, LTIMindtree, GlobalLogic, Virtusa, EPAM, Thoughtworks, Endava, Globant,
+Persistent, UST, Genpact, DXC, Kyndryl, IQVIA, ICON and Parexel. Every link was fetched and returned
+a live response (403 counts as live: the page exists and blocks bots).

@@ -2,6 +2,7 @@ import { migrate, one, q } from '../db';
 import { REFRESH, RULES } from '../config';
 import { SEED_EMPLOYERS, WATCHLIST } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
+import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { fetchBoard } from './sources';
 import { evaluateLocation } from './location';
 import { classifyCategory } from './category';
@@ -31,6 +32,17 @@ export async function seedEmployers(): Promise<number> {
        ON CONFLICT (ats, slug) DO NOTHING
        RETURNING id`,
       [seed.name, seed.ats, seed.slug, seed.industry, seed.size, seed.hq, careersUrlFor(seed.ats, seed.slug)],
+    );
+    inserted += res.length;
+  }
+  for (const manual of MANUAL_EMPLOYERS) {
+    const res = await q<{ id: number }>(
+      `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
+       VALUES ($1,'manual',$2,$3,$4,$5,$6,'50-state careers sweep',FALSE,$7)
+       ON CONFLICT (ats, slug) DO NOTHING
+       RETURNING id`,
+      [manual.name, slugify(manual.name), manual.industry, manual.size, manual.hq, manual.careersUrl,
+       'Careers page tracked \u2014 postings sit behind Workday/iCIMS; open the link to search this employer'],
     );
     inserted += res.length;
   }

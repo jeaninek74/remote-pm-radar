@@ -736,3 +736,44 @@ table.plain tbody tr:hover { background: #fbf8ef; }
   .fact-grid, .field-row { grid-template-columns: 1fr; }
   .wordmark h1 { font-size: 24px; }
 }
+
+/* ---------- simple list view ---------- */
+.simple-shell { max-width: 1080px; margin: 0 auto; padding: 28px 22px 60px; }
+.simple-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.simple-title { font-size: 27px; letter-spacing: -0.02em; margin: 0 0 4px; font-weight: 700; }
+.simple-title span { color: var(--accent, #b4552d); }
+.simple-sub { margin: 0; color: #6b6357; font-size: 13.5px; }
+.simple-actions { display: flex; gap: 8px; align-items: center; }
+.simple-progress { margin: 14px 0 0; font-size: 12.5px; color: #7a5c3f; background: #fdf4ec; border: 1px solid #f0dcc9; border-radius: 6px; padding: 8px 12px; }
+.simple-controls { margin: 18px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.simple-search { width: 100%; border: 1px solid #ddd5c8; border-radius: 8px; padding: 10px 12px; font-size: 14px; background: #fff; }
+.simple-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid #ddd5c8; background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; color: #4b4339; }
+.chip.on { background: #2c2621; border-color: #2c2621; color: #fff; }
+.joblist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.jobrow { display: grid; grid-template-columns: 1fr 260px; gap: 18px; background: #fff; border: 1px solid #e6dfd3; border-radius: 10px; padding: 16px 18px; }
+.jobrow:hover { border-color: #cfc3ae; }
+.jobrow-title { font-size: 16.5px; font-weight: 650; color: #1d1915; text-decoration: none; }
+.jobrow-title:hover { text-decoration: underline; }
+.jobrow-company { font-size: 12.8px; color: #6b6357; margin-top: 3px; }
+.jobrow-company .dot { margin: 0 7px; color: #bbae99; }
+.jobrow-desc { margin: 9px 0 0; font-size: 13.4px; line-height: 1.55; color: #4a433a; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.jobrow-side { border-left: 1px solid #eee7da; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
+.jobrow-pay { font-size: 15px; font-weight: 650; }
+.jobrow-paysub { font-size: 11.5px; color: #8a8072; }
+.jobrow-meta { display: flex; gap: 8px; font-size: 12px; color: #6b6357; }
+.jobrow-meta .dim { color: #9c9284; }
+.jobrow-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+.jobrow-links { display: flex; gap: 14px; margin-top: 6px; align-items: center; }
+.apply-link { font-size: 12.8px; font-weight: 600; color: #b4552d; text-decoration: none; }
+.apply-link:hover { text-decoration: underline; }
+.detail-link { border: none; background: none; padding: 0; font-size: 12.5px; color: #6b6357; cursor: pointer; text-decoration: underline; }
+.pill.cat-nontechnical { background: #eef4ec; color: #40603a; }
+.pill.cat-technical { background: #eef1f7; color: #3d4a63; }
+.pill.cat-hybrid { background: #f6f0e6; color: #6a5533; }
+.simple-empty { background: #fff; border: 1px dashed #ddd5c8; border-radius: 10px; padding: 28px; text-align: center; }
+.simple-foot { margin-top: 26px; font-size: 11.5px; color: #8a8072; text-align: center; }
+@media (max-width: 760px) {
+  .jobrow { grid-template-columns: 1fr; }
+  .jobrow-side { border-left: none; padding-left: 0; border-top: 1px solid #eee7da; padding-top: 10px; }
+}

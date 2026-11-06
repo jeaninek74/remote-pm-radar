@@ -195,7 +195,7 @@ export async function getStats(): Promise<Stats> {
     `SELECT
         count(*) FILTER (WHERE ats <> 'manual')::text AS tracked,
         count(*) FILTER (WHERE last_searched_at IS NOT NULL)::text AS searched,
-        count(DISTINCT hq_state) FILTER (WHERE last_searched_at IS NOT NULL AND hq_state IS NOT NULL)::text AS states
+        count(DISTINCT hq_state) FILTER (WHERE hq_state IS NOT NULL)::text AS states
       FROM employers`,
   );
 

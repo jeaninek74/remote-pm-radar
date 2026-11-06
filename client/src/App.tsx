@@ -4,6 +4,7 @@ import {
   download, loadBootstrap, loadEmployers, loadJobs, loadRuns, refreshStatus, saveTracking, shortDateTime, startRefresh,
 } from './lib';
 import { KpiBand } from './components/KpiBand';
+import { SimpleBoard } from './components/SimpleBoard';
 import { DEFAULT_FILTERS, Filters } from './components/Filters';
 import type { FilterState } from './components/Filters';
 import { JobTable } from './components/JobTable';
@@ -34,6 +35,7 @@ export default function App() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showHowTo, setShowHowTo] = useState(false);
+  const [simple, setSimple] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [progress, setProgress] = useState<string>('');
@@ -264,6 +266,23 @@ export default function App() {
       </div>
     );
   };
+
+  if (simple) {
+    return (
+      <>
+        <SimpleBoard
+          jobs={jobs}
+          refreshing={refreshing}
+          progress={progress}
+          lastRefresh={boot?.stats.lastRefresh ? shortDateTime(boot.stats.lastRefresh) : null}
+          onRefresh={triggerRefresh}
+          onAdvanced={() => setSimple(false)}
+          onOpen={(id) => { setSimple(false); setSelectedId(id); }}
+        />
+        {toast ? <div className={`toast${toast.error ? ' error' : ''}`}>{toast.text}</div> : null}
+      </>
+    );
+  }
 
   return (
     <div className="shell">
