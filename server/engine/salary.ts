@@ -249,7 +249,7 @@ export interface SalaryClassification {
  *   min 110,000–130,000 -> Tab 1 | min 150,000+ -> Tab 2 (no ceiling)
  *   min 130,001–149,999 -> neither tab (verification queue)
  */
-export function classifySalary(min: number | null, max: number | null, interval: SalaryInterval | null): SalaryClassification {
+export function classifySalary(min: number | null, max: number | null, interval: SalaryInterval | null, hourlyRate: number | null = null): SalaryClassification {
   if (min === null) {
     return {
       bucket: 'none',
@@ -259,10 +259,16 @@ export function classifySalary(min: number | null, max: number | null, interval:
     };
   }
   if (interval === 'hour') {
-    return {
-      bucket: 'none',
-      reason: 'Hourly contract: annualised equivalent shown, but contract income is not a guaranteed annual base salary.',
-    };
+    // Master prompt s.5: hourly contracts are annualised at 2,080 hours and placed on the band the
+    // equivalent falls into, with the hourly rate identified and the income never shown as guaranteed.
+    const rate = hourlyRate ?? Math.round(min / 2080);
+    const basis = `Hourly contract at $${rate.toLocaleString('en-US')}/hr \u2014 annualised at 2,080 hours ($${min.toLocaleString('en-US')}). Contract income, not guaranteed salary.`;
+    if (min >= RULES.tab2Min) return { bucket: 'tab2', reason: basis };
+    if (min >= RULES.tab1Min && min <= RULES.tab1Max) return { bucket: 'tab1', reason: basis };
+    if (min > RULES.tab1Max && min < RULES.tab2Min) {
+      return { bucket: 'none', reason: `${basis} The annualised equivalent sits in the $130,001\u2013$149,999 gap.` };
+    }
+    return { bucket: 'none', reason: `${basis} The annualised equivalent is below the $110K floor.` };
   }
   if (min >= RULES.tab2Min) {
     return { bucket: 'tab2', reason: `Published minimum of $${min.toLocaleString('en-US')} meets the $150K+ band.` };

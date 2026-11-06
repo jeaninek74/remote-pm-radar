@@ -17,6 +17,32 @@ export interface LocationVerdict {
   note: string;
   states: string[];
   remoteLabel: string;
+  /** True when the posting demands routine travel that undermines genuine remote work. */
+  travelHeavy: boolean;
+  /** The largest travel share stated in the posting, when one is stated. */
+  travelShare: number | null;
+}
+
+/**
+ * Master prompt s.6 excludes "positions requiring routine travel incompatible with genuine remote
+ * work". We read the stated travel share and treat 40%+ (or an unquantified "extensive/frequent
+ * travel") as disqualifying. Occasional travel is normal for remote PM roles and is not penalised.
+ */
+function travelBurden(text: string): { heavy: boolean; share: number | null } {
+  if (!text) return { heavy: false, share: null };
+  const body = text.slice(0, 20_000);
+  let share: number | null = null;
+  for (const match of body.matchAll(/(\d{1,3})\s?%\s*(?:of the time\s*)?(?:travel|travelling|traveling)/gi)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value <= 100) share = Math.max(share ?? 0, value);
+  }
+  for (const match of body.matchAll(/travel\s*(?:of\s*)?(?:up to\s*)?(\d{1,3})\s?%/gi)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value <= 100) share = Math.max(share ?? 0, value);
+  }
+  const unquantified = /\b(?:extensive|significant|frequent|heavy|constant)\s+travel\b/i.test(body)
+    || /\b(?:travel|travelling|traveling)\s+(?:is\s+)?(?:required|expected)\s+(?:extensively|frequently|weekly)/i.test(body);
+  return { heavy: (share !== null && share >= 40) || unquantified, share };
 }
 
 const STATE_NAMES: Record<string, string> = {
@@ -79,7 +105,7 @@ function residencyRestriction(description: string): string[] {
  * resident may take it. Restricted or unprovable eligibility never reaches the
  * salary tabs.
  */
-export function evaluateLocation(input: LocationInput): LocationVerdict {
+function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'travelHeavy' | 'travelShare'> {
   const locations = (input.locations ?? []).map((l) => String(l ?? '').trim()).filter(Boolean);
   const restrictions = (input.restrictions ?? []).map((r) => String(r ?? '').trim()).filter(Boolean);
   const locText = locations.join(' | ');
@@ -241,4 +267,14 @@ function usEligibilityFromText(description: string): boolean {
     || /remote\s+(?:within|in|across)\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
     || /(?:authorized|eligible)\s+to\s+work\s+in\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
     || /open\s+to\s+(?:candidates\s+)?(?:residing\s+in\s+)?(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text);
+}
+
+/**
+ * Public entry point: adds the travel verdict to the location verdict.
+ * Heavy travel disqualifies a role under master prompt s.6.
+ */
+export function evaluateLocation(input: LocationInput): LocationVerdict {
+  const core = evaluateLocationCore(input);
+  const burden = travelBurden(String(input.description ?? ''));
+  return { ...core, travelHeavy: burden.heavy, travelShare: burden.share };
 }

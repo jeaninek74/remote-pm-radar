@@ -123,6 +123,8 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   });
 
   if (loc.remote !== 'remote') return null;
+  // Master prompt s.6: a role that requires routine travel is not genuine remote work.
+  if (loc.travelHeavy) return null;
   // Only explicit exclusions are dropped. A posting that simply never mentions
   // California is kept and flagged, because most US-remote roles accept CA
   // applicants without saying so.
@@ -154,7 +156,7 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   } else if (salary.isOTE) {
     reason = 'Only OTE / total-compensation figures are published; base salary is not stated.';
   } else {
-    const cls = classifySalary(salary.min, salary.max, salary.interval);
+    const cls = classifySalary(salary.min, salary.max, salary.interval, salary.hourlyRate);
     if (cls.bucket === 'none') {
       reason = cls.reason;
     } else if (raw.linkType !== 'employer') {

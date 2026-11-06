@@ -71,13 +71,23 @@ Classify on the **published minimum**, never the maximum.
 | $150,000+ | Tab 2, no cap |
 
 Hourly contracts are annualised at 2,080 hours and the hourly rate is shown; contract income is never
-presented as guaranteed salary. Nothing is estimated. No published salary means the queue.
+presented as guaranteed salary. They are placed on the band their annualised equivalent falls into.
+Nothing is estimated. No published salary means the queue. `scripts/check-salary.ts` proves every
+example in the master prompt, plus the $130,000 / $130,001 / $149,999 / $150,000 boundaries:
+all cases pass.
 
 ## 4. Posting window
 
 Seven days was the original rule and produced three roles against 638 project/program postings. On
 6 November 2026 Jeanine extended it to **14 days**. Implemented as `RULES.windowDays`, overridable with
 `JOB_WINDOW_DAYS`. A last-updated date is never accepted as a posting date.
+
+### 4.1 Exclusions enforced before anything is stored
+
+Hybrid roles, onsite roles, roles that require regular commuting, positions that exclude California
+residents, positions that demand residency in another state, region-locked remote roles that exclude
+California, and roles requiring routine travel (40%+ stated, or unquantified "extensive/frequent
+travel") are all rejected at ingestion.
 
 ## 5. Sourcing policy
 
@@ -86,6 +96,8 @@ Seven days was the original rule and produced three roles against 638 project/pr
 | Machine-readable boards — Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee | Fetched every refresh |
 | Tracked employers — Workday, iCIMS, Taleo, Jobvite, bespoke portals | Stored with name, industry, size, state and a verified careers link that opens in one click |
 | Ownership watchlist | Black-owned employers tracked for openings |
+
+Current coverage: **396 employers, 51 states (50 + DC), 54 industries**.
 
 A tracked employer is a first-class record, not a gap: the company, its state and its link are in the
 database and the link is clickable. Absence of a public API never removes a company from the registry.
