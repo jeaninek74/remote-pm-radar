@@ -33,7 +33,7 @@ export const RULES = {
 
 export const REFRESH = {
   /** Employers touched per cycle (least-recently-searched first). */
-  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 150),
+  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 600),
   /** Feed pages fetched per cycle. */
   feedPages: Number(process.env.FEED_PAGES ?? 4),
   /** Parallel network requests. */

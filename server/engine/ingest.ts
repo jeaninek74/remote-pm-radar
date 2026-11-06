@@ -416,7 +416,8 @@ async function executeRun(runId: number): Promise<number> {
       `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
               black_owned, ownership_status, ownership_source, last_searched_at::text, active
          FROM employers
-        WHERE active = TRUE AND ats <> 'manual'
+        WHERE active = TRUE
+          AND (ats <> 'manual' OR careers_url ILIKE '%myworkdayjobs%')
         ORDER BY last_searched_at ASC NULLS FIRST
         LIMIT $1`,
       [REFRESH.employersPerRun],

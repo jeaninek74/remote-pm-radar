@@ -411,7 +411,118 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow) => Promise<BoardFetchResult>
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
 };
 
+
+/**
+ * Workday public CXS API.
+ *
+ * Large employers (health systems, universities, retailers, manufacturers) publish their board at
+ * https://{tenant}.{wdN}.myworkdayjobs.com/{site}. The same host answers a public JSON search:
+ *   POST /wday/cxs/{tenant}/{site}/jobs  {searchText, limit, offset}
+ * and a detail read:
+ *   GET  /wday/cxs/{tenant}/{site}{externalPath}
+ * This is the employer's own ATS, not a job board, so it satisfies the sourcing rule.
+ */
+const WORKDAY_HOST = /^https?:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/?#]+)/i;
+
+interface WorkdayPosting {
+  title?: string;
+  externalPath?: string;
+  locationsText?: string;
+  postedOn?: string;
+  bulletFields?: string[];
+}
+
+export function parseWorkdayUrl(url: string | null | undefined): { tenant: string; wd: string; site: string } | null {
+  if (!url) return null;
+  const m = WORKDAY_HOST.exec(url);
+  if (!m) return null;
+  return { tenant: m[1].toLowerCase(), wd: m[2], site: m[3] };
+}
+
+async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
+  const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
+    body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: text }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`workday search ${res.status}`);
+  return res.json() as Promise<{ total?: number; jobPostings?: WorkdayPosting[] }>;
+}
+
+async function workdayDetail(tenant: string, wd: string, site: string, externalPath: string) {
+  const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}${externalPath}`, {
+    headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    jobPostingInfo?: {
+      title?: string; jobDescription?: string; location?: string; additionalLocations?: string[];
+      startDate?: string; timeType?: string; remoteType?: string; externalUrl?: string;
+    };
+  };
+  return data.jobPostingInfo ?? null;
+}
+
+async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
+  const coords = parseWorkdayUrl(employer.careers_url);
+  if (!coords) return { jobs: [], ok: false, error: 'not a workday url', totalListed: 0 };
+  const { tenant, wd, site } = coords;
+  const collected = new Map<string, WorkdayPosting>();
+  try {
+    for (const text of ['project manager', 'program manager']) {
+      for (const offset of [0, 20, 40]) {
+        const page = await workdaySearch(tenant, wd, site, text, offset);
+        for (const posting of page.jobPostings ?? []) {
+          // Only keep titles that are genuinely project/program roles: it avoids fetching details
+          // for unrelated search hits and keeps the run inside its time budget.
+          if (!posting.externalPath || !isPmTitle(posting.title ?? '')) continue;
+          if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
+        }
+        if ((page.jobPostings ?? []).length < 20) break;
+      }
+    }
+  } catch (err) {
+    return { jobs: [], ok: false, error: (err as Error).message, totalListed: collected.size };
+  }
+
+  const jobs: RawJob[] = [];
+  for (const [path, posting] of [...collected].slice(0, 25)) {
+    const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
+    const html = detail?.jobDescription ?? null;
+    const text = html ? stripHtml(html) : '';
+    const locations = [detail?.location, ...(detail?.additionalLocations ?? [])].filter(Boolean) as string[];
+    const postedRaw = detail?.startDate ?? posting.postedOn ?? null;
+    jobs.push({
+      source: 'Workday',
+      ats: 'workday' as unknown as Ats,
+      board: `${tenant}/${site}`,
+      externalId: path,
+      company: employer.name,
+      title: detail?.title ?? posting.title ?? '',
+      locations: locations.length ? locations : [posting.locationsText ?? ''],
+      workplaceType: detail?.remoteType ?? null,
+      isRemote: /remote/i.test(`${detail?.remoteType ?? ''} ${posting.locationsText ?? ''}`) ? true : null,
+      descriptionHtml: html,
+      descriptionText: text,
+      applyUrl: `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`,
+      linkType: 'employer',
+      postedAt: postedRaw,
+      postedConfidence: postedRaw ? 'confirmed' : 'unknown',
+      employmentType: detail?.timeType ?? null,
+      salary: parseSalaryFromText(text),
+      salarySource: 'description',
+      industry: employer.industry,
+      companySize: employer.company_size,
+      hqState: employer.hq_state,
+    });
+  }
+  return { jobs, ok: true, totalListed: collected.size };
+}
+
 export async function fetchBoard(employer: EmployerRow): Promise<BoardFetchResult> {
+  if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer);
   const adapter = ADAPTERS[employer.ats];
   if (!adapter) return { jobs: [], ok: false, error: `Unsupported ATS: ${employer.ats}`, totalListed: 0 };
   try {
