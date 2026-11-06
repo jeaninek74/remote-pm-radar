@@ -122,13 +122,20 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
     description,
   });
 
-  if (loc.remote !== 'remote') return null;
-  // Master prompt s.6: a role that requires routine travel is not genuine remote work.
-  if (loc.travelHeavy) return null;
-  // Only explicit exclusions are dropped. A posting that simply never mentions
-  // California is kept and flagged, because most US-remote roles accept CA
-  // applicants without saying so.
-  if (loc.ca === 'not_us' || loc.ca === 'state_restricted') return null;
+  // Nothing is discarded silently: a role that fails a location rule is still stored, in the
+  // verification queue, with the exact reason. The salary tabs stay untouched, but Jeanine can
+  // see every posting that was found and why it did not qualify.
+  let forced: { bucket: 'queue'; reason: string } | null = null;
+  // A posting outside the United States can never be applied to from California, so it is the one
+  // case that is dropped rather than queued.
+  if (loc.ca === 'not_us') return null;
+  if (loc.remote !== 'remote') {
+    forced = { bucket: 'queue', reason: `Posting reads as ${loc.remote === 'hybrid' ? 'hybrid' : loc.remote === 'onsite' ? 'on-site' : 'not confirmed remote'} — ${loc.note || loc.remoteLabel}.` };
+  } else if (loc.travelHeavy) {
+    forced = { bucket: 'queue', reason: 'Requires routine travel, which is incompatible with genuine remote work.' };
+  } else if (loc.ca === 'state_restricted') {
+    forced = { bucket: 'queue', reason: `Residency restricted to ${(loc.states ?? []).join(', ') || 'another state'}; California applicants cannot be considered.` };
+  }
 
   const category = classifyCategory(raw.title, description);
   const match = scoreJob({
@@ -144,7 +151,10 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   let bucket: EvaluatedJob['bucket'] = 'queue';
   let reason = '';
 
-  if (!postedAt) {
+  if (forced) {
+    bucket = forced.bucket;
+    reason = forced.reason;
+  } else if (!postedAt) {
     reason = `Original posting date is not published \u2014 the ${RULES.windowDays}-day rule cannot be verified.`;
   } else if (age !== null && age > RULES.windowDays - 1) {
     bucket = 'archived';

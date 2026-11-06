@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../types';
 import { ageLabel, caBadge, categoryLabel, dateLabel, salaryLabel, salarySubLabel } from '../lib';
 
-type SalaryTab = 'tab1' | 'tab2';
+type SalaryTab = 'tab1' | 'tab2' | 'queue';
 type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
 
 const TABS: { key: SalaryTab; name: string; range: string }[] = [
   { key: 'tab1', name: 'Tab 1', range: '$110K–$130K' },
   { key: 'tab2', name: 'Tab 2', range: '$150K+' },
+  { key: 'queue', name: 'Needs verification', range: 'found, not yet qualified' },
 ];
 
 const CATEGORIES: { key: Category; label: string }[] = [
@@ -34,7 +35,8 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
 
   const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
   const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
-  const active = tab === 'tab1' ? tab1 : tab2;
+  const queue = useMemo(() => jobs.filter((job) => job.bucket === 'queue'), [jobs]);
+  const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : queue;
 
   const counts = useMemo(() => ({
     all: active.length,
@@ -49,7 +51,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       .filter((job) => {
         if (category !== 'all' && job.category !== category) return false;
         if (needle) {
-          const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt}`.toLowerCase();
+          const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt} ${job.bucketReason ?? ''}`.toLowerCase();
           if (!hay.includes(needle)) return false;
         }
         return true;
@@ -67,7 +69,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             Remote PM <span>Radar</span>
           </h1>
           <p className="simple-sub">
-            {tab1.length + tab2.length} verified roles
+            {tab1.length + tab2.length} verified roles · {queue.length} more found awaiting verification
             {lastRefresh ? ` · updated ${lastRefresh}` : ''}
             <br />
             <span className="simple-balance">
@@ -98,7 +100,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
           >
             <span className="tab-name">{item.name}</span>
             <span className="tab-range">{item.range}</span>
-            <span className="tab-count">{item.key === 'tab1' ? tab1.length : tab2.length}</span>
+            <span className="tab-count">{item.key === 'tab1' ? tab1.length : item.key === 'tab2' ? tab2.length : queue.length}</span>
           </button>
         ))}
       </div>
@@ -106,7 +108,9 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
       <p className="tab-note">
         {tab === 'tab1'
           ? 'Roles whose published starting salary is between $110,000 and $130,000.'
-          : 'Roles whose published starting salary is $150,000 or more — no upper cap.'}
+          : tab === 'tab2'
+            ? 'Roles whose published starting salary is $150,000 or more — no upper cap.'
+            : 'Every project or program role the search found that has not cleared the salary tabs yet, with the exact reason it is waiting.'}
       </p>
 
       <div className="simple-controls">
@@ -140,8 +144,12 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
           </p>
         </div>
       ) : (
+        <>
+        {tab === 'queue' && shown.length > 60 ? (
+          <p className="simple-balance" style={{ margin: '0 0 8px' }}>Showing the 60 closest matches of {shown.length}.</p>
+        ) : null}
         <ul className="joblist">
-          {shown.map((job) => {
+          {(tab === 'queue' ? shown.slice(0, 60) : shown).map((job) => {
             const ca = caBadge(job);
             return (
               <li key={job.id} className="jobrow">
@@ -160,8 +168,8 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
                   <p className="jobrow-desc">{job.descriptionExcerpt}</p>
                 </div>
                 <div className="jobrow-side">
-                  <div className="jobrow-pay">{salaryLabel(job)}</div>
-                  <div className="jobrow-paysub">{salarySubLabel(job)}</div>
+                  <div className="jobrow-pay">{job.salaryMin ? salaryLabel(job) : 'Salary not published'}</div>
+                  <div className="jobrow-paysub">{job.salaryMin ? salarySubLabel(job) : (job.bucketReason ?? '')}</div>
                   <div className="jobrow-meta">
                     <span>{dateLabel(job.postedAt)}</span>
                     <span className="dim">{ageLabel(job.postedAt).text}</span>
@@ -181,6 +189,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             );
           })}
         </ul>
+        </>
       )}
 
       <footer className="simple-foot">
