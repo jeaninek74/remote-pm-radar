@@ -66,8 +66,8 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Human Resources Services
   ['Justworks', 'greenhouse', 'justworks', 'Human Resources Services', 'Large', 'NY'],
 
-  // ------------------------------------------------------------ Marketing
-  ['Braze', 'greenhouse', 'braze', 'Marketing', 'Large', 'NY'],
+  // ------------------------------------------------------------ Software
+  ['Braze', 'greenhouse', 'braze', 'Software', 'Large', 'NY'],
 
   // ------------------------------------------------------------ Technology
   ['Pinterest', 'greenhouse', 'pinterest', 'Technology', 'Enterprise', 'CA'],
@@ -91,16 +91,13 @@ const RAW: Row[] = [
   ['Oscar Health', 'greenhouse', 'oscar', 'Health Insurance', 'Large', 'NY'],
 
   // ------------------------------------------------------------ Software
-  ['Notion', 'ashby', 'notion', 'Software', 'Midsize', 'CA'],
+  ['Notion', 'ashby', 'notion', 'Software', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Defense
   ['Astranis', 'greenhouse', 'astranis', 'Defense', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Financial Services
   ['Coinbase', 'greenhouse', 'coinbase', 'Financial Services', 'Enterprise', 'CA'],
-
-  // ------------------------------------------------------------ Marketing
-  ['Klaviyo', 'greenhouse', 'klaviyo', 'Marketing', 'Large', 'MA'],
 
   // ------------------------------------------------------------ Renewable Energy
   ['Form Energy', 'ashby', 'formenergy', 'Renewable Energy', 'Midsize', 'MA'],
@@ -111,7 +108,8 @@ const RAW: Row[] = [
   ['Cohere', 'ashby', 'cohere', 'Software', 'Midsize', 'CA'],
   ['Cursor', 'ashby', 'cursor', 'Software', 'Startup', 'CA'],
   ['GitLab', 'greenhouse', 'gitlab', 'Software', 'Large', 'CA'],
-  ['Qualtrics', 'greenhouse', 'qualtrics', 'Software', 'Enterprise', 'UT'],
+  ['Klaviyo', 'greenhouse', 'klaviyo', 'Software', 'Large', 'MA'],
+  ['Qualtrics', 'greenhouse', 'qualtrics', 'Software', 'Large', 'UT'],
 
   // ------------------------------------------------------------ Cybersecurity
   ['Zscaler', 'greenhouse', 'zscaler', 'Cybersecurity', 'Large', 'CA'],
@@ -140,6 +138,9 @@ const RAW: Row[] = [
 
   // ------------------------------------------------------------ AI
   ['ElevenLabs', 'ashby', 'elevenlabs', 'AI', 'Midsize', 'NY'],
+
+  // ------------------------------------------------------------ B2B
+  ['Nex', 'greenhouse', 'nex', 'B2B', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Banking
   ['Mercury', 'greenhouse', 'mercury', 'Banking', 'Midsize', 'CA'],
@@ -205,6 +206,12 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ AI
   ['Perplexity', 'ashby', 'perplexity', 'AI', 'Midsize', 'CA'],
 
+  // ------------------------------------------------------------ B2B
+  ['Eloquent AI', 'ashby', 'eloquentai', 'B2B', 'Startup', 'CA'],
+  ['Halluminate', 'ashby', 'halluminate', 'B2B', 'Startup', 'CA'],
+  ['KERNEL', 'ashby', 'kernel', 'B2B', 'Startup', 'CA'],
+  ['Lance', 'ashby', 'lance', 'B2B', 'Startup', 'CA'],
+
   // ------------------------------------------------------------ Cloud Services
   ['Fastly', 'greenhouse', 'fastly', 'Cloud Services', 'Midsize', 'CA'],
 
@@ -230,6 +237,9 @@ const RAW: Row[] = [
   ['BetterUp', 'ashby', 'betterup', 'Human Resources Services', 'Large', 'CA'],
   ['Culture Amp', 'greenhouse', 'cultureamp', 'Human Resources Services', 'Midsize', 'CA'],
   ['Gusto', 'greenhouse', 'gusto', 'Human Resources Services', 'Large', 'CA'],
+
+  // ------------------------------------------------------------ Industrials
+  ['Human Archive', 'ashby', 'humanarchive', 'Industrials', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Logistics
   ['Flexport', 'greenhouse', 'flexport', 'Logistics', 'Large', 'CA'],
@@ -259,14 +269,22 @@ const RAW: Row[] = [
   ['Discord', 'greenhouse', 'discord', 'Technology', 'Large', 'CA'],
   ['Roblox', 'greenhouse', 'roblox', 'Technology', 'Large', 'CA'],
 
+  // ------------------------------------------------------------ B2B
+  ['AgentMail', 'ashby', 'agentmail', 'B2B', 'Startup', 'CA'],
+  ['Constellation Space', 'ashby', 'constellationspace', 'B2B', 'Startup', 'CA'],
+  ['Latent', 'ashby', 'latent', 'B2B', 'Startup', 'CA'],
+  ['Moss', 'ashby', 'moss', 'B2B', 'Startup', 'CA'],
+  ['Orchestra', 'greenhouse', 'orchestra', 'B2B', 'Startup', 'CA'],
+  ['Preload', 'greenhouse', 'preload', 'B2B', 'Startup', 'CA'],
+  ['Rivet', 'ashby', 'rivet', 'B2B', 'Startup', 'CA'],
+  ['Sapien', 'ashby', 'sapien', 'B2B', 'Startup', 'CA'],
+  ['burnt', 'greenhouse', 'burnt', 'B2B', 'Startup', 'CA'],
+
   // ------------------------------------------------------------ Banking
   ['Relay', 'ashby', 'relay', 'Banking', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Biotechnology
   ['Insitro', 'ashby', 'insitro', 'Biotechnology', 'Midsize', 'CA'],
-
-  // ------------------------------------------------------------ CA
-  ['Nox Metals', 'Industrials', 'Startup', 'CA', 'ashby', 'nox-metals'],
 
   // ------------------------------------------------------------ Construction
   ['Fieldwire', 'greenhouse', 'fieldwire', 'Construction', 'Midsize', 'CA'],
@@ -297,6 +315,11 @@ const RAW: Row[] = [
 
   // ------------------------------------------------------------ Human Resources Services
   ['Handshake', 'ashby', 'handshake', 'Human Resources Services', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Industrials
+  ['9 Mothers', 'ashby', '9-mothers', 'Industrials', 'Startup', 'CA'],
+  ['Flai', 'ashby', 'flai', 'Industrials', 'Startup', 'CA'],
+  ['Nox Metals', 'ashby', 'nox-metals', 'Industrials', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Media
   ['Hearst', 'greenhouse', 'hearst', 'Media', 'Enterprise', 'NY'],
@@ -336,19 +359,80 @@ const RAW: Row[] = [
   // ------------------------------------------------------------ Utilities
   ['EnergyHub', 'greenhouse', 'energyhub', 'Utilities', 'Midsize', 'NY'],
 
+  // ------------------------------------------------------------ B2B
+  ['Assemble', 'ashby', 'assemble', 'B2B', 'Startup', 'CA'],
+  ['Autumn', 'ashby', 'autumn', 'B2B', 'Startup', 'CA'],
+  ['Bernard', 'ashby', 'bernard', 'B2B', 'Startup', 'CA'],
+  ['BootLoop', 'ashby', 'bootloop', 'B2B', 'Startup', 'CA'],
+  ['Cardboard', 'ashby', 'cardboard', 'B2B', 'Startup', 'CA'],
+  ['Chronicle Labs', 'ashby', 'chronicle-labs', 'B2B', 'Startup', 'CA'],
+  ['Comena', 'ashby', 'comena', 'B2B', 'Startup', 'CA'],
+  ['Complir', 'ashby', 'complir', 'B2B', 'Startup', 'CA'],
+  ['Dedalus Labs', 'ashby', 'dedalus-labs', 'B2B', 'Startup', 'CA'],
+  ['DiligenceSquared', 'ashby', 'diligencesquared', 'B2B', 'Startup', 'CA'],
+  ['Doe', 'ashby', 'doe', 'B2B', 'Startup', 'CA'],
+  ['Finto', 'ashby', 'finto', 'B2B', 'Startup', 'CA'],
+  ['Fleetline', 'ashby', 'fleetline', 'B2B', 'Startup', 'CA'],
+  ['Foresight', 'ashby', 'foresight', 'B2B', 'Startup', 'CA'],
+  ['Fulcrum', 'ashby', 'fulcrum', 'B2B', 'Startup', 'CA'],
+  ['Hexa', 'ashby', 'hexa', 'B2B', 'Startup', 'CA'],
+  ['Hopper', 'ashby', 'hopper', 'B2B', 'Startup', 'CA'],
+  ['Hypercubic', 'ashby', 'hypercubic', 'B2B', 'Startup', 'CA'],
+  ['Interfere', 'ashby', 'interfere', 'B2B', 'Startup', 'CA'],
+  ['Kiwi', 'ashby', 'kiwi', 'B2B', 'Startup', 'CA'],
+  ['Lapel', 'ashby', 'lapel', 'B2B', 'Startup', 'CA'],
+  ['Lark', 'ashby', 'lark', 'B2B', 'Startup', 'CA'],
+  ['Limrun', 'greenhouse', 'limrun', 'B2B', 'Startup', 'CA'],
+  ['Litmus', 'ashby', 'litmus', 'B2B', 'Startup', 'CA'],
+  ['MangoDesk', 'ashby', 'mangodesk', 'B2B', 'Startup', 'CA'],
+  ['Mantis', 'greenhouse', 'mantis', 'B2B', 'Startup', 'CA'],
+  ['Marble', 'ashby', 'marble', 'B2B', 'Startup', 'CA'],
+  ['Maven', 'ashby', 'maven', 'B2B', 'Startup', 'CA'],
+  ['Miso Labs', 'ashby', 'misolabs', 'B2B', 'Startup', 'CA'],
+  ['Mosaic', 'ashby', 'mosaic', 'B2B', 'Startup', 'CA'],
+  ['Nexus', 'greenhouse', 'nexus', 'B2B', 'Startup', 'CA'],
+  ['OpenWork', 'greenhouse', 'openwork', 'B2B', 'Startup', 'CA'],
+  ['Parameter', 'ashby', 'parameter', 'B2B', 'Startup', 'CA'],
+  ['Polymath', 'ashby', 'polymath', 'B2B', 'Startup', 'CA'],
+  ['Praxis', 'greenhouse', 'praxis', 'B2B', 'Startup', 'CA'],
+  ['Prism', 'ashby', 'prism', 'B2B', 'Startup', 'CA'],
+  ['Proto', 'greenhouse', 'proto', 'B2B', 'Startup', 'CA'],
+  ['Reacher', 'ashby', 'reacher', 'B2B', 'Startup', 'CA'],
+  ['Relling', 'ashby', 'relling', 'B2B', 'Startup', 'CA'],
+  ['River', 'ashby', 'river', 'B2B', 'Startup', 'CA'],
+  ['SF Tensor', 'ashby', 'sf-tensor', 'B2B', 'Startup', 'CA'],
+  ['Sazabi', 'ashby', 'sazabi', 'B2B', 'Startup', 'CA'],
+  ['Sila', 'lever', 'sila', 'B2B', 'Startup', 'CA'],
+  ['Stilta', 'ashby', 'stilta', 'B2B', 'Startup', 'CA'],
+  ['Tenor', 'ashby', 'tenor', 'B2B', 'Startup', 'CA'],
+  ['The Token Company', 'ashby', 'the-token-company', 'B2B', 'Startup', 'CA'],
+  ['Tolmo', 'ashby', 'tolmo', 'B2B', 'Startup', 'CA'],
+  ['Trellis', 'lever', 'trellis', 'B2B', 'Startup', 'CA'],
+  ['Uplane', 'ashby', 'uplane', 'B2B', 'Startup', 'CA'],
+  ['Wafer', 'ashby', 'wafer', 'B2B', 'Startup', 'CA'],
+  ['Whitespace', 'greenhouse', 'whitespace', 'B2B', 'Startup', 'CA'],
+  ['hillclimb', 'ashby', 'hillclimb', 'B2B', 'Startup', 'CA'],
+  ['idler', 'ashby', 'idler', 'B2B', 'Startup', 'CA'],
+  ['sieve', 'ashby', 'sieve', 'B2B', 'Startup', 'CA'],
+
   // ------------------------------------------------------------ Banking
   ['Found', 'greenhouse', 'found', 'Banking', 'Startup', 'CA'],
   ['Novo', 'ashby', 'novo', 'Banking', 'Startup', 'NY'],
 
-  // ------------------------------------------------------------ CA
-  ['Clara', 'Healthcare', 'Startup', 'CA', 'greenhouse', 'clara'],
-  ['Hedge', 'Fintech', 'Startup', 'CA', 'ashby', 'hedge'],
-  ['Pocket', 'Consumer', 'Startup', 'CA', 'ashby', 'pocket'],
-  ['Sila', 'B2B', 'Startup', 'CA', 'lever', 'sila'],
-
   // ------------------------------------------------------------ Cloud Services
   ['Kinsta', 'lever', 'kinsta', 'Cloud Services', 'Midsize', 'CA'],
   ['Pantheon', 'greenhouse', 'pantheon', 'Cloud Services', 'Midsize', 'CA'],
+
+  // ------------------------------------------------------------ Consumer
+  ['AnswerThis', 'ashby', 'answerthis', 'Consumer', 'Startup', 'CA'],
+  ['Blue', 'lever', 'blue', 'Consumer', 'Startup', 'CA'],
+  ['Moonshot', 'ashby', 'moonshot', 'Consumer', 'Startup', 'CA'],
+  ['Opennote', 'ashby', 'opennote', 'Consumer', 'Startup', 'CA'],
+  ['Pax Historia', 'ashby', 'pax-historia', 'Consumer', 'Startup', 'CA'],
+  ['Pocket', 'ashby', 'pocket', 'Consumer', 'Startup', 'CA'],
+  ['Quippy', 'ashby', 'quippy', 'Consumer', 'Startup', 'CA'],
+  ['Raven', 'greenhouse', 'raven', 'Consumer', 'Startup', 'CA'],
+  ['Tsenta', 'ashby', 'tsenta', 'Consumer', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Consumer Products
   ['Away', 'ashby', 'away', 'Consumer Products', 'Midsize', 'NY'],
@@ -369,19 +453,47 @@ const RAW: Row[] = [
   ['Wealthfront', 'lever', 'wealthfront', 'Financial Services', 'Midsize', 'CA'],
   ['Wealthsimple', 'ashby', 'wealthsimple', 'Financial Services', 'Large', 'NY'],
 
+  // ------------------------------------------------------------ Fintech
+  ['Fernstone', 'ashby', 'fernstone', 'Fintech', 'Startup', 'CA'],
+  ['Forward', 'greenhouse', 'forward', 'Fintech', 'Startup', 'CA'],
+  ['Hedge', 'ashby', 'hedge', 'Fintech', 'Startup', 'CA'],
+  ['Veritus', 'ashby', 'veritus', 'Fintech', 'Startup', 'CA'],
+
   // ------------------------------------------------------------ Government Services
   ['Agile Six', 'greenhouse', 'agilesix', 'Government Services', 'Small', 'CA'],
   ['Oddball', 'greenhouse', 'oddball', 'Government Services', 'Small', 'CA'],
 
   // ------------------------------------------------------------ Healthcare
+  ['Clara', 'greenhouse', 'clara', 'Healthcare', 'Startup', 'CA'],
+  ['Elite', 'greenhouse', 'elite', 'Healthcare', 'Startup', 'CA'],
   ['Firefly Health', 'workable', 'firefly-health', 'Healthcare', 'Startup', 'MA'],
-  ['Forward', 'greenhouse', 'forward', 'Healthcare', 'Startup', 'CA'],
+  ['Harbor', 'ashby', 'harbor', 'Healthcare', 'Startup', 'CA'],
+  ['Infera', 'ashby', 'infera', 'Healthcare', 'Startup', 'CA'],
+  ['Juno', 'greenhouse', 'juno', 'Healthcare', 'Startup', 'CA'],
+  ['Klarify', 'ashby', 'klarify', 'Healthcare', 'Startup', 'CA'],
+  ['Remedy', 'greenhouse', 'remedy', 'Healthcare', 'Startup', 'CA'],
   ['ShiftKey', 'ashby', 'shiftkey', 'Healthcare', 'Midsize', 'TX'],
   ['Trusted Health', 'ashby', 'trustedhealth', 'Healthcare', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Human Resources Services
   ['Oyster', 'ashby', 'oyster', 'Human Resources Services', 'Midsize', 'CA'],
   ['Remote', 'greenhouse', 'remote', 'Human Resources Services', 'Large', 'CA'],
+
+  // ------------------------------------------------------------ Industrials
+  ['Asimov', 'ashby', 'asimov', 'Industrials', 'Startup', 'CA'],
+  ['Axial', 'greenhouse', 'axial', 'Industrials', 'Startup', 'CA'],
+  ['Beyond Reach Labs', 'ashby', 'beyondreachlabs', 'Industrials', 'Startup', 'CA'],
+  ['Brumby', 'ashby', 'brumby', 'Industrials', 'Startup', 'CA'],
+  ['Cosmic Robotics', 'ashby', 'cosmic-robotics', 'Industrials', 'Startup', 'CA'],
+  ['Darwin', 'ashby', 'darwin', 'Industrials', 'Startup', 'CA'],
+  ['Dispatch', 'ashby', 'dispatch', 'Industrials', 'Startup', 'CA'],
+  ['GUILD', 'ashby', 'guild', 'Industrials', 'Startup', 'CA'],
+  ['General Astronautics', 'ashby', 'generalastronautics', 'Industrials', 'Startup', 'CA'],
+  ['Icarus', 'greenhouse', 'icarus', 'Industrials', 'Startup', 'CA'],
+  ['Madrone', 'ashby', 'madrone', 'Industrials', 'Startup', 'CA'],
+  ['Mantle', 'ashby', 'mantle', 'Industrials', 'Startup', 'CA'],
+  ['One Robot', 'ashby', 'onerobot', 'Industrials', 'Startup', 'CA'],
+  ['Sygaldry Technologies', 'ashby', 'sygaldry-technologies', 'Industrials', 'Startup', 'CA'],
 
   // ------------------------------------------------------------ Insurance
   ['Ethos', 'greenhouse', 'ethos', 'Insurance', 'Midsize', 'CA'],
