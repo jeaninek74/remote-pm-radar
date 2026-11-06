@@ -1,15 +1,7 @@
-# Render Blueprint — permanent hosting for Remote PM Radar.
-#
-# The database connection string is injected by Render (fromDatabase), so no credential is ever
-# stored in the repository or pasted into a chat. The app migrates and seeds its own employer
-# registry on first boot, then the built-in cron refreshes every four hours.
 databases:
   - name: remote-pm-radar-data
-    databaseName: remote_pm_radar
-    user: radar
     plan: free
     region: oregon
-    postgresMajorVersion: "16"
 
 services:
   - type: web
@@ -17,10 +9,7 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
     healthCheckPath: /api/health
-    autoDeployTrigger: commit
     envVars:
       - key: DATABASE_URL
         fromDatabase:
