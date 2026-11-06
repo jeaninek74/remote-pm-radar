@@ -1,0 +1,62 @@
+name: Refresh job board
+
+# Free replacement for an always-on cron.
+#
+# Render's free web instance sleeps after ~15 minutes idle, so a cron running inside the container
+# cannot be relied on. GitHub Actions is free for public repositories and can both wake the service
+# and start a refresh, which is exactly what this workflow does every four hours.
+
+on:
+  schedule:
+    - cron: '15 */4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Wake the service
+        run: |
+          url="https://remote-pm-radar.onrender.com/api/health"
+          for attempt in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "$url" || true)
+            echo "attempt $attempt -> $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "service did not wake in time"; exit 1
+
+      - name: Start a refresh
+        run: |
+          curl -s -m 60 -X POST https://remote-pm-radar.onrender.com/api/refresh \
+            -H 'Content-Type: application/json' -d '{}' | tee /tmp/start.json
+
+      - name: Wait for the run to finish
+        run: |
+          for attempt in $(seq 1 40); do
+            body=$(curl -s -m 30 https://remote-pm-radar.onrender.com/api/refresh/status)
+            echo "$body" | head -c 400; echo
+            state=$(echo "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print(r.get('status',''))")
+            if [ "$state" = "completed" ] || [ "$state" = "failed" ]; then
+              echo "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print('run', r.get('id'), r.get('status'), 'new', r.get('new_jobs'), 'employers', r.get('employers_searched'))"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "run did not finish inside the job window"; exit 1
+
+      - name: Report board totals
+        run: |
+          curl -s -m 30 https://remote-pm-radar.onrender.com/api/jobs | python3 -c "
+import collections, json, sys
+jobs = json.load(sys.stdin)['jobs']
+counts = collections.Counter(job['bucket'] for job in jobs)
+print('total stored:', len(jobs))
+for bucket, count in counts.most_common():
+    print(f'  {bucket}: {count}')
+"
