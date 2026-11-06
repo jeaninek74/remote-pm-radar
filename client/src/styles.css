@@ -777,3 +777,6 @@ table.plain tbody tr:hover { background: #fbf8ef; }
   .jobrow { grid-template-columns: 1fr; }
   .jobrow-side { border-left: none; padding-left: 0; border-top: 1px solid #eee7da; padding-top: 10px; }
 }
+
+.chip-count { margin-left: 6px; font-size: 11px; opacity: 0.62; }
+.simple-balance { display: inline-block; margin-top: 5px; font-size: 12.2px; color: #8a8072; }

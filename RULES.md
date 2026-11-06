@@ -20,7 +20,11 @@ button. It stores everything in Postgres and refreshes on a four-hour schedule.
 2. Employers must accept California residents working remotely.
 3. Original posting date inside the posting window (see §4).
 4. Two salary tabs: **$110,000–$130,000** and **$150,000+ with no ceiling**.
-5. Technical and nontechnical project/program management have **equal** priority.
+5. Technical and nontechnical project/program management have **equal** priority. Nontechnical means
+   business operations, leadership, budgets, vendor management, planning, strategy, process
+   improvement, project execution, compliance, procurement, administration and cross-functional
+   coordination — a role does **not** need software, IT systems, engineering or coding to qualify, and
+   the search must be run aggressively for these titles, not as a fallback.
 6. Employers across all 50 states.
 7. Every industry.
 8. Startups, small companies, midsize companies, major corporations, consulting firms, nonprofits,

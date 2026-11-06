@@ -29,6 +29,15 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
 
   const active = useMemo(() => jobs.filter((job) => job.bucket === 'tab1' || job.bucket === 'tab2'), [jobs]);
 
+  const counts = useMemo(() => ({
+    all: active.length,
+    tab1: active.filter((job) => job.bucket === 'tab1').length,
+    tab2: active.filter((job) => job.bucket === 'tab2').length,
+    Nontechnical: active.filter((job) => job.category === 'Nontechnical').length,
+    Technical: active.filter((job) => job.category === 'Technical').length,
+    Hybrid: active.filter((job) => job.category === 'Hybrid').length,
+  }), [active]);
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return active
@@ -53,8 +62,13 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
             Remote PM <span>Radar</span>
           </h1>
           <p className="simple-sub">
-            {active.length} verified remote project &amp; program roles
+            {active.length} verified remote roles
             {lastRefresh ? ` · updated ${lastRefresh}` : ''}
+            <br />
+            <span className="simple-balance">
+              {counts.Nontechnical} nontechnical · {counts.Technical} technical · {counts.Hybrid} hybrid
+              — both lanes are searched with equal priority
+            </span>
           </p>
         </div>
         <div className="simple-actions">
@@ -84,6 +98,7 @@ export function SimpleBoard({ jobs, refreshing, progress, lastRefresh, onRefresh
               onClick={() => setLane(item.key)}
             >
               {item.label}
+              <span className="chip-count">{counts[item.key]}</span>
             </button>
           ))}
         </div>
