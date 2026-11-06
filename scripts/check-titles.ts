@@ -38,12 +38,19 @@ const NONTECH = [
 const TECHNICAL = [
   'Technical Project Manager', 'Technical Program Manager', 'IT Project Manager', 'IT Program Manager',
   'Senior Technical Project Manager', 'Senior Technical Program Manager', 'Enterprise Systems Project Manager',
-  'Software Implementation Project Manager', 'SaaS Implementation Project Manager',
-  'Digital Transformation Program Manager', 'AI Program Manager', 'Automation Project Manager',
-  'Healthcare IT Project Manager', 'Epic Project Manager', 'Workday Program Manager', 'ERP Project Manager',
-  'Salesforce Program Manager', 'ServiceNow Project Manager', 'Infrastructure Project Manager',
-  'Cybersecurity Program Manager', 'Systems Integration Project Manager', 'Implementation Manager',
-  'Technology Delivery Manager', 'Technical Delivery Manager', 'Technical Portfolio Manager',
+  'Enterprise Systems Program Manager', 'Software Implementation Project Manager',
+  'Software Delivery Program Manager', 'SaaS Implementation Project Manager', 'SaaS Program Manager',
+  'Digital Transformation Project Manager', 'Digital Transformation Program Manager',
+  'AI Implementation Project Manager', 'AI Program Manager', 'AI Product Delivery Program Manager',
+  'Automation Project Manager', 'Workflow Automation Program Manager', 'Healthcare IT Project Manager',
+  'Healthcare IT Program Manager', 'Epic Project Manager', 'Electronic Health Record Project Manager',
+  'Workday Project Manager', 'Workday Program Manager', 'ERP Project Manager', 'ERP Program Manager',
+  'Salesforce Project Manager', 'Salesforce Program Manager', 'ServiceNow Project Manager',
+  'Infrastructure Project Manager', 'IT Infrastructure Program Manager', 'Disaster Recovery Project Manager',
+  'Business Continuity Program Manager', 'Cybersecurity Project Manager', 'Cybersecurity Program Manager',
+  'IT Transformation Project Manager', 'Systems Integration Project Manager', 'Implementation Manager',
+  'Enterprise Implementation Manager', 'Technology Delivery Manager', 'Technical Delivery Manager',
+  'PMO Manager', 'Technical Portfolio Manager', 'Program Director', 'Senior Project Manager',
 ];
 
 const misses = NONTECH.filter((title) => !isPmTitle(title));

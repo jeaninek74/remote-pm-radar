@@ -48,6 +48,18 @@ Additional standing instructions:
 - **The interface stays simple.** A plain list first — title, company, description, pay, date posted,
   category, clickable link. The full dashboard is secondary.
 
+### 2.1 Title coverage (verified)
+
+`scripts/check-titles.ts` checks every title in Jeanine's master prompt against the recognition engine:
+
+| Set | Result |
+| --- | --- |
+| Nontechnical titles (86) | 86 / 86 recognised |
+| Technical titles (46) | 46 / 46 recognised |
+| Non-PM roles that must stay out (9) | 9 / 9 rejected |
+
+Re-run it after any change to `server/engine/titles.ts`.
+
 ## 3. Salary classification
 
 Classify on the **published minimum**, never the maximum.
