@@ -2,9 +2,9 @@ name: Refresh job board
 
 # Free replacement for an always-on cron.
 #
-# Render's free web instance sleeps after ~15 minutes idle, so a cron running inside the container
-# cannot be relied on. GitHub Actions is free for public repositories and can both wake the service
-# and start a refresh, which is exactly what this workflow does every four hours.
+# Render's free web instance sleeps after ~15 minutes idle, so a cron inside the container cannot be
+# relied on. GitHub Actions is free for public repositories and can both wake the service and start
+# a refresh, which is what this workflow does every four hours.
 
 on:
   schedule:
@@ -29,34 +29,38 @@ jobs:
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 15
           done
-          echo "service did not wake in time"; exit 1
+          echo "service did not wake in time"
+          exit 1
 
       - name: Start a refresh
         run: |
           curl -s -m 60 -X POST https://remote-pm-radar.onrender.com/api/refresh \
-            -H 'Content-Type: application/json' -d '{}' | tee /tmp/start.json
+            -H 'Content-Type: application/json' -d '{}'
+          echo
 
       - name: Wait for the run to finish
         run: |
           for attempt in $(seq 1 40); do
             body=$(curl -s -m 30 https://remote-pm-radar.onrender.com/api/refresh/status)
-            echo "$body" | head -c 400; echo
-            state=$(echo "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print(r.get('status',''))")
+            state=$(printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print(r.get('status',''))")
+            echo "check $attempt: $state"
             if [ "$state" = "completed" ] || [ "$state" = "failed" ]; then
-              echo "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print('run', r.get('id'), r.get('status'), 'new', r.get('new_jobs'), 'employers', r.get('employers_searched'))"
+              printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print('run', r.get('id'), r.get('status'), '| new', r.get('new_jobs'), '| employers', r.get('employers_searched'))"
               exit 0
             fi
             sleep 20
           done
-          echo "run did not finish inside the job window"; exit 1
+          echo "run did not finish inside the job window"
+          exit 1
 
       - name: Report board totals
         run: |
-          curl -s -m 30 https://remote-pm-radar.onrender.com/api/jobs | python3 -c "
-import collections, json, sys
-jobs = json.load(sys.stdin)['jobs']
-counts = collections.Counter(job['bucket'] for job in jobs)
-print('total stored:', len(jobs))
-for bucket, count in counts.most_common():
-    print(f'  {bucket}: {count}')
-"
+          curl -s -m 30 https://remote-pm-radar.onrender.com/api/jobs > /tmp/jobs.json
+          python3 - <<'PY'
+          import collections, json
+          jobs = json.load(open('/tmp/jobs.json'))['jobs']
+          counts = collections.Counter(job['bucket'] for job in jobs)
+          print('total stored:', len(jobs))
+          for bucket, count in counts.most_common():
+              print(f'  {bucket}: {count}')
+          PY
