@@ -17,6 +17,9 @@ import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './te
 import { checkLink, fetchJson, mapLimit } from './http';
 import type { Ats, EmployerRow, RawJob } from './types';
 import type { EvaluatedJob } from './types';
+import { nameTokens, namesAgree, resolveBoard } from './resolve';
+
+export { nameTokens, namesAgree };
 
 let running = false;
 
@@ -355,32 +358,6 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
 
 /* ---------------------------------------------------------------- discovery */
 
-const NAME_NOISE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|companies|group|holdings|plc|the|and|of)\b/g;
-
-function nameTokens(value: string): string[] {
-  return value.toLowerCase().replace(/&/g, ' and ').replace(NAME_NOISE, ' ').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
-}
-
-/**
- * A board belongs to the company only when the board's own account name agrees with the company
- * name. Multi-word names must have every word of the shorter name present in the longer one
- * ("Carver Federal Savings Bank" within "Carver Bancorp Inc. (Carver Federal Savings Bank)").
- * A one-word board name ("rush", "inova", "cfa") only agrees with a one- or two-word company
- * name it leads ("Snorkel" for "Snorkel AI"), never with a long institutional name.
- */
-export function namesAgree(company: string, boardName: string | null | undefined): boolean {
-  if (!boardName) return false;
-  const a = nameTokens(company);
-  const b = nameTokens(boardName);
-  if (!a.length || !b.length) return false;
-  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-  if (short.length === 1) {
-    if (long.length === 1) return short[0] === long[0];
-    return long.length === 2 && long[0] === short[0] && short[0].length >= 6;
-  }
-  return short.every((token) => long.includes(token));
-}
-
 async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; slug: string } | null> {
   const base = slugify(name);
   if (!base || base.length < 3) return null;
@@ -685,7 +662,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
     const employers = await q<EmployerRow>(
       `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
-              black_owned, ownership_status, ownership_source, last_searched_at::text, active
+              black_owned, ownership_status, ownership_source, last_searched_at::text,
+              last_resolve_at::text, active
          FROM employers
         WHERE active = TRUE
           AND careers_url IS NOT NULL
@@ -727,6 +705,66 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       if (!result.ok) {
         counters.sourcesFailed += 1;
         counters.errors.push({ source: `${employer.ats}:${employer.slug}`, message: result.error ?? 'Unknown error' });
+        if (employer.ats === 'manual') {
+          const lastResolved = employer.last_resolve_at ? Date.parse(employer.last_resolve_at) : Number.NaN;
+          const shouldResolve = !Number.isFinite(lastResolved) || Date.now() - lastResolved >= 24 * 60 * 60 * 1000;
+          if (!shouldResolve) {
+            await q(
+              `UPDATE employers SET last_searched_at = now(), last_error = $2 WHERE id = $1`,
+              [employer.id, (result.error ?? '').slice(0, 200)],
+            );
+          } else {
+            const resolution = await resolveBoard(employer.name, employer.careers_url ?? '', Date.now() + 20_000);
+            const error = (result.error ?? '').slice(0, 200);
+            if (resolution.kind === 'board') {
+              const existing = await one<{ id: number }>(
+                `SELECT id FROM employers WHERE ats = $1 AND slug = $2 AND id <> $3 LIMIT 1`,
+                [resolution.ats, resolution.slug, employer.id],
+              );
+              if (existing) {
+                const status = `Covered by existing ${resolution.ats} board ${resolution.slug}`;
+                await q(
+                  `UPDATE employers
+                      SET active = FALSE, last_searched_at = now(), last_resolve_at = now(), last_error = $2, last_status = $3
+                    WHERE id = $1`,
+                  [employer.id, error, status],
+                );
+                counters.errors.push({ source: `resolve:${resolution.slug}`, message: status });
+              } else {
+                const status = `Board moved — now read from ${resolution.ats} (${resolution.total} postings)`;
+                await q(
+                  `UPDATE employers
+                      SET ats = $2, slug = $3, careers_url = $4, active = TRUE,
+                          fail_count = 0, last_error = NULL, last_status = $5,
+                          last_searched_at = now(), last_resolve_at = now()
+                    WHERE id = $1`,
+                  [employer.id, resolution.ats, resolution.slug, resolution.careersUrl, status],
+                );
+                counters.errors.push({ source: `resolve:${resolution.slug}`, message: status });
+              }
+            } else if (resolution.kind === 'unreadable') {
+              const status = `Not readable — ${resolution.platform} portal has no public feed`;
+              await q(
+                `UPDATE employers
+                    SET active = TRUE, last_searched_at = now(), last_resolve_at = now(), last_error = $2, last_status = $3
+                  WHERE id = $1`,
+                [employer.id, error, status],
+              );
+              counters.errors.push({ source: `resolve:${employer.slug}`, message: status });
+            } else {
+              const status = `Board temporarily unavailable — will retry next run (no board found: ${resolution.reason})`;
+              await q(
+                `UPDATE employers
+                    SET last_searched_at = now(), last_resolve_at = now(), last_error = $2, last_status = $3
+                  WHERE id = $1`,
+                [employer.id, error, status],
+              );
+              counters.errors.push({ source: `resolve:${employer.slug}`, message: status });
+            }
+          }
+          await recordSource(`${employer.ats}:${employer.slug}`, employer.name, false, 0, result.error);
+          return;
+        }
         // A board is retired after three failures that say the board is gone (404, wrong
         // slug, unsupported ATS). Timeouts, 5xx and Workday's maintenance window are the
         // moment's fault, not the board's: they are recorded but never move fail_count, so a

@@ -680,7 +680,7 @@ function unchangedJob(source: string, ats: Ats, externalId: string, company: str
 /** `known` holds the job keys (`source:externalId`) already stored for this employer. */
 export async function fetchBoard(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer, known);
-  if ((employer.ats as string) === 'manual') return fetchCareersPage(employer, known).catch((err) => ({ jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 }));
+  if (employer.ats === 'manual') return fetchCareersPage(employer, known).catch((err) => ({ jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 }));
   const adapter = ADAPTERS[employer.ats];
   if (!adapter) return { jobs: [], ok: false, error: `Unsupported ATS: ${employer.ats}`, totalListed: 0 };
   try {

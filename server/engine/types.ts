@@ -66,7 +66,7 @@ export interface FeedSource {
 export interface EmployerRow {
   id: number;
   slug: string;
-  ats: Ats;
+  ats: Ats | 'manual';
   name: string;
   industry: string | null;
   company_size: string | null;
@@ -76,6 +76,7 @@ export interface EmployerRow {
   ownership_status: string;
   ownership_source: string | null;
   last_searched_at: string | null;
+  last_resolve_at: string | null;
   active: boolean;
 }
 
