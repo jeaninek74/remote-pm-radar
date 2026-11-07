@@ -20,7 +20,28 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
   defaultBoardName: 'Remote PM Radar',
   defaultRoleFamily: 'Remote project, program and delivery roles in the United States',
 
-  searchTerms: ['project manager', 'program manager'],
+  /**
+   * Search phrases used against boards that support server-side search (Workday).
+   * These mirror the title vocabulary in the brief so a search covers the same ground
+   * the title matcher does, instead of only the two most obvious phrasings.
+   */
+  searchTerms: [
+    'project manager',
+    'program manager',
+    'project management',
+    'program management',
+    'technical program manager',
+    'technical project manager',
+    'implementation manager',
+    'delivery manager',
+    'pmo',
+    'project coordinator',
+    'change manager',
+    'transformation manager',
+    'portfolio manager',
+    'chief of staff',
+    'business operations manager',
+  ],
 
   titlePatterns: [
     // "Project Manager", "Senior Program Manager", "Technical Project Management"

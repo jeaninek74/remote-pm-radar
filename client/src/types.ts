@@ -1,4 +1,4 @@
-export type Bucket = 'tab1' | 'tab2' | 'queue' | 'archived';
+export type Bucket = 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived';
 export type Category = 'Technical' | 'Nontechnical' | 'Hybrid';
 export type Urgency = 'High' | 'Medium' | 'Low' | 'Unknown';
 

@@ -473,16 +473,20 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   const { tenant, wd, site } = coords;
   const collected = new Map<string, WorkdayPosting>();
   try {
+    // Workday returns 20 postings per page and each page is a different slice of the board,
+    // so paging stops only when the board stops returning results.
     for (const text of searchTerms()) {
-      for (const offset of [0, 20, 40]) {
+      for (let offset = 0; offset < 400; offset += 20) {
         const page = await workdaySearch(tenant, wd, site, text, offset);
-        for (const posting of page.jobPostings ?? []) {
+        const postings = page.jobPostings ?? [];
+        for (const posting of postings) {
           // Only keep titles that genuinely belong to the active role family: it avoids fetching details
           // for unrelated search hits and keeps the run inside its time budget.
           if (!posting.externalPath || !isRoleTitle(posting.title ?? '')) continue;
           if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
         }
-        if ((page.jobPostings ?? []).length < 20) break;
+        if (postings.length < 20) break;
+        if (collected.size >= 200) break;
       }
     }
   } catch (err) {
@@ -490,7 +494,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   }
 
   const jobs: RawJob[] = [];
-  for (const [path, posting] of [...collected].slice(0, 25)) {
+  for (const [path, posting] of [...collected].slice(0, 120)) {
     const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';

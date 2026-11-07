@@ -702,6 +702,51 @@ const RAW: Row[] = [
   ['The Coca-Cola Company', 'workday', 'coke/coca-cola-careers', 'Consumer Products', 'Enterprise', 'GA'],
   ['General Mills', 'workday', 'genmills/GMI_External_Careers', 'Consumer Products', 'Enterprise', 'MN'],
 
+
+  // --------------- broad employer sweep: startups, nonprofits, consulting, health systems
+  // Verified by scripts/probe-companies.ts, which confirms each board's own page name
+  // matches the company before the board is accepted.
+  ['Capco', 'greenhouse', 'capco', 'Consulting', 'Large', 'NY'],
+  ['Roland Berger', 'smartrecruiters', 'rolandberger', 'Consulting', 'Large', 'NY'],
+  ['ClearView Healthcare Partners', 'greenhouse', 'clearviewhealthcarepartners', 'Consulting', 'Small', 'MA'],
+  ['Whoop', 'ashby', 'whoop', 'Consumer Products', 'Midsize', 'MA'],
+  ['Snyk', 'ashby', 'snyk', 'Software', 'Large', 'MA'],
+  ['Freshworks', 'smartrecruiters', 'freshworks', 'Software', 'Large', 'CA'],
+  ['JFrog', 'greenhouse', 'jfrog', 'Software', 'Large', 'CA'],
+  ['UnidosUS', 'greenhouse', 'unidosus', 'Nonprofit', 'Midsize', 'DC'],
+  ['Endava', 'smartrecruiters', 'endava', 'Consulting', 'Large', 'NY'],
+  ['Riveron', 'ashby', 'riveron', 'Consulting', 'Midsize', 'TX'],
+  ['Starburst', 'greenhouse', 'starburst', 'Software', 'Midsize', 'MA'],
+  ['Modern Treasury', 'ashby', 'moderntreasury', 'Fintech', 'Small', 'CA'],
+  ['Unit', 'ashby', 'unit', 'Fintech', 'Small', 'NY'],
+  ['ServiceTitan', 'smartrecruiters', 'servicetitan', 'Software', 'Large', 'CA'],
+  ['Contentful', 'greenhouse', 'contentful', 'Software', 'Midsize', 'CO'],
+  ['Sanity', 'ashby', 'sanity', 'Software', 'Small', 'CA'],
+  ['Canva', 'smartrecruiters', 'canva', 'Software', 'Enterprise', 'CA'],
+  ['Lattice', 'greenhouse', 'lattice', 'Software', 'Midsize', 'CA'],
+  ['Workato', 'greenhouse', 'workato', 'Software', 'Large', 'CA'],
+  ['Tray.ai', 'ashby', 'tray-ai', 'Software', 'Small', 'CA'],
+  ['Sigma Computing', 'greenhouse', 'sigmacomputing', 'Software', 'Midsize', 'CA'],
+  ['Imply', 'greenhouse', 'imply', 'Software', 'Small', 'CA'],
+  ['CircleCI', 'greenhouse', 'circleci', 'Software', 'Midsize', 'CA'],
+  ['Sift', 'ashby', 'sift', 'AI', 'Midsize', 'CA'],
+  ['Glean', 'smartrecruiters', 'glean', 'AI', 'Midsize', 'CA'],
+  ['Uber', 'smartrecruiters', 'uber', 'Marketplace', 'Enterprise', 'CA'],
+  ['Wayfair', 'smartrecruiters', 'wayfair', 'Ecommerce', 'Enterprise', 'MA'],
+  ['Calm', 'greenhouse', 'calm', 'Consumer Products', 'Midsize', 'CA'],
+  ['One Medical', 'greenhouse', 'onemedical', 'Healthcare', 'Large', 'CA'],
+  ['Human Rights Watch', 'greenhouse', 'humanrightswatch', 'Nonprofit', 'Midsize', 'NY'],
+  ['United Way Worldwide', 'smartrecruiters', 'unitedwayworldwide', 'Nonprofit', 'Large', 'VA'],
+  ['Vera Institute of Justice', 'greenhouse', 'verainstituteofjustice', 'Nonprofit', 'Midsize', 'NY'],
+  ['Southern Poverty Law Center', 'greenhouse', 'southernpovertylawcenter', 'Nonprofit', 'Midsize', 'AL'],
+  ['Penn Medicine', 'smartrecruiters', 'pennmedicine', 'Healthcare', 'Enterprise', 'PA'],
+  ['Northwestern Medicine', 'smartrecruiters', 'northwesternmedicine', 'Healthcare', 'Enterprise', 'IL'],
+  ['Froedtert Health', 'smartrecruiters', 'froedterthealth', 'Healthcare', 'Large', 'WI'],
+  ['Texas Health Resources', 'smartrecruiters', 'texashealthresources', 'Healthcare', 'Large', 'TX'],
+  ['Presbyterian Healthcare Services', 'smartrecruiters', 'presbyterianhealthcareservices', 'Healthcare', 'Large', 'NM'],
+  ['MaineHealth', 'smartrecruiters', 'mainehealth', 'Healthcare', 'Large', 'ME'],
+  ['Lifespan', 'ashby', 'lifespan', 'Healthcare', 'Large', 'RI'],
+
 ];
 
 /**

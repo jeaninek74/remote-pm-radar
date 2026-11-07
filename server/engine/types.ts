@@ -100,7 +100,13 @@ export interface EvaluatedJob {
   postedAt: string | null;
   postedSource: string | null;
   postedConfidence: string;
-  bucket: 'tab1' | 'tab2' | 'queue' | 'archived' | 'excluded';
+  /**
+   * `unsalaried` is a live bucket, not a rejection: the posting is fully remote, in
+   * window and points at the employer, but the employer publishes no base salary, so
+   * it cannot be placed in either salary band. It is surfaced in its own tab instead
+   * of being buried in the review queue.
+   */
+  bucket: 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived' | 'excluded';
   bucketReason: string;
   descriptionExcerpt: string;
   source: string;

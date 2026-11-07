@@ -56,7 +56,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
   const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
   const nopay = useMemo(
-    () => jobs.filter((job) => job.bucket === 'queue' && isPayOnlyBlocker(job)),
+    () => jobs.filter((job) => job.bucket === 'unsalaried' || (job.bucket === 'queue' && isPayOnlyBlocker(job))),
     [jobs],
   );
   const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;

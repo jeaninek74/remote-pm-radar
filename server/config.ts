@@ -40,8 +40,11 @@ export const RULES = {
 export const REFRESH = {
   /** Employers touched per cycle (least-recently-searched first). */
   employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 600),
-  /** Feed pages fetched per cycle. */
-  feedPages: Number(process.env.FEED_PAGES ?? 4),
+  /**
+   * Feed pages fetched per cycle. Boards list different postings on each page, so a
+   * shallow read silently drops most of an employer's openings.
+   */
+  feedPages: Number(process.env.FEED_PAGES ?? 12),
   /** Parallel network requests. */
   concurrency: Number(process.env.FETCH_CONCURRENCY ?? 7),
   /** Per-request timeout. */

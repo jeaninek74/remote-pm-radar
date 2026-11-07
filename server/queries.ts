@@ -131,8 +131,8 @@ export async function listJobs(): Promise<JobRow[]> {
   const rows = await q<JobRecord>(
     `SELECT ${JOB_COLUMNS}
        FROM jobs
-      WHERE bucket IN ('tab1','tab2','queue','archived')
-      ORDER BY (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, match_score DESC, posted_at DESC NULLS LAST
+      WHERE bucket IN ('tab1','tab2','unsalaried','queue','archived')
+      ORDER BY (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, match_score DESC, posted_at DESC NULLS LAST
       LIMIT 4000`,
   );
   return rows.map(mapJob);
@@ -142,6 +142,7 @@ export interface Stats {
   activeJobs: number;
   tab1: number;
   tab2: number;
+  unsalaried: number;
   newToday: number;
   new24h: number;
   nontechnical: number;
@@ -171,7 +172,7 @@ export async function getStats(): Promise<Stats> {
   const row = await one<{
     active: string; tab1: string; tab2: string; new_today: string; new_24h: string;
     nontechnical: string; technical: string; hybrid: string; urgent: string;
-    black_owned_jobs: string; black_owned_employers: string;
+    black_owned_jobs: string; black_owned_employers: string; unsalaried: string;
     queue: string; archived: string;
   }>(
     `SELECT
@@ -186,6 +187,7 @@ export async function getStats(): Promise<Stats> {
        count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND urgency='High')::text AS urgent,
        count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
        count(DISTINCT company) FILTER (WHERE bucket IN ('tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
+       count(*) FILTER (WHERE bucket='unsalaried')::text AS unsalaried,
        count(*) FILTER (WHERE bucket='queue')::text AS queue,
        count(*) FILTER (WHERE bucket='archived')::text AS archived
      FROM jobs`,
@@ -213,6 +215,7 @@ export async function getStats(): Promise<Stats> {
     activeJobs: Number(row?.active ?? 0),
     tab1: Number(row?.tab1 ?? 0),
     tab2: Number(row?.tab2 ?? 0),
+    unsalaried: Number(row?.unsalaried ?? 0),
     newToday: Number(row?.new_today ?? 0),
     new24h: Number(row?.new_24h ?? 0),
     nontechnical: Number(row?.nontechnical ?? 0),

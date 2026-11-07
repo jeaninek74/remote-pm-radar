@@ -187,8 +187,11 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   } else if (raw.postedConfidence !== 'confirmed') {
     reason = 'Board publishes only a last-updated date, so the original posting date is unverified.';
   } else if (!salary) {
-    reason = 'No salary published on the employer posting.';
+    // Live, not rejected: the role passes every other rule but the employer publishes no pay.
+    bucket = 'unsalaried';
+    reason = 'No salary published on the employer posting \u2014 listed in the "Pay not published" tab.';
   } else if (salary.isOTE) {
+    bucket = 'unsalaried';
     reason = 'Only OTE / total-compensation figures are published; base salary is not stated.';
   } else {
     const cls = classifySalary(salary.min, salary.max, salary.interval, salary.hourlyRate);
@@ -505,6 +508,7 @@ async function executeRun(runId: number): Promise<number> {
           counters.newJobs += 1;
           if (outcome.bucket === 'tab1') counters.addedTab1 += 1;
           if (outcome.bucket === 'tab2') counters.addedTab2 += 1;
+          if (outcome.bucket === 'unsalaried') counters.queued += 0;
           if (outcome.bucket === 'queue') counters.queued += 1;
           if ((outcome.bucket === 'tab1' || outcome.bucket === 'tab2') && linkCandidates.length < REFRESH.linkChecksPerRun) {
             linkCandidates.push(outcome.id);
