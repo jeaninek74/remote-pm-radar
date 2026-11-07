@@ -132,7 +132,7 @@ function standardiseOwnership(status: string): string {
  * could still act on land in the verification queue instead of the tabs.
  */
 /** A verb of ownership within a clause of the noun: "lead cross-functional projects", "manage the program budget". */
-const PROJECT_RESPONSIBILITY = /\b(?:manag\w*|lead\w*|oversee\w*|own\w*|driv\w*|deliver\w*|coordinat\w*|direct\w*|run\w*|execut\w*)\b[^.;]{0,60}\b(?:projects?|programs?|programmes?|initiatives?|pmo|portfolio|implementations?)\b/i;
+const PROJECT_RESPONSIBILITY = /\b(?:manag\w*|lead\w*|oversee\w*|own\w*|driv\w*|deliver\w*|coordinat\w*|direct\w*|run\w*|execut\w*)\b[^.;]{0,60}\b(?:projects?|programs?|programmes?|(?:project|program|programme)\s+management|initiatives?|pmo|portfolio|implementations?)\b/i;
 
 export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): EvaluatedJob | null {
   const description = (raw.descriptionText ?? '').replace(/\s+/g, ' ').trim();
@@ -639,10 +639,12 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     // each company's own applicant-tracking system.
     await progress('Discovering new employers');
     try {
-      const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null }>(
-        `SELECT id, name, industry, hq_state FROM discovery_queue
+      // Least-tried first, then least-recently touched: a company whose probe was cut off by the
+      // budget is stamped checked_at (not tried) and goes to the back instead of blocking the queue.
+      const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
+        `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
           WHERE status='pending' AND tries < 3
-          ORDER BY tries ASC, id ASC
+          ORDER BY tries ASC, checked_at ASC NULLS FIRST, id ASC
           LIMIT $1`,
         [REFRESH.discoverPerRun ?? 12],
       );
@@ -655,10 +657,10 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         if (found) {
           const inserted = await q<{ id: number }>(
             `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
-             VALUES ($1,$2,$3,$4,'Midsize',$5,$6,'Portfolio discovery',TRUE)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'Portfolio discovery',TRUE)
              ON CONFLICT (ats, slug) DO NOTHING
              RETURNING id`,
-            [row.name, found.ats, found.slug, row.industry, row.hq_state, careersUrlFor(found.ats, found.slug)],
+            [row.name, found.ats, found.slug, row.industry, row.company_size ?? 'Midsize', row.hq_state, careersUrlFor(found.ats, found.slug)],
           );
           if (inserted.length) counters.newEmployers += 1;
           await q(
@@ -667,6 +669,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
           );
         } else if (Date.now() <= discoveryDeadline) {
           await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
+        } else {
+          await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
         }
       });
       if (pending.length) await progress(`Probed ${pending.length} new employers`);
