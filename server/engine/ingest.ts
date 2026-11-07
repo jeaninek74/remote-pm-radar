@@ -644,9 +644,11 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
         `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
           WHERE status='pending' AND tries < 3
-          ORDER BY tries ASC, checked_at ASC NULLS FIRST, id ASC
-          LIMIT $1`,
-        [REFRESH.discoverPerRun ?? 12],
+          ORDER BY tries ASC,
+                   CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
+                   checked_at ASC NULLS FIRST, id ASC
+          ${REFRESH.discoverPerRun > 0 ? 'LIMIT $1' : ''}`,
+        REFRESH.discoverPerRun > 0 ? [REFRESH.discoverPerRun] : [],
       );
       // Probes run four at a time inside a fixed budget so a batch of misses (five ATS
       // lookups each, up to twelve seconds apiece) cannot eat the half-hour slot.
