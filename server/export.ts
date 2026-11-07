@@ -71,6 +71,7 @@ function valueFor(job: JobRow, key: keyof JobRow): string | number | null {
     case 'gaps': return job.gaps.join(' | ');
     case 'caEligibility': return caLabel(job.caEligibility);
     case 'bucket': return bucketLabel(job.bucket);
+    case 'category': return job.category === 'Hybrid' ? 'Business-tech' : job.category;
     case 'firstSeenAt': return job.firstSeenAt?.slice(0, 10) ?? '';
     case 'lastVerifiedAt': return job.lastVerifiedAt?.slice(0, 10) ?? '';
     case 'linkVerifiedAt': return job.linkVerifiedAt?.slice(0, 10) ?? '';

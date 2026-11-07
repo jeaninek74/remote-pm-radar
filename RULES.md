@@ -175,7 +175,7 @@ Both resumes were re-read on 7 November 2026 and the competency groups in
 | Placement decisions | `server/engine/ingest.ts` |
 | Remote and California classification | `server/engine/location.ts` |
 | Salary parsing | `server/engine/salary.ts` |
-| Technical / nontechnical / hybrid | `server/engine/category.ts` |
+| Technical / nontechnical / business-tech (the master prompt's "Hybrid Business/Technology" job family — a role type, never a work arrangement; the UI and exports say "Business-tech") | `server/engine/category.ts` |
 | Urgency | `server/engine/urgency.ts` |
 | Resume matching | `server/engine/match.ts` |
 | Employer boards | `server/engine/sources.ts` |
