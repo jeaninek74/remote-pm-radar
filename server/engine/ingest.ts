@@ -1,4 +1,4 @@
-import { acquireRefreshLock, migrate, one, q, type ReleaseLock } from '../db';
+import { acquireRefreshLock, migrate, one, q, type RefreshLock } from '../db';
 import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
@@ -454,13 +454,16 @@ function counterValues(c: RunCounters): unknown[] {
   ];
 }
 
-async function executeRun(runId: number, release: ReleaseLock): Promise<number> {
+async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   running = true;
   const counters = emptyCounters();
 
   // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
   // how many employers it searched and how many postings it read, instead of zeros.
   const progress = async (message: string) => {
+    // The lock lives on its own connection. If Neon dropped that connection the lock went
+    // with it and another process may already be sweeping; stop rather than run two at once.
+    if (!lock.held) throw new Error('Refresh lock connection lost; stopping so a second sweep cannot overlap');
     await q(
       `UPDATE refresh_runs SET progress=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
       [runId, message.slice(0, 300), ...counterValues(counters)],
@@ -700,7 +703,7 @@ async function executeRun(runId: number, release: ReleaseLock): Promise<number> 
     throw err;
   } finally {
     running = false;
-    await release();
+    await lock.release();
   }
 }
 

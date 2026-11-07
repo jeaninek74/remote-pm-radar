@@ -133,23 +133,34 @@ async function connectWithRetry(): Promise<PoolClient> {
  * One sweep per database, across processes. The in-process `running` flag cannot see a
  * second container (a rolling deploy, a second service, an old copy still pointed at the
  * same DATABASE_URL); at 08:00Z on 2026-11-07 three schedulers fired together and the
- * connection storm produced "Authentication timed out" for all of them. A session-level
- * advisory lock is held on a dedicated client for the length of the run and vanishes with
- * the process, so a crash cannot leave it stuck.
+ * connection storm produced "Authentication timed out" for all of them.
+ *
+ * The lock is a transaction-level advisory lock inside a transaction that stays open on a
+ * dedicated client for the length of the run. Transaction scope matters: Neon's pooled
+ * endpoint (PgBouncer, transaction mode) hands a backend to a client only for the duration
+ * of a transaction, so a session-level lock could be taken on one backend and "released" on
+ * another. An open transaction pins the backend; ROLLBACK drops the lock; and if the
+ * connection dies the server drops it too, so a crash cannot leave it stuck.
  */
 const REFRESH_LOCK_KEY = 7_420_119;
 
-export type ReleaseLock = () => Promise<void>;
+export interface RefreshLock {
+  /** False once the lock connection has errored or closed — the lock is gone with it. */
+  readonly held: boolean;
+  release(): Promise<void>;
+}
 
-/** Returns a release function, or null when another process already holds the lock. */
-export async function acquireRefreshLock(): Promise<ReleaseLock | null> {
+/** Returns the lock, or null when another process already holds it. */
+export async function acquireRefreshLock(): Promise<RefreshLock | null> {
   const client = await connectWithRetry();
   let locked = false;
   try {
+    await client.query('BEGIN');
     const { rows } = await client.query<{ locked: boolean }>(
-      'SELECT pg_try_advisory_lock($1) AS locked', [REFRESH_LOCK_KEY],
+      'SELECT pg_try_advisory_xact_lock($1) AS locked', [REFRESH_LOCK_KEY],
     );
     locked = rows[0]?.locked === true;
+    if (!locked) await client.query('ROLLBACK');
   } catch (err) {
     client.release(true);
     throw err;
@@ -158,24 +169,37 @@ export async function acquireRefreshLock(): Promise<ReleaseLock | null> {
     client.release();
     return null;
   }
+
+  let alive = true;
   let released = false;
-  return async () => {
-    if (released) return;
-    released = true;
-    try {
-      await client.query('SELECT pg_advisory_unlock($1)', [REFRESH_LOCK_KEY]);
-      client.release();
-    } catch {
-      client.release(true);
-    }
+  const lost = (reason: string) => {
+    if (!alive) return;
+    alive = false;
+    if (!released) console.error(`[db] refresh lock connection ${reason}; the lock is no longer held`);
+  };
+  client.on('error', (err) => lost(`errored (${err.message})`));
+  client.on('end', () => lost('closed'));
+
+  return {
+    get held() { return alive; },
+    async release() {
+      if (released) return;
+      released = true;
+      try {
+        if (alive) await client.query('ROLLBACK');
+        client.release(!alive);
+      } catch {
+        client.release(true);
+      }
+    },
   };
 }
 
 /** True while some process — this one or another — is inside a refresh. */
 export async function refreshLockHeldElsewhere(): Promise<boolean> {
-  const release = await acquireRefreshLock();
-  if (!release) return true;
-  await release();
+  const lock = await acquireRefreshLock();
+  if (!lock) return true;
+  await lock.release();
   return false;
 }
 
