@@ -105,6 +105,25 @@ export function dateLabel(value: string | null | undefined): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
+export function foundLabel(firstSeenAt: string | null | undefined): string {
+  if (!firstSeenAt) return '';
+  const foundAt = new Date(firstSeenAt);
+  if (Number.isNaN(foundAt.getTime())) return '';
+  const age = Math.max(0, Date.now() - foundAt.getTime());
+  if (age < 2 * 60_000) return 'Found just now';
+  if (age < 60 * 60_000) return `Found ${Math.floor(age / 60_000)} min ago`;
+  if (age < 24 * 60 * 60_000) return `Found ${Math.floor(age / 3_600_000)} h ago`;
+  return `Found ${foundAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+}
+
+export function isNewlyFound(firstSeenAt: string | null | undefined, hours = 24): boolean {
+  if (!firstSeenAt) return false;
+  const foundAt = new Date(firstSeenAt).getTime();
+  if (Number.isNaN(foundAt)) return false;
+  const age = Date.now() - foundAt;
+  return age >= 0 && age < hours * 3_600_000;
+}
+
 export function dateTimeLabel(value: string | null | undefined): string {
   if (!value) return '—';
   const d = new Date(normaliseTimestamp(value));

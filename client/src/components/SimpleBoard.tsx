@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Job } from '../types';
-import { ageLabel, caBadge, categoryLabel, dateLabel, salaryLabel, salarySubLabel } from '../lib';
+import {
+  ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound, salaryLabel, salarySubLabel,
+} from '../lib';
 
 type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay';
 type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
@@ -95,7 +97,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
       })
       .sort(
         (a, b) =>
-          Number(b.urgency === 'High') - Number(a.urgency === 'High') ||
+          (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') ||
           b.matchScore - a.matchScore ||
           (b.postedAt ?? '').localeCompare(a.postedAt ?? ''),
       );
@@ -252,7 +254,9 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
                     <span>{dateLabel(job.postedAt)}</span>
                     <span className="dim">{ageLabel(job.postedAt).text}</span>
                   </div>
+                  <div className="jobrow-meta"><span className="dim">{foundLabel(job.firstSeenAt)}</span></div>
                   <div className="jobrow-badges">
+                    {isNewlyFound(job.firstSeenAt) ? <span className="pill new">New</span> : null}
                     <span className={`pill cat-${job.category.toLowerCase()}`}>{categoryLabel(job.category)}</span>
                     <span className={`pill ${ca.cls}`} title={ca.title}>{ca.label}</span>
                     {job.urgency === 'High' ? <span className="pill urgent">Urgent</span> : null}

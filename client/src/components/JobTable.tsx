@@ -1,6 +1,7 @@
 import type { Job } from '../types';
 import {
-  ageLabel, caBadge, categoryClass, categoryLabel, matchTone, salaryLabel, salarySubLabel, urgencyClass,
+  ageLabel, caBadge, categoryClass, categoryLabel, foundLabel, isNewlyFound, matchTone, salaryLabel, salarySubLabel,
+  urgencyClass,
 } from '../lib';
 import type { FilterState } from './Filters';
 
@@ -41,6 +42,7 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
             {header('match', 'Match')}
             {header('company', 'Role & employer')}
             {header('salary', 'Salary')}
+            {header('found', 'Found')}
             {header('newest', 'Posted')}
             <th>Remote / CA</th>
             <th>Urgency</th>
@@ -67,7 +69,10 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
                   </div>
                 </td>
                 <td className="col-role">
-                  <div className="role-title">{job.title}</div>
+                  <div className="role-title">
+                    {job.title}
+                    {isNewlyFound(job.firstSeenAt) ? <span className="pill new">New</span> : null}
+                  </div>
                   <div className="role-company">{job.company}</div>
                   <div className="role-meta">
                     <span className={`badge ${categoryClass(job.category)}`}>{categoryLabel(job.category)}</span>
@@ -87,6 +92,7 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
                     <small>{salarySubLabel(job)}</small>
                   </div>
                 </td>
+                <td className="col-found">{foundLabel(job.firstSeenAt)}</td>
                 <td className="col-posted">
                   <div className="posted">
                     {job.postedAt ? new Date(`${job.postedAt}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—'}

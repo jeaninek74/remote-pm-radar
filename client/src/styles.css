@@ -663,6 +663,7 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 .pill.ok { background: var(--green-soft); border-color: #b7d2c7; color: #20503f; }
 .pill.bad { background: var(--danger-soft); border-color: #e2b7ab; color: var(--danger); }
 .pill.warn { background: var(--amber-soft); border-color: #e2cd9d; color: #6c4a09; }
+.pill.new { background: #e7f4e9; border-color: #9fc8a5; color: #205b2b; }
 
 .stat-row { display: flex; gap: 22px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .stat-row .stat { font-size: 11.5px; color: var(--muted); }
@@ -771,6 +772,7 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 .pill.cat-nontechnical { background: #eef4ec; color: #40603a; }
 .pill.cat-technical { background: #eef1f7; color: #3d4a63; }
 .pill.cat-hybrid { background: #f6f0e6; color: #6a5533; }
+.role-title .pill.new { margin-left: 6px; vertical-align: middle; }
 .simple-empty { background: #fff; border: 1px dashed #ddd5c8; border-radius: 10px; padding: 28px; text-align: center; }
 .simple-foot { margin-top: 26px; font-size: 11.5px; color: #8a8072; text-align: center; }
 @media (max-width: 760px) {
