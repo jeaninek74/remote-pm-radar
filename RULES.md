@@ -90,10 +90,10 @@ Seven days was the original rule and produced three roles against 638 project/pr
 Hybrid roles, onsite roles, roles that require regular commuting, positions that exclude California
 residents, positions that demand residency in another state, region-locked remote roles that exclude
 California, and roles requiring routine travel (40%+ stated, or unquantified "extensive/frequent
-travel") never reach a salary tab. Non-US postings are dropped outright. Everything else that fails a
-location rule is **stored in the verification queue with the exact reason** (`ingest.ts#evaluateRaw`),
-so a misread location can be seen and corrected rather than silently discarded. Whether hybrid/on-site
-postings should instead be dropped at ingestion is an open decision for Jeanine (see §9).
+travel") never reach a salary tab. Non-US, hybrid, on-site and routine-travel postings are **dropped at
+ingestion** (Jeanine, 7 Nov 2026: "there should be no hybrid / on-site at all"). A posting whose work
+arrangement is simply not stated, or that is remote but restricted to another state, is stored in the
+verification queue with the exact reason (`ingest.ts#evaluateRaw`) so it can be checked.
 
 ## 5. Sourcing policy
 
@@ -199,7 +199,7 @@ whose careers page has no public ATS stay listed as `manual` and are not searche
 
 ## 9. Open decisions — master prompt vs. later instructions
 
-The master prompt (re-supplied 7 November 2026) and Jeanine's later instructions differ on four points.
+The master prompt (re-supplied 7 November 2026) and Jeanine's later instructions differ on three points (a fourth, hybrid/on-site, was settled in the prompt's favour).
 The build follows the later instruction in each case until she says otherwise:
 
 | Master prompt | Later instruction (in force) |
@@ -207,4 +207,4 @@ The build follows the later instruction in each case until she says otherwise:
 | Seven-day posting window (§11) | 14 days, 6 Nov 2026 (`JOB_WINDOW_DAYS=7` restores seven) |
 | Unspecified California eligibility goes to the verification queue (§6) | Kept on the site with a `CA not stated` flag (§2) |
 | No published salary goes to the review queue (§5) | Shown live in the `Pay not published` tab (§3) |
-| Hybrid / on-site postings are excluded (§6) | Stored in the verification queue with the reason, never tabbed (§4.1) |
+| Hybrid / on-site postings are excluded (§6) | Confirmed 7 Nov 2026: dropped at ingestion (§4.1) |
