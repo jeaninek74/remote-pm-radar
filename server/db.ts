@@ -2,11 +2,23 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { SCHEMA_SQL } from './schema';
 
 /**
- * One shared pool. Railway injects DATABASE_URL for its Postgres plugin; the
- * same variable is used locally and in Docker.
+ * One shared pool, configured from DATABASE_URL.
+ *
+ * The local fallback exists only so a developer can run against a throwaway
+ * database. In a container it is actively harmful: a missing secret used to be
+ * silently replaced by 127.0.0.1, which surfaced as `ECONNREFUSED 127.0.0.1:5432`
+ * and looked like a database outage rather than an unset variable. Outside
+ * development, refuse to start and say so.
  */
-const connectionString =
-  process.env.DATABASE_URL ?? 'postgres://radar:radar@127.0.0.1:5432/radar';
+const configured = process.env.DATABASE_URL;
+if (!configured && process.env.NODE_ENV === 'production') {
+  console.error(
+    '[db] DATABASE_URL is not set. The container has no database to connect to; ' +
+      'add the PostgreSQL connection string as a project secret and redeploy.',
+  );
+  process.exit(1);
+}
+const connectionString = configured ?? 'postgres://radar:radar@127.0.0.1:5432/radar';
 
 const needsSsl =
   /sslmode=require|railway|proxy\.rlwy\.net/i.test(connectionString) ||
