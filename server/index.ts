@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import express from 'express';
 import cron from 'node-cron';
 import { healthCheck, migrate, q, refreshLockHeldElsewhere } from './db';
-import { APP, RULES } from './config';
-import { isRefreshing, runRefresh, seedEmployers, startRefresh } from './engine/ingest';
+import { APP, REFRESH, RULES } from './config';
+import { discoveryStatus, isRefreshing, runRefresh, seedEmployers, startDiscovery, startRefresh } from './engine/ingest';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
@@ -131,6 +131,16 @@ app.patch('/api/jobs/:id', async (req, res, next) => {
 });
 
 /* ------------------------------------------------------------------ refresh */
+
+app.post('/api/discover', async (req, res, next) => {
+  try {
+    const budget = Number(req.body?.budgetMs) > 0 ? Number(req.body.budgetMs) : REFRESH.discoverPassBudgetMs;
+    const result = await startDiscovery(budget);
+    res.status(result.started ? 202 : 409).json({ ...result, ...discoveryStatus() });
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.post('/api/refresh', async (req, res, next) => {
   try {

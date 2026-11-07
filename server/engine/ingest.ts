@@ -343,6 +343,32 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
 
 /* ---------------------------------------------------------------- discovery */
 
+const NAME_NOISE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|companies|group|holdings|plc|the|and|of)\b/g;
+
+function nameTokens(value: string): string[] {
+  return value.toLowerCase().replace(/&/g, ' and ').replace(NAME_NOISE, ' ').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * A board belongs to the company only when the board's own account name agrees with the company
+ * name. Multi-word names must have every word of the shorter name present in the longer one
+ * ("Carver Federal Savings Bank" within "Carver Bancorp Inc. (Carver Federal Savings Bank)").
+ * A one-word board name ("rush", "inova", "cfa") only agrees with a one- or two-word company
+ * name it leads ("Snorkel" for "Snorkel AI"), never with a long institutional name.
+ */
+export function namesAgree(company: string, boardName: string | null | undefined): boolean {
+  if (!boardName) return false;
+  const a = nameTokens(company);
+  const b = nameTokens(boardName);
+  if (!a.length || !b.length) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (short.length === 1) {
+    if (long.length === 1) return short[0] === long[0];
+    return long.length === 2 && long[0] === short[0] && short[0].length >= 6;
+  }
+  return short.every((token) => long.includes(token));
+}
+
 async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; slug: string } | null> {
   const base = slugify(name);
   if (!base || base.length < 3) return null;
@@ -353,12 +379,15 @@ async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; 
     if (Date.now() > deadline) return null;
     try {
       const gh = await fetchJson<{ jobs?: unknown[] }>(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=false`, 12_000);
-      if (Array.isArray(gh.jobs)) return { ats: 'greenhouse', slug };
+      if (Array.isArray(gh.jobs)) {
+        const meta = await fetchJson<{ name?: string }>(`https://boards-api.greenhouse.io/v1/boards/${slug}`, 12_000).catch(() => ({ name: undefined }));
+        if (namesAgree(name, meta.name)) return { ats: 'greenhouse', slug };
+      }
     } catch { /* not this one */ }
     if (Date.now() > deadline) return null;
     try {
       const ab = await fetchJson<{ jobs?: unknown[] }>(`https://api.ashbyhq.com/posting-api/job-board/${slug}`, 12_000);
-      if (Array.isArray(ab.jobs)) return { ats: 'ashby', slug };
+      if (Array.isArray(ab.jobs) && ab.jobs.length) return { ats: 'ashby', slug };
     } catch { /* not this one */ }
     if (Date.now() > deadline) return null;
     try {
@@ -368,15 +397,127 @@ async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; 
     if (Date.now() > deadline) return null;
     try {
       const sr = await fetchJson<{ content?: unknown[] }>(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=1`, 12_000);
-      if (Array.isArray(sr.content) && sr.content.length) return { ats: 'smartrecruiters', slug };
+      if (Array.isArray(sr.content) && sr.content.length) {
+        const meta = await fetchJson<{ name?: string }>(`https://api.smartrecruiters.com/v1/companies/${slug}`, 12_000).catch(() => ({ name: undefined }));
+        if (namesAgree(name, meta.name)) return { ats: 'smartrecruiters', slug };
+      }
     } catch { /* not this one */ }
     if (Date.now() > deadline) return null;
     try {
-      const wk = await fetchJson<{ jobs?: unknown[] }>(`https://apply.workable.com/api/v1/widget/accounts/${slug}`, 12_000);
-      if (Array.isArray(wk.jobs)) return { ats: 'workable', slug };
+      const wk = await fetchJson<{ name?: string; jobs?: unknown[] }>(`https://apply.workable.com/api/v1/widget/accounts/${slug}`, 12_000);
+      if (Array.isArray(wk.jobs) && wk.jobs.length && namesAgree(name, wk.name)) return { ats: 'workable', slug };
     } catch { /* not this one */ }
   }
   return null;
+}
+
+/**
+ * Probes the discovery queue until the deadline: least-tried first, largest first, then
+ * least-recently touched, a page at a time (the queue holds hundreds of thousands of names).
+ * Every board found becomes an active employer for the next sweep. No count cap unless given.
+ */
+export async function discoverEmployers(
+  deadline: number,
+  progress?: (message: string) => Promise<void>,
+  maxProbes = 0,
+): Promise<{ probed: number; found: number }> {
+  const pageSize = 100;
+  let probed = 0;
+  let found = 0;
+  const seenIds = new Set<number>();
+  while (Date.now() < passDeadline(deadline) && (maxProbes <= 0 || probed < maxProbes)) {
+    const limit = maxProbes > 0 ? Math.min(pageSize, maxProbes - probed) : pageSize;
+    const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
+      `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
+        WHERE status='pending' AND tries < 3
+        ORDER BY tries ASC,
+                 CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
+                 checked_at ASC NULLS FIRST, id ASC
+        LIMIT $1`,
+      [limit],
+    );
+    const fresh = pending.filter((row) => !seenIds.has(row.id));
+    if (!fresh.length) break;
+    for (const row of fresh) seenIds.add(row.id);
+    await mapLimit(fresh, 6, async (row) => {
+      if (Date.now() > passDeadline(deadline)) return;
+      probed += 1;
+      const hit = await probeAts(row.name, passDeadline(deadline));
+      if (hit) {
+        const inserted = await q<{ id: number }>(
+          `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'Portfolio discovery',TRUE)
+           ON CONFLICT (ats, slug) DO NOTHING
+           RETURNING id`,
+          [row.name, hit.ats, hit.slug, row.industry, row.company_size ?? 'Midsize', row.hq_state, careersUrlFor(hit.ats, hit.slug)],
+        );
+        if (inserted.length) found += 1;
+        await q(
+          `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
+          [row.id, hit.ats, hit.slug],
+        );
+      } else if (Date.now() <= passDeadline(deadline)) {
+        await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
+      } else {
+        await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
+      }
+    });
+    if (progress && probed % 500 < pageSize) await progress(`Probed ${probed} companies, ${found} new boards`);
+  }
+  if (progress && probed) await progress(`Probed ${probed} new employers`);
+  await applyOwnership();
+  return { probed, found };
+}
+
+let discoveryPass: { startedAt: string; probed: number; found: number; cutoff: number } | null = null;
+
+/** Deadline for the running pass, pulled forward when a sweep needs the lock. */
+function passDeadline(deadline: number): number {
+  return discoveryPass ? Math.min(deadline, discoveryPass.cutoff) : deadline;
+}
+
+/**
+ * A sweep always wins over discovery: if a pass holds the lock when a sweep is due, the pass is
+ * told to stop and the sweep waits (up to a minute) for it to release the lock.
+ */
+async function yieldDiscoveryTo(acquire: () => Promise<RefreshLock | null>): Promise<RefreshLock | null> {
+  if (!discoveryPass) return null;
+  discoveryPass.cutoff = Date.now();
+  const until = Date.now() + 60_000;
+  while (discoveryPass && Date.now() < until) await new Promise((r) => setTimeout(r, 500));
+  return acquire();
+}
+
+/** Current standalone discovery pass, if one is running. */
+export function discoveryStatus(): { running: boolean; startedAt?: string } {
+  return discoveryPass ? { running: true, startedAt: discoveryPass.startedAt } : { running: false };
+}
+
+/**
+ * A discovery pass between sweeps. It holds the same database lock as a refresh, so it never
+ * overlaps one; a sweep that arrives while the pass runs is reported as "already running" by the
+ * lock and the pass budget is sized to end before the next slot.
+ */
+export async function startDiscovery(budgetMs: number): Promise<{ started: boolean; reason?: string }> {
+  if (discoveryPass) return { started: false, reason: 'A discovery pass is already running.' };
+  const lock = await acquireRefreshLock();
+  if (!lock) return { started: false, reason: 'A refresh is running; discovery waits for the next gap.' };
+  const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0, cutoff: Infinity };
+  discoveryPass = pass;
+  void (async () => {
+    try {
+      const result = await discoverEmployers(Date.now() + budgetMs);
+      pass.probed = result.probed;
+      pass.found = result.found;
+      console.log(`[discovery] pass finished: ${result.probed} probed, ${result.found} new employers`);
+    } catch (err) {
+      console.error('[discovery] pass failed', err);
+    } finally {
+      discoveryPass = null;
+      await lock.release().catch(() => undefined);
+    }
+  })();
+  return { started: true };
 }
 
 /* -------------------------------------------------------------- run summary */
@@ -473,7 +614,7 @@ async function claimRun(trigger: string, lock: RefreshLock): Promise<number> {
  */
 export async function startRefresh(trigger: string): Promise<{ runId: number; alreadyRunning: boolean }> {
   await migrate();
-  const lock = await acquireRefreshLock();
+  const lock = (await acquireRefreshLock()) ?? (await yieldDiscoveryTo(acquireRefreshLock));
   if (!lock) {
     const existing = await currentRunningRun();
     return { runId: existing ?? 0, alreadyRunning: true };
@@ -658,57 +799,12 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
     // --- Employer discovery -------------------------------------------------
     // Master prompt s.14: a refresh must discover additional employers, not only re-check known
-    // ones. We take a small batch from the discovery queue (fed by the portfolio sweep) and probe
-    // each company's own applicant-tracking system.
+    // ones. The bulk of discovery runs as its own pass between sweeps (startDiscovery); a sweep
+    // still spends its small budget here so every run adds employers.
     await progress('Discovering new employers');
     try {
-      // Least-tried first, largest first, then least-recently touched. The queue holds hundreds of
-      // thousands of candidates, so it is read a page at a time until the budget runs out: a row
-      // that was probed (or cut off) is stamped checked_at and sorts behind the untouched ones.
-      const discoveryDeadline = Date.now() + REFRESH.discoverBudgetMs;
-      const pageSize = 100;
-      let probed = 0;
-      const seenIds = new Set<number>();
-      while (Date.now() < discoveryDeadline && (REFRESH.discoverPerRun <= 0 || probed < REFRESH.discoverPerRun)) {
-        const limit = REFRESH.discoverPerRun > 0 ? Math.min(pageSize, REFRESH.discoverPerRun - probed) : pageSize;
-        const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
-          `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
-            WHERE status='pending' AND tries < 3
-            ORDER BY tries ASC,
-                     CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
-                     checked_at ASC NULLS FIRST, id ASC
-            LIMIT $1`,
-          [limit],
-        );
-        const fresh = pending.filter((row) => !seenIds.has(row.id));
-        if (!fresh.length) break;
-        for (const row of fresh) seenIds.add(row.id);
-        await mapLimit(fresh, 4, async (row) => {
-          if (Date.now() > discoveryDeadline) return;
-          probed += 1;
-          const found = await probeAts(row.name, discoveryDeadline);
-          if (found) {
-            const inserted = await q<{ id: number }>(
-              `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'Portfolio discovery',TRUE)
-               ON CONFLICT (ats, slug) DO NOTHING
-               RETURNING id`,
-              [row.name, found.ats, found.slug, row.industry, row.company_size ?? 'Midsize', row.hq_state, careersUrlFor(found.ats, found.slug)],
-            );
-            if (inserted.length) counters.newEmployers += 1;
-            await q(
-              `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
-              [row.id, found.ats, found.slug],
-            );
-          } else if (Date.now() <= discoveryDeadline) {
-            await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
-          } else {
-            await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
-          }
-        });
-      }
-      if (probed) await progress(`Probed ${probed} new employers`);
-      await applyOwnership();
+      const result = await discoverEmployers(Date.now() + REFRESH.discoverBudgetMs, progress, REFRESH.discoverPerRun);
+      counters.newEmployers += result.found;
     } catch (err) {
       counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });
     }

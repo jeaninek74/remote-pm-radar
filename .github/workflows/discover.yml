@@ -1,0 +1,27 @@
+name: Discover employers
+
+# Employer discovery runs as its own pass in the gap between the :00/:30 sweeps. It probes the
+# discovery queue (hundreds of thousands of companies across every industry and state) and adds
+# every board it finds, with no count cap — only the time budget ends it, before the next sweep.
+
+on:
+  schedule:
+    - cron: '15,45 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: discover
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start a discovery pass
+        run: |
+          code=$(curl -s -o /tmp/out -m 60 -w '%{http_code}' -X POST https://remote-pm-radar.onrender.com/api/discover \
+            -H 'Content-Type: application/json' -d '{}')
+          echo "HTTP $code"; cat /tmp/out; echo
+          # 409 means a sweep still holds the lock; the next gap picks it up.
+          [ "$code" = "202" ] || [ "$code" = "409" ]
