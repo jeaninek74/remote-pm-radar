@@ -30,6 +30,12 @@ async function main(): Promise<void> {
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');
 
+  const oracle = detect(
+    '<a href="https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions">Careers</a>',
+    'https://employer.example/careers',
+  );
+  check('detect Oracle site number', oracle.kind === 'board' && oracle.ats === 'oracle' && oracle.slug === 'egud.fa.us2.oraclecloud.com/CX_1');
+
   check('detect no board or portal signature', detect('<main>Current openings</main>', 'https://employer.example/jobs').kind === 'none');
 
   const nameCases: [string, string, boolean][] = [
@@ -57,6 +63,7 @@ async function main(): Promise<void> {
     ['Accenture', 'https://www.accenture.com/us-en/careers'],
     ['Guidehouse', 'https://careers.guidehouse.com/'],
     ['Protiviti', 'https://www.protiviti.com/us-en/careers'],
+    ['AutoZone', 'https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions?mode=location'],
     ['PwC', 'https://www.pwc.com/us/en/careers.html'],
     ['Mayo Clinic', 'https://www.mayoclinic.org/careers'],
   ];

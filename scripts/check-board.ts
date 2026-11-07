@@ -15,11 +15,14 @@ function employerFor(spec: string, index: number): EmployerRow {
   const [ats, ...rest] = spec.split(':');
   const target = rest.join(':');
   const isWorkday = ats === 'workday';
+  const sourceName = ats === 'oracle'
+    ? target.startsWith('egud.') ? 'AutoZone' : 'International Paper'
+    : ats === 'dayforce' ? 'Bristol Bay Native Corporation' : target;
   return {
     id: -(index + 1),
     ats: ats as Ats,
     slug: isWorkday ? target.replace(/^https?:\/\//, '') : target,
-    name: isWorkday ? target.replace(/^https?:\/\/([^.]+).*/, '$1') : target,
+    name: isWorkday ? target.replace(/^https?:\/\/([^.]+).*/, '$1') : sourceName,
     industry: null, company_size: null, hq_state: null,
     careers_url: isWorkday ? target : null,
     black_owned: false, ownership_status: 'Not researched', ownership_source: null,

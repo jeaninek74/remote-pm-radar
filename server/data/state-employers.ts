@@ -32,7 +32,6 @@ export const STATE_TARGETS: StateTarget[] = [
   /* ------------------------------------------------------------------ AK */
   { name: 'Chenega Corporation', state: 'AK', industry: 'Government Contracting', size: 'Large', careersUrl: 'https://www.chenega.com/careers/' },
   { name: 'GCI', state: 'AK', industry: 'Telecom', size: 'Large', careersUrl: 'https://www.gci.com/careers' },
-  { name: 'Bristol Bay Native Corporation', state: 'AK', industry: 'Government Contracting', size: 'Midsize', careersUrl: 'https://www.bbnc.net/careers/' },
 
   /* ------------------------------------------------------------------ CT */
   { name: 'Charter Communications', state: 'CT', industry: 'Telecom', size: 'Enterprise', careersUrl: 'https://jobs.spectrum.com/' },
@@ -124,8 +123,6 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'Black Hills Corporation', state: 'SD', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://www.blackhillscorp.com/careers' },
 
   /* ------------------------------------------------------------------ TN */
-  { name: 'AutoZone', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autozone.com/careers' },
-  { name: 'International Paper', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.internationalpaper.com/' },
   { name: 'Tractor Supply Company', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://careers.tractorsupply.com/' },
   { name: 'Eastman Chemical', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.eastman.com/en/careers' },
 
@@ -216,7 +213,6 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'UAB Medicine', state: 'AL', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://www.uabmedicine.org/careers' },
   { name: 'Chenega Corporation', state: 'AK', industry: 'Government Contracting', size: 'Large', careersUrl: 'https://www.chenega.com/careers/' },
   { name: 'GCI', state: 'AK', industry: 'Telecom', size: 'Large', careersUrl: 'https://www.gci.com/careers' },
-  { name: 'Bristol Bay Native Corporation', state: 'AK', industry: 'Government Contracting', size: 'Midsize', careersUrl: 'https://www.bbnc.net/careers/' },
   { name: 'Charter Communications', state: 'CT', industry: 'Telecom', size: 'Enterprise', careersUrl: 'https://jobs.spectrum.com/' },
   { name: 'Publix', state: 'FL', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://jobs.publix.com/' },
   { name: 'Royal Caribbean Group', state: 'FL', industry: 'Hospitality', size: 'Enterprise', careersUrl: 'https://www.royalcaribbeangroup.com/careers/' },
@@ -245,8 +241,6 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'Sanford Health', state: 'SD', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.sanfordhealth.org/' },
   { name: 'Daktronics', state: 'SD', industry: 'Manufacturing', size: 'Midsize', careersUrl: 'https://www.daktronics.com/en-us/about/careers' },
   { name: 'Black Hills Corporation', state: 'SD', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://www.blackhillscorp.com/careers' },
-  { name: 'AutoZone', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autozone.com/careers' },
-  { name: 'International Paper', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.internationalpaper.com/' },
   { name: 'Tractor Supply Company', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://careers.tractorsupply.com/' },
   { name: 'Eastman Chemical', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.eastman.com/en/careers' },
   { name: 'National Life Group', state: 'VT', industry: 'Insurance', size: 'Large', careersUrl: 'https://www.nationallife.com/careers' },
