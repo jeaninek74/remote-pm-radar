@@ -35,6 +35,11 @@ export interface RawJob {
   companySize?: CompanySize | string | null;
   hqState?: string | null;
   companyWebsite?: string | null;
+  /**
+   * The posting is already stored and its detail page was not re-read this sweep: only its
+   * presence on the board is being reported, so the stored row is marked seen and left alone.
+   */
+  unchanged?: boolean;
 }
 
 export interface BoardFetchResult {

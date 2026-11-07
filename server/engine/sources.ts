@@ -40,7 +40,7 @@ interface GhJob {
   metadata?: { name?: string; value?: string | null }[] | null;
 }
 
-async function greenhouse(employer: EmployerRow): Promise<BoardFetchResult> {
+async function greenhouse(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const listUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(employer.slug)}/jobs?content=false`;
   const list = await fetchJson<{ jobs?: GhJob[] }>(listUrl);
   const all = Array.isArray(list.jobs) ? list.jobs : [];
@@ -52,6 +52,10 @@ async function greenhouse(employer: EmployerRow): Promise<BoardFetchResult> {
   const jobs: RawJob[] = [];
   for (const job of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
+    if (known?.has(`greenhouse:${employer.slug}:${job.id}`)) {
+      jobs.push(unchangedJob(`greenhouse:${employer.slug}`, 'greenhouse', String(job.id), employer.name, job.title ?? '', job.absolute_url ?? ''));
+      continue;
+    }
     let description = '';
     let rawContent = '';
     let detail: GhJob | null = null;
@@ -363,7 +367,7 @@ interface SrPosting {
   typeOfEmployment?: { label?: string };
 }
 
-async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult> {
+async function smartrecruiters(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   // The postings endpoint returns at most 100 per call and reports totalFound; large
   // employers (CACI, Expeditors) list several hundred, so one page silently dropped most.
   const all: SrPosting[] = [];
@@ -381,6 +385,10 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
   const jobs: RawJob[] = [];
   for (const posting of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
+    if (known?.has(`smartrecruiters:${employer.slug}:${posting.id}`)) {
+      jobs.push(unchangedJob(`smartrecruiters:${employer.slug}`, 'smartrecruiters', String(posting.id), employer.name, posting.name ?? '', `https://jobs.smartrecruiters.com/${employer.slug}/${posting.id}`));
+      continue;
+    }
     let description = '';
     try {
       const detail = await fetchJson<{
@@ -421,7 +429,7 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
   return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
-const ADAPTERS: Record<Ats, (employer: EmployerRow) => Promise<BoardFetchResult>> = {
+const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
   // Workday coordinates live in careers_url, so the adapter ignores the slug.
   workday: fetchWorkday,
@@ -561,7 +569,7 @@ async function workdayDetail(tenant: string, wd: string, site: string, externalP
   return data.jobPostingInfo ?? null;
 }
 
-async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
+async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const coords = parseWorkdayUrl(employer.careers_url);
   if (!coords) return { jobs: [], ok: false, error: 'not a workday url', totalListed: 0 };
   const { tenant, wd, site } = coords;
@@ -599,6 +607,10 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   const jobs: RawJob[] = [];
   for (const [path, posting] of collected) {
     if (Date.now() > deadline + REFRESH.employerBudgetMs) { truncated = true; break; }
+    if (known?.has(`Workday:${path}`)) {
+      jobs.push(unchangedJob('Workday', 'workday', path, employer.name, posting.title ?? '', `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`));
+      continue;
+    }
     const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';
@@ -631,12 +643,22 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   return { jobs, ok: true, totalListed: collected.size, truncated };
 }
 
-export async function fetchBoard(employer: EmployerRow): Promise<BoardFetchResult> {
-  if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer);
+/**
+ * A posting that is already in the database. Its detail page is not read again — that is what
+ * made a Workday tenant cost four minutes a sweep — so only identity is reported; the stored row
+ * keeps its description, salary, dates and placement and is simply marked seen.
+ */
+function unchangedJob(source: string, ats: Ats, externalId: string, company: string, title: string, applyUrl: string): RawJob {
+  return { source, ats, externalId, company, title, locations: [], applyUrl, linkType: 'employer', unchanged: true };
+}
+
+/** `known` holds the job keys (`source:externalId`) already stored for this employer. */
+export async function fetchBoard(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer, known);
   const adapter = ADAPTERS[employer.ats];
   if (!adapter) return { jobs: [], ok: false, error: `Unsupported ATS: ${employer.ats}`, totalListed: 0 };
   try {
-    const result = await adapter(employer);
+    const result = await adapter(employer, known);
     return result;
   } catch (err) {
     return { jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 };

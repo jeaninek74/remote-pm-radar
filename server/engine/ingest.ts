@@ -545,7 +545,11 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     });
 
     async function sweepEmployer(employer: EmployerRow): Promise<void> {
-      const result = await fetchBoard(employer);
+      // Postings already stored for this employer are recognised by key and not re-read in
+      // detail; they are marked seen below. Only new postings cost a detail request.
+      const knownRows = await q<{ job_key: string }>(`SELECT job_key FROM jobs WHERE employer_id = $1`, [employer.id]);
+      const known = new Set(knownRows.map((row) => row.job_key));
+      const result = await fetchBoard(employer, known);
       counters.sourcesChecked += 1;
 
       if (!result.ok) {
@@ -584,6 +588,13 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       let matched = 0;
 
       for (const raw of result.jobs) {
+        if (raw.unchanged) {
+          const key = `${raw.source}:${raw.externalId}`.slice(0, 190);
+          await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
+          seenKeys.add(key);
+          matched += 1;
+          continue;
+        }
         const ev = evaluateRaw(raw, employer);
         if (!ev) continue;
         matched += 1;
