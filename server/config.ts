@@ -68,7 +68,8 @@ export const REFRESH = {
   /** Cron cadence (UTC). Every thirty minutes by default. */
   cron: process.env.REFRESH_CRON ?? '*/30 * * * *',
   /** Max new employers discovered (ATS slug probing) per cycle. */
-  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 60),
+  // 0 = no numeric cap: discovery probes as many queued companies as fit in its time budget.
+  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 0),
   discoverBudgetMs: Number(process.env.DISCOVER_BUDGET_MS ?? 90_000),
   /** How many brand-new tab listings get a live link check per cycle. */
   linkChecksPerRun: Number(process.env.LINK_CHECKS_PER_RUN ?? 35),

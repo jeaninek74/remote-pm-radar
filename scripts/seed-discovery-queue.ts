@@ -8,12 +8,17 @@ import { fetchJson } from '../server/engine/http';
  * these companies for a Greenhouse / Ashby / Lever / SmartRecruiters / Workable board and adds the
  * ones it finds to the employers table (RULES.md §2: employers' own sites only, no job boards).
  *
- *   tsx scripts/seed-discovery-queue.ts              startups (YC directory, active, 8–600 staff, US)
- *   tsx scripts/seed-discovery-queue.ts --nonprofits  + IRS Exempt Organizations master file,
- *                                                       organisations with $25M+ annual income
+ *   tsx scripts/seed-discovery-queue.ts               startups (YC directory, active, 8–600 staff, US)
+ *   tsx scripts/seed-discovery-queue.ts --nonprofits   + every Form 990 filer in the IRS Exempt
+ *                                                        Organizations master file (no income cut)
+ *   tsx scripts/seed-discovery-queue.ts --industries   + US companies in every industry the master prompt
+ *                                                        names, from Wikipedia's company categories
+ *
+ * No numeric caps: each source is taken whole. The queue is probed largest-first within the
+ * refresh time budget, so the order of arrival here does not matter.
  */
 
-interface Candidate { name: string; industry: string; state: string; size: string }
+interface Candidate { name: string; industry: string; state: string; size: string | null }
 
 /** Master-prompt §8 size bands from headcount. */
 function sizeFromHeadcount(n: number): string {
@@ -74,7 +79,103 @@ async function startups(): Promise<Candidate[]> {
   return out;
 }
 
-const MIN_NONPROFIT_INCOME = 25_000_000;
+/**
+ * Master prompt §7 industries → Wikipedia company categories (US). Each category is read whole.
+ * The list is "include", never "only": anything found elsewhere keeps whatever industry it has.
+ */
+const INDUSTRY_CATEGORIES: [string, string[]][] = [
+  ['Healthcare', ['Health_care_companies_of_the_United_States', 'Hospital_networks_in_the_United_States']],
+  ['Health Insurance', ['Health_insurance_companies_of_the_United_States']],
+  ['Medical Services', ['Medical_and_health_organizations_based_in_the_United_States']],
+  ['Pharmaceuticals', ['Pharmaceutical_companies_of_the_United_States']],
+  ['Biotechnology', ['Biotechnology_companies_of_the_United_States']],
+  // Wikipedia has no federal-contracting category; defense and management/IT consulting cover those employers.
+  ['Defense', ['Defense_companies_of_the_United_States']],
+  ['Management Consulting', ['Management_consulting_firms_of_the_United_States', 'Consulting_firms_of_the_United_States']],
+  ['IT Consulting', ['Information_technology_consulting_firms_of_the_United_States']],
+  ['Engineering', ['Engineering_consulting_firms_of_the_United_States', 'Engineering_companies_of_the_United_States']],
+  ['Architecture', ['Architecture_firms_of_the_United_States']],
+  ['Advertising', ['Advertising_agencies_of_the_United_States']],
+  ['Public Relations', ['Public_relations_companies_of_the_United_States']],
+  ['Marketing', ['Marketing_companies_of_the_United_States']],
+  ['Communications', ['Mass_media_companies_of_the_United_States']],
+  ['Education', ['Education_companies_of_the_United_States']],
+  ['Construction', ['Construction_and_civil_engineering_companies_of_the_United_States']],
+  ['Real Estate', ['Real_estate_companies_of_the_United_States']],
+  ['Property Management', ['Property_management_companies_of_the_United_States']],
+  ['Manufacturing', ['Manufacturing_companies_of_the_United_States']],
+  ['Logistics', ['Logistics_companies_of_the_United_States']],
+  ['Transportation', ['Transport_companies_of_the_United_States']],
+  ['Energy', ['Energy_companies_of_the_United_States']],
+  ['Renewable Energy', ['Renewable_energy_companies_of_the_United_States']],
+  ['Utilities', ['Electric_power_companies_of_the_United_States', 'Water_companies_of_the_United_States']],
+  ['Telecommunications', ['Telecommunications_companies_of_the_United_States']],
+  ['Retail', ['Retail_companies_of_the_United_States']],
+  ['Consumer Products', ['Consumer_goods_companies_of_the_United_States']],
+  ['E-Commerce', ['Online_retailers_of_the_United_States']],
+  ['Banking', ['Banks_based_in_the_United_States']],
+  ['Financial Services', ['Financial_services_companies_of_the_United_States']],
+  ['Insurance', ['Insurance_companies_of_the_United_States']],
+  ['Software', ['Software_companies_of_the_United_States']],
+  ['AI', ['Artificial_intelligence_companies_of_the_United_States']],
+  ['Cybersecurity', ['Computer_security_companies_of_the_United_States']],
+  ['Cloud Services', ['Cloud_computing_providers']],
+  ['Human Resources Services', ['Human_resource_management_consulting_firms', 'Employment_agencies_of_the_United_States']],
+  ['Business Process Outsourcing', ['Outsourcing_companies']],
+  ['Events', ['Event_management_companies_of_the_United_States']],
+  ['Entertainment', ['Entertainment_companies_of_the_United_States']],
+  ['Hospitality', ['Hospitality_companies_of_the_United_States']],
+  ['Environmental Services', ['Environmental_services_companies_of_the_United_States', 'Waste_management_companies_of_the_United_States']],
+];
+
+type CategoryPage = { continue?: { cmcontinue?: string }; query?: { categorymembers?: { title: string }[] } };
+
+/** Wikipedia asks for one request at a time from bots; 429s are backed off, not fatal. */
+async function wikipedia(url: string): Promise<CategoryPage> {
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'RemotePMRadar/1.0 (job radar; https://github.com/jeaninek74/remote-pm-radar)' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.status === 429 && attempt < 6) {
+      const wait = Number(res.headers.get('retry-after') ?? 0) * 1000 || 2_000 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok) throw new Error(`wikipedia ${res.status} ${url}`);
+    const data = (await res.json()) as CategoryPage;
+    await new Promise((r) => setTimeout(r, 1_000));
+    return data;
+  }
+}
+
+async function industries(): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  for (const [industry, categories] of INDUSTRY_CATEGORIES) {
+    let count = 0;
+    for (const category of categories) {
+      let cont: string | undefined;
+      try { do {
+        const url = `https://en.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:${category}&cmlimit=500&cmtype=page&format=json${cont ? `&cmcontinue=${encodeURIComponent(cont)}` : ''}`;
+        const data = await wikipedia(url);
+        for (const member of data.query?.categorymembers ?? []) {
+          const title = member.title;
+          if (/^(?:List of|Template:|Category:|Lists of)/.test(title)) continue;
+          const name = title.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          if (name.length < 3) continue;
+          out.push({ name, industry, state: 'US', size: null }); // size unknown; never overrides a headcount-derived one
+          count += 1;
+        }
+        cont = data.continue?.cmcontinue;
+      } while (cont); } catch (err) {
+        // One category failing must not discard the ones already read; it is logged and skipped.
+        console.error(`${industry} / ${category}: ${(err as Error).message}`);
+      }
+    }
+    console.log(`${industry}: ${count} companies`);
+  }
+  return out;
+}
 
 /** RFC 4180 split: a quoted field may hold commas and doubled quotes. */
 function splitCsv(line: string): string[] {
@@ -110,11 +211,13 @@ async function nonprofits(): Promise<Candidate[]> {
       const cols = splitCsv(line);
       if (!header) { header = cols; continue; }
       const row = Object.fromEntries(header.map((h, i) => [h, cols[i] ?? '']));
-      const income = Number(row.INCOME_AMT || 0);
-      if (income < MIN_NONPROFIT_INCOME) continue;
+      // Employer-scale organisations are the ones the IRS requires to file a full Form 990
+      // (FILING_REQ_CD 01); churches and the smallest filers are not employers of PMs.
+      if (row.FILING_REQ_CD !== '01') continue;
       if (/^X/.test(row.NTEE_CD ?? '')) continue; // religious congregations
+      const income = Number(row.INCOME_AMT || 0);
       if (!/^[A-Z]{2}$/.test(row.STATE ?? '')) continue;
-      out.push({ name: titleCase(row.NAME), industry: nteeIndustry(row.NTEE_CD), state: row.STATE, size: income < 50_000_000 ? 'Midsize' : income < 500_000_000 ? 'Large' : 'Enterprise' });
+      out.push({ name: titleCase(row.NAME), industry: nteeIndustry(row.NTEE_CD), state: row.STATE, size: income < 5_000_000 ? 'Small' : income < 50_000_000 ? 'Midsize' : income < 500_000_000 ? 'Large' : 'Enterprise' });
     }
     console.log(`eo${region}.csv: ${out.length} candidates so far`);
   }
@@ -130,7 +233,7 @@ async function enqueue(candidates: Candidate[]): Promise<number> {
     const res = await q(
       `INSERT INTO discovery_queue (name, industry, hq_state, company_size)
        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
-       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = EXCLUDED.company_size
+       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = COALESCE(EXCLUDED.company_size, discovery_queue.company_size)
        RETURNING (xmax = 0) AS inserted`,
       [batch.map((c) => c.name), batch.map((c) => c.industry), batch.map((c) => c.state), batch.map((c) => c.size)],
     );
@@ -149,8 +252,13 @@ async function main() {
   let queued = await enqueue(yc);
   if (process.argv.includes('--nonprofits')) {
     const np = await nonprofits();
-    console.log(`IRS exempt organisations with $${MIN_NONPROFIT_INCOME / 1e6}M+ income: ${np.length}`);
+    console.log(`IRS Form 990 filers: ${np.length}`);
     queued += await enqueue(np);
+  }
+  if (process.argv.includes('--industries')) {
+    const co = await industries();
+    console.log(`industry categories: ${co.length} companies`);
+    queued += await enqueue(co);
   }
   console.log('queued', queued);
   await pool.end();

@@ -238,7 +238,9 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     },
   ],
 
-  highFitIndustries: /\b(health|hospital|medical|insurance|government|federal|public sector|construction|engineering|energy|utilit|renewable|marketing|advertis|consult|nonprofit|education|universit|software|technology|financial|banking|manufactur|logistics|real estate|telecom|retail)\b/i,
+  // Industries Jeanine's resumes speak to directly (healthcare, federal/regulated, consulting, construction,
+  // energy, marketing, education, nonprofit, enterprise technology). Include, not only: others score on merit.
+  highFitIndustries: /\b(health|hospital|medical|pharma\w*|biotech\w*|insurance|government|federal|defense|public sector|professional services|construction|engineering|architect\w*|energy|utilit\w*|renewable|marketing|advertis\w*|communications|public relations|consult\w*|nonprofit\w*|foundation\w*|education|universit\w*|software|technology|cloud|cyber\w*|\bai\b|financial|banking|manufactur\w*|logistics|supply chain|real estate|telecom\w*|retail)\b/i,
 
   gapRules: [
     { label: 'Requires an active security clearance (TS/SCI, Secret, Public Trust)', re: /\b(active|current)\s+(?:top secret|ts\/sci|secret|public trust)\b|security clearance|\bts\/sci\b|\bsecret clearance\b/i },
