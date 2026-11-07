@@ -826,9 +826,17 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     await progress(`Applying the ${RULES.windowDays}-day window`);
     counters.archived += await archiveByAge();
 
-    await progress(`Verifying ${linkCandidates.length} application links`);
+    // New postings first, then every live row still unverified (a previous run may have run out
+    // of time), newest first, so no live link stays unchecked across runs.
+    const unverified = await q<{ id: number }>(
+      `SELECT id FROM jobs
+        WHERE bucket IN ('tab0','tab1','tab2','unsalaried') AND link_verified_at IS NULL
+        ORDER BY first_seen_at DESC`,
+    );
+    const linkIds = [...new Set([...linkCandidates, ...unverified.map((row) => row.id)])];
+    await progress(`Verifying ${linkIds.length} application links`);
     const linkDeadline = Date.now() + REFRESH.linkBudgetMs;
-    await mapLimit(linkCandidates, 8, async (id) => {
+    await mapLimit(linkIds, 8, async (id) => {
       if (Date.now() > linkDeadline) return;
       const job = await one<{ id: number; apply_url: string; bucket: string }>(
         `SELECT id, apply_url, bucket FROM jobs WHERE id=$1`,
