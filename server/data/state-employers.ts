@@ -33,21 +33,14 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'Chenega Corporation', state: 'AK', industry: 'Government Contracting', size: 'Large', careersUrl: 'https://www.chenega.com/careers/' },
   { name: 'GCI', state: 'AK', industry: 'Telecom', size: 'Large', careersUrl: 'https://www.gci.com/careers' },
   { name: 'Bristol Bay Native Corporation', state: 'AK', industry: 'Government Contracting', size: 'Midsize', careersUrl: 'https://www.bbnc.net/careers/' },
-  { name: 'Alyeska Pipeline Service Company', state: 'AK', industry: 'Energy', size: 'Midsize', careersUrl: 'https://www.alyeska-pipe.com/careers/' },
 
   /* ------------------------------------------------------------------ CT */
   { name: 'Charter Communications', state: 'CT', industry: 'Telecom', size: 'Enterprise', careersUrl: 'https://jobs.spectrum.com/' },
-  { name: 'Synchrony', state: 'CT', industry: 'Financial Services', size: 'Large', careersUrl: 'https://careers.synchrony.com/', slugs: ['synchrony'] },
-  { name: 'The Hartford', state: 'CT', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://careers.thehartford.com/', slugs: ['thehartford'] },
-  { name: 'Booking Holdings', state: 'CT', industry: 'Technology', size: 'Enterprise', careersUrl: 'https://careers.bookingholdings.com/' },
 
   /* ------------------------------------------------------------------ FL */
   { name: 'Publix', state: 'FL', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://jobs.publix.com/' },
-  { name: 'Lennar', state: 'FL', industry: 'Real Estate', size: 'Enterprise', careersUrl: 'https://www.lennar.com/careers' },
   { name: 'Royal Caribbean Group', state: 'FL', industry: 'Hospitality', size: 'Enterprise', careersUrl: 'https://www.royalcaribbeangroup.com/careers/' },
-  { name: 'AutoNation', state: 'FL', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autonation.com/careers' },
   { name: 'UKG', state: 'FL', industry: 'Software', size: 'Large', careersUrl: 'https://www.ukg.com/careers' },
-  { name: 'Raymond James', state: 'FL', industry: 'Financial Services', size: 'Enterprise', careersUrl: 'https://www.raymondjames.com/careers' },
 
   /* ------------------------------------------------------------------ HI */
   { name: 'Hawaiian Airlines', state: 'HI', industry: 'Transportation', size: 'Large', careersUrl: 'https://careers.hawaiianairlines.com/' },
@@ -74,14 +67,11 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'AMC Theatres', state: 'KS', industry: 'Entertainment', size: 'Enterprise', careersUrl: 'https://www.amctheatres.com/careers' },
 
   /* ------------------------------------------------------------------ ME */
-  { name: 'IDEXX Laboratories', state: 'ME', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://www.idexx.com/en/about-idexx/careers/' },
   { name: 'Unum Group', state: 'ME', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://careers.unum.com/' },
   { name: 'WEX', state: 'ME', industry: 'Fintech', size: 'Large', careersUrl: 'https://careers.wexinc.com/', slugs: ['wex'] },
-  { name: 'L.L.Bean', state: 'ME', industry: 'Retail', size: 'Large', careersUrl: 'https://www.llbean.com/careers' },
 
   /* ------------------------------------------------------------------ MI */
   { name: 'Ford Motor Company', state: 'MI', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.ford.com/' },
-  { name: 'General Motors', state: 'MI', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://search-careers.gm.com/' },
   { name: 'Whirlpool Corporation', state: 'MI', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.whirlpool.com/' },
   { name: 'Rocket Companies', state: 'MI', industry: 'Financial Services', size: 'Enterprise', careersUrl: 'https://www.rocketcompanies.com/careers/' },
   { name: 'Meijer', state: 'MI', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://jobs.meijer.com/' },
@@ -130,7 +120,6 @@ export const STATE_TARGETS: StateTarget[] = [
 
   /* ------------------------------------------------------------------ SD */
   { name: 'Sanford Health', state: 'SD', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.sanfordhealth.org/' },
-  { name: 'Avera Health', state: 'SD', industry: 'Healthcare', size: 'Large', careersUrl: 'https://www.avera.org/careers/' },
   { name: 'Daktronics', state: 'SD', industry: 'Manufacturing', size: 'Midsize', careersUrl: 'https://www.daktronics.com/en-us/about/careers' },
   { name: 'Black Hills Corporation', state: 'SD', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://www.blackhillscorp.com/careers' },
 
@@ -138,14 +127,12 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'AutoZone', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autozone.com/careers' },
   { name: 'International Paper', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.internationalpaper.com/' },
   { name: 'Tractor Supply Company', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://careers.tractorsupply.com/' },
-  { name: 'Bridgestone Americas', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.bridgestoneamericas.com/en/careers' },
   { name: 'Eastman Chemical', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.eastman.com/en/careers' },
 
   /* ------------------------------------------------------------------ VT */
   { name: 'National Life Group', state: 'VT', industry: 'Insurance', size: 'Large', careersUrl: 'https://www.nationallife.com/careers' },
   { name: 'Green Mountain Power', state: 'VT', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://greenmountainpower.com/careers/' },
   { name: 'The University of Vermont Health Network', state: 'VT', industry: 'Healthcare', size: 'Large', careersUrl: 'https://www.uvmhealth.org/careers' },
-  { name: 'Dealer.com', state: 'VT', industry: 'Software', size: 'Midsize', careersUrl: 'https://www.dealer.com/careers/' },
 
   /* ------------------------------------------------------------------ WV */
   { name: 'WVU Medicine', state: 'WV', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://wvumedicine.org/careers/' },
@@ -164,7 +151,6 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'University of Wyoming', state: 'WY', industry: 'Education', size: 'Large', careersUrl: 'https://www.uwyo.edu/hr/careers/' },
   { name: 'Cheyenne Regional Medical Center', state: 'WY', industry: 'Healthcare', size: 'Midsize', careersUrl: 'https://www.cheyenneregional.org/careers/' },
   { name: 'Taco John\u2019s', state: 'WY', industry: 'Retail', size: 'Midsize', careersUrl: 'https://www.tacojohns.com/careers/' },
-  { name: 'Blue Cross Blue Shield of Wyoming', state: 'WY', industry: 'Health Insurance', size: 'Small', careersUrl: 'https://www.bcbswy.com/careers' },
 
   /* ------------------------------- top-up states with thin coverage */
   { name: 'Alaska Air Group', state: 'WA', industry: 'Transportation', size: 'Enterprise', careersUrl: 'https://careers.alaskaair.com/' },
@@ -175,7 +161,6 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'Sentara Health', state: 'VA', industry: 'Healthcare', size: 'Large', careersUrl: 'https://www.sentaracareers.com/' },
   { name: 'Providence', state: 'WA', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.providence.org/' },
   { name: 'Mass General Brigham', state: 'MA', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.massgeneralbrigham.org/' },
-  { name: 'Banner Health', state: 'AZ', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.bannerhealth.com/' },
   { name: 'CommonSpirit Health', state: 'IL', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.commonspirit.org/' },
   { name: 'Ascension', state: 'MO', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.ascension.org/' },
   { name: 'Ochsner Health', state: 'LA', industry: 'Healthcare', size: 'Large', careersUrl: 'https://careers.ochsner.org/' },
@@ -186,10 +171,8 @@ export const STATE_TARGETS: StateTarget[] = [
   { name: 'Highmark Health', state: 'PA', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.highmarkhealth.org/' },
   { name: 'Elevance Health', state: 'IN', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.elevancehealth.com/' },
   { name: 'Humana', state: 'KY', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.humana.com/' },
-  { name: 'Centene', state: 'MO', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.centene.com/' },
   { name: 'Molina Healthcare', state: 'CA', industry: 'Health Insurance', size: 'Large', careersUrl: 'https://careers.molinahealthcare.com/' },
   { name: 'UnitedHealth Group', state: 'MN', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.unitedhealthgroup.com/' },
-  { name: 'Cigna', state: 'CT', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.thecignagroup.com/' },
   { name: 'Guidehouse', state: 'VA', industry: 'Consulting', size: 'Large', careersUrl: 'https://careers.guidehouse.com/' },
   { name: 'ICF', state: 'VA', industry: 'Consulting', size: 'Large', careersUrl: 'https://www.icf.com/careers' },
   { name: 'Booz Allen Hamilton', state: 'VA', industry: 'Government Contracting', size: 'Enterprise', careersUrl: 'https://careers.boozallen.com/' },
@@ -234,17 +217,10 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'Chenega Corporation', state: 'AK', industry: 'Government Contracting', size: 'Large', careersUrl: 'https://www.chenega.com/careers/' },
   { name: 'GCI', state: 'AK', industry: 'Telecom', size: 'Large', careersUrl: 'https://www.gci.com/careers' },
   { name: 'Bristol Bay Native Corporation', state: 'AK', industry: 'Government Contracting', size: 'Midsize', careersUrl: 'https://www.bbnc.net/careers/' },
-  { name: 'Alyeska Pipeline Service Company', state: 'AK', industry: 'Energy', size: 'Midsize', careersUrl: 'https://www.alyeska-pipe.com/careers/' },
   { name: 'Charter Communications', state: 'CT', industry: 'Telecom', size: 'Enterprise', careersUrl: 'https://jobs.spectrum.com/' },
-  { name: 'Synchrony', state: 'CT', industry: 'Financial Services', size: 'Large', careersUrl: 'https://careers.synchrony.com/' },
-  { name: 'The Hartford', state: 'CT', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://careers.thehartford.com/' },
-  { name: 'Booking Holdings', state: 'CT', industry: 'Technology', size: 'Enterprise', careersUrl: 'https://careers.bookingholdings.com/' },
   { name: 'Publix', state: 'FL', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://jobs.publix.com/' },
-  { name: 'Lennar', state: 'FL', industry: 'Real Estate', size: 'Enterprise', careersUrl: 'https://www.lennar.com/careers' },
   { name: 'Royal Caribbean Group', state: 'FL', industry: 'Hospitality', size: 'Enterprise', careersUrl: 'https://www.royalcaribbeangroup.com/careers/' },
-  { name: 'AutoNation', state: 'FL', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autonation.com/careers' },
   { name: 'UKG', state: 'FL', industry: 'Software', size: 'Large', careersUrl: 'https://www.ukg.com/careers' },
-  { name: 'Raymond James', state: 'FL', industry: 'Financial Services', size: 'Enterprise', careersUrl: 'https://www.raymondjames.com/careers' },
   { name: 'Hawaiian Airlines', state: 'HI', industry: 'Transportation', size: 'Large', careersUrl: 'https://careers.hawaiianairlines.com/' },
   { name: 'Bank of Hawaii', state: 'HI', industry: 'Financial Services', size: 'Large', careersUrl: 'https://www.boh.com/careers/' },
   { name: 'First Hawaiian Bank', state: 'HI', industry: 'Financial Services', size: 'Large', careersUrl: 'https://www.fhb.com/en/careers' },
@@ -253,10 +229,8 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'Spirit AeroSystems', state: 'KS', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.spiritaero.com/careers/' },
   { name: 'Koch Industries', state: 'KS', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.kochcareers.com/' },
   { name: 'AMC Theatres', state: 'KS', industry: 'Entertainment', size: 'Enterprise', careersUrl: 'https://www.amctheatres.com/careers' },
-  { name: 'IDEXX Laboratories', state: 'ME', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://www.idexx.com/en/about-idexx/careers/' },
   { name: 'Unum Group', state: 'ME', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://careers.unum.com/' },
   { name: 'WEX', state: 'ME', industry: 'Fintech', size: 'Large', careersUrl: 'https://careers.wexinc.com/' },
-  { name: 'L.L.Bean', state: 'ME', industry: 'Retail', size: 'Large', careersUrl: 'https://www.llbean.com/careers' },
   { name: 'Mutual of Omaha', state: 'NE', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://www.mutualofomaha.com/careers' },
   { name: 'Conagra Brands', state: 'NE', industry: 'Consumer Products', size: 'Enterprise', careersUrl: 'https://www.conagrabrands.com/careers' },
   { name: 'Kiewit', state: 'NE', industry: 'Construction', size: 'Enterprise', careersUrl: 'https://www.kiewit.com/careers/' },
@@ -269,18 +243,15 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'Noridian Healthcare Solutions', state: 'ND', industry: 'Healthcare', size: 'Midsize', careersUrl: 'https://www.noridian.com/careers' },
   { name: 'Bobcat Company', state: 'ND', industry: 'Manufacturing', size: 'Large', careersUrl: 'https://www.bobcat.com/company/careers' },
   { name: 'Sanford Health', state: 'SD', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.sanfordhealth.org/' },
-  { name: 'Avera Health', state: 'SD', industry: 'Healthcare', size: 'Large', careersUrl: 'https://www.avera.org/careers/' },
   { name: 'Daktronics', state: 'SD', industry: 'Manufacturing', size: 'Midsize', careersUrl: 'https://www.daktronics.com/en-us/about/careers' },
   { name: 'Black Hills Corporation', state: 'SD', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://www.blackhillscorp.com/careers' },
   { name: 'AutoZone', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://www.autozone.com/careers' },
   { name: 'International Paper', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://careers.internationalpaper.com/' },
   { name: 'Tractor Supply Company', state: 'TN', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://careers.tractorsupply.com/' },
-  { name: 'Bridgestone Americas', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.bridgestoneamericas.com/en/careers' },
   { name: 'Eastman Chemical', state: 'TN', industry: 'Manufacturing', size: 'Enterprise', careersUrl: 'https://www.eastman.com/en/careers' },
   { name: 'National Life Group', state: 'VT', industry: 'Insurance', size: 'Large', careersUrl: 'https://www.nationallife.com/careers' },
   { name: 'Green Mountain Power', state: 'VT', industry: 'Utilities', size: 'Midsize', careersUrl: 'https://greenmountainpower.com/careers/' },
   { name: 'The University of Vermont Health Network', state: 'VT', industry: 'Healthcare', size: 'Large', careersUrl: 'https://www.uvmhealth.org/careers' },
-  { name: 'Dealer.com', state: 'VT', industry: 'Software', size: 'Midsize', careersUrl: 'https://www.dealer.com/careers/' },
   { name: 'WVU Medicine', state: 'WV', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://wvumedicine.org/careers/' },
   { name: 'United Bankshares', state: 'WV', industry: 'Financial Services', size: 'Large', careersUrl: 'https://www.ubsi-inc.com/careers' },
   { name: 'City Holding Company', state: 'WV', industry: 'Financial Services', size: 'Midsize', careersUrl: 'https://www.bankatcity.com/careers' },
@@ -288,17 +259,13 @@ export const TRACKED_STATE_EMPLOYERS: StateTarget[] = [
   { name: 'University of Wyoming', state: 'WY', industry: 'Education', size: 'Large', careersUrl: 'https://www.uwyo.edu/hr/careers/' },
   { name: 'Cheyenne Regional Medical Center', state: 'WY', industry: 'Healthcare', size: 'Midsize', careersUrl: 'https://www.cheyenneregional.org/careers/' },
   { name: 'Taco John\u2019s', state: 'WY', industry: 'Retail', size: 'Midsize', careersUrl: 'https://www.tacojohns.com/careers/' },
-  { name: 'Blue Cross Blue Shield of Wyoming', state: 'WY', industry: 'Health Insurance', size: 'Small', careersUrl: 'https://www.bcbswy.com/careers' },
   { name: 'Alaska Air Group', state: 'WA', industry: 'Transportation', size: 'Enterprise', careersUrl: 'https://careers.alaskaair.com/' },
   { name: 'Baylor Scott & White Health', state: 'TX', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://jobs.bswhealth.com/' },
   { name: 'Intermountain Health', state: 'UT', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.intermountainhealth.org/' },
   { name: 'Providence', state: 'WA', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.providence.org/' },
-  { name: 'Banner Health', state: 'AZ', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.bannerhealth.com/' },
   { name: 'Ascension', state: 'MO', industry: 'Healthcare', size: 'Enterprise', careersUrl: 'https://careers.ascension.org/' },
   { name: 'Houston Methodist', state: 'TX', industry: 'Healthcare', size: 'Large', careersUrl: 'https://careers.houstonmethodist.org/' },
   { name: 'Humana', state: 'KY', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.humana.com/' },
-  { name: 'Centene', state: 'MO', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.centene.com/' },
-  { name: 'Cigna', state: 'CT', industry: 'Health Insurance', size: 'Enterprise', careersUrl: 'https://careers.thecignagroup.com/' },
   { name: 'Slalom', state: 'WA', industry: 'Consulting', size: 'Large', careersUrl: 'https://www.slalom.com/us/en/careers' },
   { name: 'Prudential Financial', state: 'NJ', industry: 'Insurance', size: 'Enterprise', careersUrl: 'https://jobs.prudential.com/' },
   { name: 'Nordstrom', state: 'WA', industry: 'Retail', size: 'Enterprise', careersUrl: 'https://careers.nordstrom.com/' },

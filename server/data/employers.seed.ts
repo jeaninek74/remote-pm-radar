@@ -256,6 +256,8 @@ const RAW: Row[] = [
   ['Fastly', 'greenhouse', 'fastly', 'Cloud Services', 'Midsize', 'CA'],
 
   // ------------------------------------------------------------ Consulting
+  ['Cognizant', 'smartrecruiters', 'CognizantTechnologies2', 'Consulting', 'Enterprise', 'NJ'],
+  ['Globant', 'smartrecruiters', 'Globant2', 'Consulting', 'Large', 'CA'],
   ['Thoughtworks', 'greenhouse', 'thoughtworks', 'Consulting', 'Enterprise', 'IL'],
 
   // ------------------------------------------------------------ Defense
@@ -289,6 +291,7 @@ const RAW: Row[] = [
   ['Attentive', 'greenhouse', 'attentive', 'Marketing', 'Large', 'NY'],
 
   // ------------------------------------------------------------ Nonprofit
+  ['Sponsors for Educational Opportunity', 'greenhouse', 'sponsorsforeducationalopportunity', 'Nonprofit', 'Midsize', 'NY'],
   ['Mozilla', 'greenhouse', 'mozilla', 'Nonprofit', 'Large', 'CA'],
 
   // ------------------------------------------------------------ Renewable Energy
@@ -749,7 +752,6 @@ const RAW: Row[] = [
   ['Texas Health Resources', 'smartrecruiters', 'texashealthresources', 'Healthcare', 'Large', 'TX'],
   ['Presbyterian Healthcare Services', 'smartrecruiters', 'presbyterianhealthcareservices', 'Healthcare', 'Large', 'NM'],
   ['MaineHealth', 'smartrecruiters', 'mainehealth', 'Healthcare', 'Large', 'ME'],
-  ['Lifespan', 'ashby', 'lifespan', 'Healthcare', 'Large', 'RI'],
 
 
   // --------------- long tail: startups found through company directories
@@ -944,7 +946,6 @@ const WATCH_RAW: Omit<WatchlistEmployer, 'roleFamilies'>[] = [
   { name: 'Ariel Investments', industry: 'Financial Services', size: 'Midsize', hq: 'IL', careersUrl: 'https://www.arielinvestments.com/', note: 'Asset manager; no careers page on the site — postings are announced from the home page and LinkedIn page only.' },
   { name: 'Urban One', industry: 'Media', size: 'Large', hq: 'MD', careersUrl: 'https://urban1.com/careers/', note: 'Media employer; uses an internal careers portal.' },
   { name: 'Management Leadership for Tomorrow', industry: 'Nonprofit', size: 'Midsize', hq: 'NY', careersUrl: 'https://mlt.org/careers/', note: 'Nonprofit; postings on own site and Idealist.' },
-  { name: 'Sponsors for Educational Opportunity', industry: 'Nonprofit', size: 'Midsize', hq: 'NY', careersUrl: 'https://www.seo-usa.org/careers/', note: 'Nonprofit; postings on own site.' },
   { name: 'UNCF', industry: 'Nonprofit', size: 'Large', hq: 'DC', careersUrl: 'https://uncf.org/careers', note: 'Nonprofit; Workday-based portal that blocks automated feeds.' },
   { name: 'World Wide Technology', industry: 'IT Consulting', size: 'Enterprise', hq: 'MO', careersUrl: 'https://www.wwt.com/corporate/who-we-are/careers', note: 'Largest Black-owned business (BE 100s #1); postings sit in an ADP portal the reader cannot render.' },
   { name: 'Vista Equity Partners', industry: 'Financial Services', size: 'Large', hq: 'TX', careersUrl: 'https://www.vistaequitypartners.com/careers/', note: 'Private-equity firm; postings on own careers page.' },
