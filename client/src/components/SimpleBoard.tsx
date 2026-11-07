@@ -100,6 +100,14 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   }, [active, category, q, urgentOnly]);
 
   const visible = tab === 'nopay' ? shown.slice(0, 80) : shown;
+
+  /**
+   * The board must never render as an empty page. When nothing has cleared every rule
+   * — which is normal on a new deployment, or in a quiet week — show what the radar has
+   * actually seen, newest first, so the page always reflects real postings rather than
+   * a blank panel.
+   */
+  const fallback = useMemo(() => jobs.filter((job) => job.bucket === 'queue').slice(0, 25), [jobs]);
   const current = TABS.find((item) => item.key === tab)!;
 
   const tabCount = (key: BoardTab): number =>
@@ -194,17 +202,24 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         </p>
       ) : null}
 
-      {shown.length === 0 ? (
+      {shown.length === 0 && fallback.length > 0 ? (
+        <p className="simple-balance" style={{ margin: '0 0 10px' }}>
+          Nothing has cleared every rule for {current.name} yet, so this is what the radar currently sees —
+          the {fallback.length} most recently evaluated postings, newest first.
+        </p>
+      ) : null}
+
+      {shown.length === 0 && fallback.length === 0 ? (
         <div className="simple-empty">
-          <p>Nothing in {current.name} matches this view right now.</p>
+          <p>The first sweep is still running.</p>
           <p className="muted">
-            A role enters a salary tab only when it is fully remote, open to California, posted inside the window,
-            linked to the employer's own posting, and publishes a base salary inside {current.range}.
+            The radar is reading every employer board now; postings appear as they are verified. If this persists,
+            press “Refresh jobs now”.
           </p>
         </div>
       ) : (
         <ul className="joblist">
-          {visible.map((job) => {
+          {(shown.length === 0 ? fallback : visible).map((job) => {
             const ca = caBadge(job);
             return (
               <li key={job.id} className="jobrow">
