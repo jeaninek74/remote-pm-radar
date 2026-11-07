@@ -530,6 +530,7 @@ export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
 }
 
 const WORKDAY_PACE_MS = Number(process.env.WORKDAY_PACE_MS ?? 400);
+const WORKDAY_MAX_RETRY_WAIT_MS = 20_000;
 
 /**
  * One tenant is asked for hundreds of pages per sweep (249 phrases, 20 postings a page), and in
@@ -547,8 +548,12 @@ async function workdaySearch(tenant: string, wd: string, site: string, text: str
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 429 && attempt < 3) {
-      const retryAfter = Number(res.headers.get('retry-after') ?? 0) * 1000;
-      await new Promise((r) => setTimeout(r, retryAfter || 3_000 * 2 ** attempt));
+      // Retry-After is seconds or an HTTP date; either way the wait is capped so one tenant
+      // cannot hold a worker past the employer budget — a longer limit is left for the next slot.
+      const header = res.headers.get('retry-after') ?? '';
+      const seconds = /^\d+$/.test(header) ? Number(header) : Math.max(0, (Date.parse(header) - Date.now()) / 1000);
+      const wait = Math.min((seconds || 3 * 2 ** attempt) * 1000, WORKDAY_MAX_RETRY_WAIT_MS);
+      await new Promise((r) => setTimeout(r, wait));
       continue;
     }
     return workdaySearchResponse(res);
