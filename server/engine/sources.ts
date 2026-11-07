@@ -529,14 +529,33 @@ export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
   return [...generic, ...rest.slice(start), ...rest.slice(0, start)];
 }
 
+const WORKDAY_PACE_MS = Number(process.env.WORKDAY_PACE_MS ?? 400);
+
+/**
+ * One tenant is asked for hundreds of pages per sweep (249 phrases, 20 postings a page), and in
+ * run 31 forty-one of fifty-nine tenants answered 429. Requests to a tenant are paced, and a 429
+ * waits for Retry-After (or a short back-off) and tries again before the board counts as failed.
+ */
 async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
-  const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
-    method: 'POST',
-    redirect: 'manual',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
-    body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: text }),
-    signal: AbortSignal.timeout(15_000),
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    await new Promise((r) => setTimeout(r, WORKDAY_PACE_MS));
+    const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
+      body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: text }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status === 429 && attempt < 3) {
+      const retryAfter = Number(res.headers.get('retry-after') ?? 0) * 1000;
+      await new Promise((r) => setTimeout(r, retryAfter || 3_000 * 2 ** attempt));
+      continue;
+    }
+    return workdaySearchResponse(res);
+  }
+}
+
+async function workdaySearchResponse(res: Response) {
   if (res.status >= 300 && res.status < 400) {
     if (WORKDAY_MAINTENANCE.test(res.headers.get('location') ?? '')) throw new WorkdayMaintenance();
     throw new Error(`workday search redirected (${res.status})`);
