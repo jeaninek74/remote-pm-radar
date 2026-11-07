@@ -839,8 +839,10 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
   // shift a posting a day younger than it is.
   const listedAt = new Date();
   let truncated = false;
-  const collectPostings = (postings: WorkdayPosting[]) => {
+  let fullReadIncomplete = false;
+  const collectPostings = (postings: WorkdayPosting[], seenExternalPaths?: Set<string>) => {
     for (const posting of postings) {
+      if (posting.externalPath) seenExternalPaths?.add(posting.externalPath);
       if (!posting.externalPath || !isRoleTitle(posting.title ?? '', undefined, employer)) continue;
       if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
     }
@@ -855,18 +857,26 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
     } else {
       const firstPage = await workdaySearch(tenant, wd, site, '', 0);
       const firstPostings = firstPage.jobPostings ?? [];
-      collectPostings(firstPostings);
       if (typeof firstPage.total === 'number' && firstPage.total <= WORKDAY_FULL_READ_MAX) {
+        const seenExternalPaths = new Set<string>();
+        collectPostings(firstPostings, seenExternalPaths);
         let offset = firstPostings.length;
         while (firstPostings.length >= 20 && offset < firstPage.total) {
           if (Date.now() > deadline) { truncated = true; break; }
           const page = await workdaySearch(tenant, wd, site, '', offset);
           const postings = page.jobPostings ?? [];
-          collectPostings(postings);
+          collectPostings(postings, seenExternalPaths);
           if (postings.length < 20) break;
           offset += postings.length;
         }
+        // Offset pages can shift when postings close, so only a complete unique-ID count proves absence.
+        if (seenExternalPaths.size < firstPage.total) {
+          truncated = true;
+          fullReadIncomplete = true;
+          console.warn(`[workday] ${tenant}/${site}: full read saw ${seenExternalPaths.size} of ${firstPage.total} unique postings`);
+        }
       } else {
+        collectPostings(firstPostings);
         terms: for (const text of rotatedSearchTerms(employer.slug)) {
           for (let offset = 0; ; offset += 20) {
             if (Date.now() > deadline) { truncated = true; break terms; }
@@ -881,7 +891,7 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
   } catch (err) {
     return { jobs: [], ok: false, error: (err as Error).message, retryable: isRetryableBoardError(err), totalListed: collected.size };
   }
-  if (truncated) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
+  if (truncated && !fullReadIncomplete) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
 
   const jobs: RawJob[] = [];
   for (const [path, posting] of collected) {
