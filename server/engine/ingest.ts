@@ -430,8 +430,10 @@ export async function discoverEmployers(
     const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
       `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
         WHERE status='pending' AND tries < 3
+        -- Ordered by measured hit rate (7 Nov 2026: Small 46%, Midsize 36%, Startup 26%, Enterprise
+        -- 2.6%, Large 3%): most large institutions run Workday/iCIMS, which name probing cannot find.
         ORDER BY tries ASC,
-                 CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
+                 CASE company_size WHEN 'Small' THEN 0 WHEN 'Midsize' THEN 1 WHEN 'Startup' THEN 2 WHEN 'Large' THEN 3 WHEN 'Enterprise' THEN 4 ELSE 5 END,
                  checked_at ASC NULLS FIRST, id ASC
         LIMIT $1`,
       [limit],
