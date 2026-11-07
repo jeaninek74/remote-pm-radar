@@ -13,14 +13,55 @@ import { fetchJson } from '../server/engine/http';
  *                                                       organisations with $25M+ annual income
  */
 
-interface Candidate { name: string; industry: string; state: string }
+interface Candidate { name: string; industry: string; state: string; size: string }
+
+/** Master-prompt §8 size bands from headcount. */
+function sizeFromHeadcount(n: number): string {
+  if (n < 50) return 'Startup';
+  if (n < 250) return 'Small';
+  if (n < 1000) return 'Midsize';
+  if (n < 5000) return 'Large';
+  return 'Enterprise';
+}
+
+/** YC industry / sub-industry → the industry vocabulary of master prompt §7. */
+function ycIndustry(industry: string | undefined, sub: string | undefined): string {
+  const text = `${industry ?? ''} ${sub ?? ''}`;
+  const rules: [RegExp, string][] = [
+    [/energy|climate|carbon/i, 'Energy'], [/insurance/i, 'Insurance'], [/banking|lending|payments|credit/i, 'Banking'],
+    [/security/i, 'Cybersecurity'], [/infrastructure|devops|cloud/i, 'Cloud Services'], [/marketing|advertising/i, 'Marketing'],
+    [/human resources|recruiting|hr/i, 'Human Resources Services'], [/supply chain|logistics/i, 'Logistics'],
+    [/construction/i, 'Construction'], [/real estate|housing|proptech/i, 'Real Estate'], [/education/i, 'Education'],
+    [/biotech|drug|therapeutic|diagnostic/i, 'Biotechnology'], [/healthcare|medical|health/i, 'Healthcare'],
+    [/retail/i, 'Retail'], [/e-?commerce/i, 'E-Commerce'], [/defense|aerospace|drones/i, 'Defense'], [/government/i, 'Government'],
+    [/travel|hospitality|food/i, 'Hospitality'], [/media|entertainment|gaming|content/i, 'Entertainment'], [/legal/i, 'Professional Services'],
+    [/analytics|ai|machine learning|data/i, 'AI'], [/manufactur|robotics|hardware|industrial/i, 'Manufacturing'],
+    [/consumer/i, 'Consumer Products'], [/fintech|finance/i, 'Financial Services'], [/b2b|saas|software|productivity|engineering/i, 'Software'],
+  ];
+  for (const [re, label] of rules) if (re.test(text)) return label;
+  return industry || 'Software';
+}
+
+/** IRS NTEE major group → the industry vocabulary of master prompt §7. */
+function nteeIndustry(code: string): string {
+  const major = (code ?? '').charAt(0).toUpperCase();
+  const minor = (code ?? '').slice(0, 3).toUpperCase();
+  if (/^B[45]/.test(minor)) return 'Universities';
+  if (/^E2/.test(minor)) return 'Hospitals';
+  const map: Record<string, string> = {
+    A: 'Entertainment', B: 'Education', E: 'Healthcare', F: 'Medical Services', G: 'Medical Services', H: 'Biotechnology',
+    I: 'Professional Services', J: 'Workforce Management', L: 'Real Estate', N: 'Events', O: 'Education', T: 'Foundations',
+    U: 'Engineering', W: 'Government', Y: 'Insurance', C: 'Environmental Services', D: 'Environmental Services',
+  };
+  return map[major] ?? 'Nonprofits';
+}
 
 const US_STATE = /\b([A-Z]{2}),?\s+(?:USA|United States)\b/;
 
 async function startups(): Promise<Candidate[]> {
   const companies = await fetchJson<{
     name?: string; status?: string; team_size?: number | null; website?: string;
-    regions?: string[]; all_locations?: string; industry?: string;
+    regions?: string[]; all_locations?: string; industry?: string; subindustry?: string;
   }[]>('https://yc-oss.github.io/api/companies/all.json', 60_000);
   const out: Candidate[] = [];
   for (const c of companies) {
@@ -28,7 +69,7 @@ async function startups(): Promise<Candidate[]> {
     const size = c.team_size ?? 0;
     if (size < 8 || size > 600) continue;
     if (!(c.regions ?? []).includes('United States of America')) continue;
-    out.push({ name: c.name, industry: c.industry || 'Software', state: US_STATE.exec(c.all_locations ?? '')?.[1] ?? 'CA' });
+    out.push({ name: c.name, industry: ycIndustry(c.industry, c.subindustry), state: US_STATE.exec(c.all_locations ?? '')?.[1] ?? 'CA', size: sizeFromHeadcount(size) });
   }
   return out;
 }
@@ -73,7 +114,7 @@ async function nonprofits(): Promise<Candidate[]> {
       if (income < MIN_NONPROFIT_INCOME) continue;
       if (/^X/.test(row.NTEE_CD ?? '')) continue; // religious congregations
       if (!/^[A-Z]{2}$/.test(row.STATE ?? '')) continue;
-      out.push({ name: titleCase(row.NAME), industry: 'Nonprofit', state: row.STATE });
+      out.push({ name: titleCase(row.NAME), industry: nteeIndustry(row.NTEE_CD), state: row.STATE, size: income < 50_000_000 ? 'Midsize' : income < 500_000_000 ? 'Large' : 'Enterprise' });
     }
     console.log(`eo${region}.csv: ${out.length} candidates so far`);
   }
@@ -87,17 +128,22 @@ async function enqueue(candidates: Candidate[]): Promise<number> {
   for (let i = 0; i < rows.length; i += 500) {
     const batch = rows.slice(i, i + 500);
     const res = await q(
-      `INSERT INTO discovery_queue (name, industry, hq_state)
-       SELECT * FROM unnest($1::text[], $2::text[], $3::text[])
-       ON CONFLICT (name) DO NOTHING RETURNING id`,
-      [batch.map((c) => c.name), batch.map((c) => c.industry), batch.map((c) => c.state)],
+      `INSERT INTO discovery_queue (name, industry, hq_state, company_size)
+       SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = EXCLUDED.company_size
+       RETURNING (xmax = 0) AS inserted`,
+      [batch.map((c) => c.name), batch.map((c) => c.industry), batch.map((c) => c.state), batch.map((c) => c.size)],
     );
-    inserted += res.length;
+    inserted += (res as { inserted: boolean }[]).filter((r) => r.inserted).length;
   }
+  // Employers already found from this queue inherit the corrected industry and size.
+  await q(`UPDATE employers e SET industry = d.industry, company_size = coalesce(d.company_size, e.company_size)
+             FROM discovery_queue d WHERE d.name = e.name AND e.discovered_via = 'Portfolio discovery'`);
   return inserted;
 }
 
 async function main() {
+  await q(`ALTER TABLE discovery_queue ADD COLUMN IF NOT EXISTS company_size TEXT`);
   const yc = await startups();
   console.log(`YC directory: ${yc.length} active US startups with 8–600 staff`);
   let queued = await enqueue(yc);
