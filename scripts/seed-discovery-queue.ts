@@ -18,7 +18,7 @@ import { fetchJson } from '../server/engine/http';
  * refresh time budget, so the order of arrival here does not matter.
  */
 
-interface Candidate { name: string; industry: string; state: string; size: string }
+interface Candidate { name: string; industry: string; state: string; size: string | null }
 
 /** Master-prompt §8 size bands from headcount. */
 function sizeFromHeadcount(n: number): string {
@@ -155,7 +155,7 @@ async function industries(): Promise<Candidate[]> {
     let count = 0;
     for (const category of categories) {
       let cont: string | undefined;
-      do {
+      try { do {
         const url = `https://en.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:${category}&cmlimit=500&cmtype=page&format=json${cont ? `&cmcontinue=${encodeURIComponent(cont)}` : ''}`;
         const data = await wikipedia(url);
         for (const member of data.query?.categorymembers ?? []) {
@@ -163,11 +163,14 @@ async function industries(): Promise<Candidate[]> {
           if (/^(?:List of|Template:|Category:|Lists of)/.test(title)) continue;
           const name = title.replace(/\s*\([^)]*\)\s*$/, '').trim();
           if (name.length < 3) continue;
-          out.push({ name, industry, state: 'US', size: 'Large' });
+          out.push({ name, industry, state: 'US', size: null }); // size unknown; never overrides a headcount-derived one
           count += 1;
         }
         cont = data.continue?.cmcontinue;
-      } while (cont);
+      } while (cont); } catch (err) {
+        // One category failing must not discard the ones already read; it is logged and skipped.
+        console.error(`${industry} / ${category}: ${(err as Error).message}`);
+      }
     }
     console.log(`${industry}: ${count} companies`);
   }
@@ -230,7 +233,7 @@ async function enqueue(candidates: Candidate[]): Promise<number> {
     const res = await q(
       `INSERT INTO discovery_queue (name, industry, hq_state, company_size)
        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
-       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = EXCLUDED.company_size
+       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = COALESCE(EXCLUDED.company_size, discovery_queue.company_size)
        RETURNING (xmax = 0) AS inserted`,
       [batch.map((c) => c.name), batch.map((c) => c.industry), batch.map((c) => c.state), batch.map((c) => c.size)],
     );
