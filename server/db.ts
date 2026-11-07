@@ -177,14 +177,19 @@ export async function acquireRefreshLock(): Promise<RefreshLock | null> {
     alive = false;
     if (!released) console.error(`[db] refresh lock connection ${reason}; the lock is no longer held`);
   };
-  client.on('error', (err) => lost(`errored (${err.message})`));
-  client.on('end', () => lost('closed'));
+  const onError = (err: Error) => lost(`errored (${err.message})`);
+  const onEnd = () => lost('closed');
+  client.on('error', onError);
+  client.on('end', onEnd);
 
   return {
     get held() { return alive; },
     async release() {
       if (released) return;
       released = true;
+      // The client goes back to the pool; listeners must not follow it into the next run.
+      client.off('error', onError);
+      client.off('end', onEnd);
       try {
         if (alive) await client.query('ROLLBACK');
         client.release(!alive);
