@@ -32,6 +32,7 @@ export function startRefresh(): Promise<{ runId: number; alreadyRunning: boolean
 export interface RunStatus {
   id: number;
   status: string;
+  finishedAt: string | null;
   progress: string | null;
   newJobs: number;
   addedTab1: number;
@@ -42,7 +43,7 @@ export interface RunStatus {
 export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshing: boolean }> {
   const raw = await api<{
     run: {
-      id: number; status: string; progress: string | null; new_jobs: number;
+      id: number; status: string; finished_at: string | null; progress: string | null; new_jobs: number;
       added_tab1: number; added_tab2: number; queued: number;
     } | null;
     refreshing: boolean;
@@ -53,6 +54,7 @@ export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshi
       ? {
         id: raw.run.id,
         status: raw.run.status,
+        finishedAt: raw.run.finished_at,
         progress: raw.run.progress,
         newJobs: raw.run.new_jobs,
         addedTab1: raw.run.added_tab1,

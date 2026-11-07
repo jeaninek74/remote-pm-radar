@@ -42,6 +42,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
   const lastLoadAtRef = useRef(0);
+  const lastRunKeyRef = useRef<string | null>(null);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -51,6 +52,10 @@ export default function App() {
   const loadAll = useCallback(async () => {
     const [bootstrap, jobPayload] = await Promise.all([loadBootstrap(), loadJobs()]);
     lastLoadAtRef.current = Date.now();
+    const latestRun = bootstrap.runs[0];
+    lastRunKeyRef.current = latestRun
+      ? `${latestRun.id}:${latestRun.status}:${latestRun.finishedAt ?? ''}`
+      : null;
     setBoot(bootstrap);
     setJobs(jobPayload.jobs);
     // Land on a tab that actually has roles instead of an empty first impression.
@@ -119,7 +124,14 @@ export default function App() {
       if (document.visibilityState !== 'visible') return;
       try {
         const status = await refreshStatus();
-        if (!mounted || (!status.refreshing && status.run?.status !== 'running')) return;
+        if (!mounted) return;
+        if (!status.refreshing && status.run && status.run.status !== 'running') {
+          const runKey = `${status.run.id}:${status.run.status}:${status.run.finishedAt ?? ''}`;
+          if (runKey !== lastRunKeyRef.current) {
+            void loadAll().catch(() => {});
+          }
+        }
+        if (!status.refreshing && status.run?.status !== 'running') return;
         setRefreshing(true);
         setProgress(status.run?.progress ?? 'Refreshing…');
         if (pollRef.current === null) {
