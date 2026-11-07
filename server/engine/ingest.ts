@@ -1,4 +1,4 @@
-import { migrate, one, q } from '../db';
+import { acquireRefreshLock, migrate, one, q, type ReleaseLock } from '../db';
 import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
@@ -408,14 +408,19 @@ async function currentRunningRun(): Promise<number | null> {
   return existing?.id ?? null;
 }
 
-/** Blocking refresh used by the CLI and the four-hourly schedule. */
+/**
+ * Blocking refresh used by the CLI and the schedule. Only one sweep may run per database,
+ * whichever process asks: a second caller gets the id of the run already in flight.
+ */
 export async function runRefresh(trigger: string): Promise<number> {
   await migrate();
-  if (running) {
+  const release = await acquireRefreshLock();
+  if (!release) {
     const existing = await currentRunningRun();
     if (existing) return existing;
+    throw new Error('A refresh is already running in another process');
   }
-  return executeRun(await createRunRow(trigger));
+  return executeRun(await createRunRow(trigger), release);
 }
 
 /**
@@ -424,12 +429,13 @@ export async function runRefresh(trigger: string): Promise<number> {
  */
 export async function startRefresh(trigger: string): Promise<{ runId: number; alreadyRunning: boolean }> {
   await migrate();
-  if (running) {
+  const release = await acquireRefreshLock();
+  if (!release) {
     const existing = await currentRunningRun();
-    if (existing) return { runId: existing, alreadyRunning: true };
+    return { runId: existing ?? 0, alreadyRunning: true };
   }
   const runId = await createRunRow(trigger);
-  void executeRun(runId).catch((err) => console.error('[refresh] run failed', err));
+  void executeRun(runId, release).catch((err) => console.error('[refresh] run failed', err));
   return { runId, alreadyRunning: false };
 }
 
@@ -448,7 +454,7 @@ function counterValues(c: RunCounters): unknown[] {
   ];
 }
 
-async function executeRun(runId: number): Promise<number> {
+async function executeRun(runId: number, release: ReleaseLock): Promise<number> {
   running = true;
   const counters = emptyCounters();
 
@@ -694,6 +700,7 @@ async function executeRun(runId: number): Promise<number> {
     throw err;
   } finally {
     running = false;
+    await release();
   }
 }
 

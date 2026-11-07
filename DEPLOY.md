@@ -32,6 +32,16 @@ Two consequences of the free plans, stated plainly:
 - Neon suspends its compute when idle and resumes on the next query; the first request after a quiet
   spell is a little slower.
 
+### One deployment per database
+
+Every process that boots with `ENABLE_CRON=1` runs its own scheduler. Two copies of the app
+pointed at the same `DATABASE_URL` (an old Railway or Manus deployment, a second Render service,
+a laptop running `npm run dev` against production) start two sweeps at every `:00`/`:30`, and the
+combined connection storm is what shows up as `Authentication timed out`. The server now takes a
+Postgres advisory lock for the length of a run, so a second *current* process steps aside — but
+an older build does not know about the lock. If `/api/runs` shows several runs with the same
+`started_at`, find the other deployment and stop it or set `ENABLE_CRON=0` on it.
+
 ### Deploys are triggered explicitly
 
 Because the service was created from a public Git URL rather than through Render's GitHub app, Render
