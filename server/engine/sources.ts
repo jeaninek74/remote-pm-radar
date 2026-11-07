@@ -461,6 +461,35 @@ export class WorkdayMaintenance extends Error {
 
 const WORKDAY_MAINTENANCE = /maintenance/i;
 
+/**
+ * Workday gives a real date in the detail payload (`startDate`), but the listing only says
+ * "Posted Today" / "Posted 3 Days Ago" / "Posted 30+ Days Ago". The listing text used to be
+ * written straight into a DATE column and failed the whole board.
+ */
+export function workdayPostedDate(
+  startDate: string | null | undefined,
+  postedOn: string | null | undefined,
+  now = new Date(),
+): { date: string | null; confidence: 'confirmed' | 'inferred' | 'unknown' } {
+  const exact = isoDate(startDate);
+  if (exact) return { date: exact, confidence: 'confirmed' };
+  const text = (postedOn ?? '').trim();
+  let daysAgo: number | null = null;
+  if (/\btoday\b/i.test(text)) daysAgo = 0;
+  else if (/\byesterday\b/i.test(text)) daysAgo = 1;
+  else {
+    const m = /(\d+)(\+?)\s*days?\s*ago/i.exec(text);
+    if (m) daysAgo = Number(m[1]) + (m[2] ? 1 : 0);
+  }
+  if (daysAgo === null) {
+    const parsed = isoDate(text);
+    return parsed ? { date: parsed, confidence: 'inferred' } : { date: null, confidence: 'unknown' };
+  }
+  const d = new Date(now);
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return { date: d.toISOString().slice(0, 10), confidence: 'inferred' };
+}
+
 async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
   const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
     method: 'POST',
@@ -541,7 +570,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';
     const locations = [detail?.location, ...(detail?.additionalLocations ?? [])].filter(Boolean) as string[];
-    const postedRaw = detail?.startDate ?? posting.postedOn ?? null;
+    const posted = workdayPostedDate(detail?.startDate, posting.postedOn);
     jobs.push({
       source: 'Workday',
       ats: 'workday' as unknown as Ats,
@@ -556,8 +585,8 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
       descriptionText: text,
       applyUrl: `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`,
       linkType: 'employer',
-      postedAt: postedRaw,
-      postedConfidence: postedRaw ? 'confirmed' : 'unknown',
+      postedAt: posted.date,
+      postedConfidence: posted.confidence,
       employmentType: detail?.timeType ?? null,
       salary: parseSalaryFromText(text),
       salarySource: 'description',
