@@ -46,8 +46,9 @@ export const REFRESH = {
    * nothing: the next tick picks up exactly where this one stopped.
    */
   // Every active board is searched every slot: Jeanine wants a posting captured on the first
-  // sweep after it appears, so the sweep size is the whole registry, not a rotating slice.
-  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 1000),
+  // sweep after it appears and no numeric cap on searches. 0 means no limit; a positive value
+  // restores a rotating slice for a constrained host.
+  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 0),
   /**
    * Pages of 100 read from boards that paginate (SmartRecruiters). Each page is a different
    * slice of the board, so a shallow read silently drops most of an employer's openings.

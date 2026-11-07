@@ -90,7 +90,7 @@ DATABASE_URL=... npx tsx scripts/migrate.ts                            # create 
 | `PORT` | `3000` | HTTP port. |
 | `ENABLE_CRON` | `1` | Set `0` to disable scheduled refreshes. |
 | `REFRESH_CRON` | `*/30 * * * *` | Cron expression (UTC). |
-| `EMPLOYERS_PER_RUN` | `1000` | Employer boards searched per cycle — above the registry size, so every active board is searched every slot. |
+| `EMPLOYERS_PER_RUN` | `0` | `0` = no cap: every active board is searched every slot. A positive number restores a rotating slice. |
 | `JOB_WINDOW_DAYS` | `14` | Posting window; `7` restores the master prompt's original rule. |
 | `FEED_PAGES` | `12` | Pages of 100 read from boards that paginate (SmartRecruiters). |
 | `EMPLOYER_BUDGET_MS` | `120000` | Wall-clock budget for paging one employer's board (Workday). |

@@ -12,6 +12,25 @@ import { BOTH, type RoleFamily } from '../types';
 const LEADS = String.raw`(?:project|program|programme|portfolio|pmo|delivery|implementation|transformation|integration|deployment|onboarding|migration|pmo operations)`;
 const RANKS = String.raw`(?:manager|management|director|lead|leader|head|officer|principal|consultant|specialist|coordinator|administrator|supervisor)`;
 
+const SEARCH_LEADS = ['project', 'program', 'programme', 'portfolio', 'pmo', 'delivery', 'implementation', 'transformation', 'integration', 'deployment', 'onboarding', 'migration'];
+const SEARCH_RANKS = ['manager', 'management', 'director', 'lead', 'coordinator', 'consultant', 'specialist', 'officer', 'principal'];
+const SEARCH_EXTRA = [
+  'technical program manager', 'technical project manager', 'senior project manager', 'senior program manager',
+  'it project manager', 'it program manager', 'program management office', 'project management office',
+  'chief of staff', 'business operations manager', 'change manager', 'change management', 'operational excellence',
+  'strategic initiatives', 'continuous improvement', 'scrum master', 'agile delivery', 'release manager',
+  'engagement manager', 'customer implementation', 'clinical program manager', 'construction project manager',
+  'capital projects', 'infrastructure program manager', 'epic project manager', 'erp project manager',
+  'workday project manager', 'salesforce project manager', 'digital transformation', 'business transformation',
+];
+
+function buildSearchTerms(): string[] {
+  const terms = new Set<string>();
+  for (const lead of SEARCH_LEADS) for (const rank of SEARCH_RANKS) terms.add(`${lead} ${rank}`);
+  for (const extra of SEARCH_EXTRA) terms.add(extra);
+  return [...terms];
+}
+
 export const PROJECT_MANAGEMENT: RoleFamily = {
   id: 'project-management',
   label: 'Project & Program Management',
@@ -25,23 +44,9 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
    * These mirror the title vocabulary in the brief so a search covers the same ground
    * the title matcher does, instead of only the two most obvious phrasings.
    */
-  searchTerms: [
-    'project manager',
-    'program manager',
-    'project management',
-    'program management',
-    'technical program manager',
-    'technical project manager',
-    'implementation manager',
-    'delivery manager',
-    'pmo',
-    'project coordinator',
-    'change manager',
-    'transformation manager',
-    'portfolio manager',
-    'chief of staff',
-    'business operations manager',
-  ],
+  // Every lead/rank pairing the title patterns recognise is also a search phrase, so a board
+  // is asked for each variant rather than a fixed handful (no numeric cap on searches).
+  searchTerms: buildSearchTerms(),
 
   titlePatterns: [
     // "Project Manager", "Senior Program Manager", "Technical Project Management"

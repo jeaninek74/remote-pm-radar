@@ -549,13 +549,12 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   const listedAt = new Date();
   let truncated = false;
   try {
-    // Workday returns 20 postings per page and each page is a different slice of the board,
-    // so paging stops only when the board stops returning results. Fifteen search phrases
-    // times up to twenty pages is a lot of requests for one employer, so paging also stops
-    // at the per-employer time budget: what was collected is kept and the rest is picked up
-    // by a later run (the employer is stamped last_searched_at and rotates to the back).
+    // Workday returns at most 20 postings per request (a larger limit returns nothing, verified
+    // against highmarkhealth.wd1), so a board is read 20 at a time until it stops returning
+    // results. Jeanine's rule is no numeric cap on searches: the only stop besides the end of
+    // the results is the per-employer time budget, and what was collected by then is kept.
     terms: for (const text of searchTerms()) {
-      for (let offset = 0; offset < 400; offset += 20) {
+      for (let offset = 0; ; offset += 20) {
         if (Date.now() > deadline) { truncated = true; break terms; }
         const page = await workdaySearch(tenant, wd, site, text, offset);
         const postings = page.jobPostings ?? [];
@@ -566,7 +565,6 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
           if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
         }
         if (postings.length < 20) break;
-        if (collected.size >= 200) break;
       }
     }
   } catch (err) {
@@ -575,7 +573,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   if (truncated) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
 
   const jobs: RawJob[] = [];
-  for (const [path, posting] of [...collected].slice(0, 120)) {
+  for (const [path, posting] of collected) {
     if (Date.now() > deadline + REFRESH.employerBudgetMs) break;
     const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
     const html = detail?.jobDescription ?? null;

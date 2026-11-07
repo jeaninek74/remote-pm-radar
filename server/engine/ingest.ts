@@ -504,8 +504,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         WHERE active = TRUE
           AND (ats <> 'manual' OR careers_url ILIKE '%myworkdayjobs%')
         ORDER BY last_searched_at ASC NULLS FIRST
-        LIMIT $1`,
-      [REFRESH.employersPerRun],
+        ${REFRESH.employersPerRun > 0 ? 'LIMIT $1' : ''}`,
+      REFRESH.employersPerRun > 0 ? [REFRESH.employersPerRun] : [],
     );
 
     const byCompany = new Map<string, EmployerRow>();
