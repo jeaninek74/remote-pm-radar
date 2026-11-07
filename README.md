@@ -12,7 +12,7 @@ earn a place, and never invents a salary.
 
 ## What it does every cycle
 
-1. **Searches the employer database** — every employer with a public job feed, in rotation, 150 per cycle.
+1. **Searches the employer database** — every employer with a public job feed, in rotation, 200 per cycle.
 2. **Reads discovery feeds** — Himalayas, Remotive and Remote OK — and uses them to *find new employers*,
    then probes Greenhouse / Ashby / Lever for that company's own board.
 3. **Applies the placement rules** (below) to every posting whose title is a project/program role.
@@ -21,7 +21,7 @@ earn a place, and never invents a salary.
 6. **Archives** anything past the 14-day window, and closes anything no longer listed on the employer's board.
 7. **Writes a run record** — sources checked, sources failed, postings read, new leads, duplicates, archives.
 
-Runs on boot, every four hours (`0 */4 * * *` UTC), and whenever **Refresh jobs now** is pressed.
+Runs on boot, every thirty minutes (`*/30 * * * *` UTC, via the in-container cron and the GitHub Actions workflow that wakes the free Render instance), and whenever **Refresh jobs now** is pressed. Each run sweeps 200 employers, oldest-searched first, so consecutive runs walk the whole registry.
 
 ## Placement rules
 

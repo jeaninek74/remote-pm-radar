@@ -128,12 +128,16 @@ DATABASE_URL=postgres://... node dist/server.js
 | --- | --- | --- |
 | `DATABASE_URL` | — | Required. Postgres 13+. SSL is used automatically when the URL contains `sslmode=require`. |
 | `PORT` | `3000` | HTTP port. |
-| `ENABLE_CRON` | `1` | `0` disables the four-hourly refresh (manual only). |
-| `REFRESH_CRON` | `0 */4 * * *` | Cron expression in UTC. |
-| `EMPLOYERS_PER_RUN` | `150` | Employer boards searched per cycle (rotation is least-recently-searched first). |
-| `FEED_PAGES` | `4` | Pages of 100 read from the Himalayas feed. |
+| `ENABLE_CRON` | `1` | `0` disables the scheduled refresh (manual only). |
+| `REFRESH_CRON` | `*/30 * * * *` | Cron expression in UTC. |
+| `EMPLOYERS_PER_RUN` | `200` | Employer boards searched per cycle (rotation is least-recently-searched first). Sized to finish inside a thirty-minute slot; `600` on Render overruns it. |
+| `EMPLOYER_BUDGET_MS` | `120000` | Wall-clock budget for paging one employer's board (Workday is searched with 15 phrases × 20 pages). |
+| `PG_POOL_MAX` | `12` | Postgres connections. More is not better on Neon: each new connection is a TLS + SCRAM handshake through the proxy. |
+| `PG_IDLE_TIMEOUT_MS` | `600000` | Keep idle connections for ten minutes so a sweep does not reconnect after every board read. |
+| `PG_CONNECT_TIMEOUT_MS` | `60000` | Allowed time for a new connection; covers Neon resuming a suspended compute. |
+| `FEED_PAGES` | `12` | Pages of 100 read from boards that paginate (SmartRecruiters). |
 | `LINK_CHECKS_PER_RUN` | `40` | New roles whose application link is re-verified per cycle. |
-| `HTTP_CONCURRENCY` | `7` | Parallel requests per board. |
+| `FETCH_CONCURRENCY` | `7` | Employer boards read in parallel. |
 
 ## First-run checklist
 

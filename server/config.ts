@@ -47,15 +47,22 @@ export const REFRESH = {
    */
   employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 200),
   /**
-   * Feed pages fetched per cycle. Boards list different postings on each page, so a
-   * shallow read silently drops most of an employer's openings.
+   * Pages of 100 read from boards that paginate (SmartRecruiters). Each page is a different
+   * slice of the board, so a shallow read silently drops most of an employer's openings.
    */
   feedPages: Number(process.env.FEED_PAGES ?? 12),
   /** Parallel network requests. */
   concurrency: Number(process.env.FETCH_CONCURRENCY ?? 7),
   /** Per-request timeout. */
   timeoutMs: Number(process.env.FETCH_TIMEOUT_MS ?? 20_000),
-  /** Cron cadence: every 4 hours, on the hour (UTC). */
+  /**
+   * Wall-clock budget for paging one employer's board. Workday is searched with fifteen
+   * phrases of up to twenty pages each; without a ceiling a single large tenant can hold a
+   * worker for most of the thirty-minute slot. Paging stops at the budget and keeps what it
+   * has; the employer rotates to the back and the next run continues.
+   */
+  employerBudgetMs: Number(process.env.EMPLOYER_BUDGET_MS ?? 120_000),
+  /** Cron cadence (UTC). Every thirty minutes by default. */
   cron: process.env.REFRESH_CRON ?? '*/30 * * * *',
   /** Max new employers discovered (ATS slug probing) per cycle. */
   discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 24),
