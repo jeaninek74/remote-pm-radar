@@ -954,10 +954,15 @@ async function dedupeJobs(): Promise<number> {
   const rows = await q<{
     id: number; company: string; title: string; link_type: string; posted_at: string | null; bucket: string;
   }>(
+    // Winner order: a role the user is tracking, then an employer link, then the most useful
+    // bucket (a salary tab beats Pay not published beats the queue), then the oldest posting.
     `SELECT id, company, title, link_type, posted_at::text, bucket
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
-      ORDER BY (link_type = 'employer') DESC, posted_at ASC NULLS LAST, id ASC`,
+      ORDER BY (app_status IS NOT NULL AND app_status <> 'Not Applied') DESC,
+               (link_type = 'employer') DESC,
+               CASE bucket WHEN 'tab2' THEN 0 WHEN 'tab1' THEN 1 WHEN 'tab0' THEN 2 WHEN 'unsalaried' THEN 3 ELSE 4 END,
+               posted_at ASC NULLS LAST, id ASC`,
   );
   const winners = new Map<string, { id: number; company: string; title: string }>();
   const losers: { id: number; of: number; company: string; title: string }[] = [];
@@ -965,13 +970,8 @@ async function dedupeJobs(): Promise<number> {
     const key = `${companyKey(row.company)}::${titleKey(row.title)}`;
     const winner = winners.get(key);
     if (winner) {
-      if (row.link_type === 'employer' && winner.id > row.id) {
-        // the employer-linked record should win; swap
-        losers.push({ id: winner.id, of: row.id, company: winner.company, title: winner.title });
-        winners.set(key, { id: row.id, company: row.company, title: row.title });
-      } else {
-        losers.push({ id: row.id, of: winner.id, company: row.company, title: row.title });
-      }
+      // Rows arrive in winner order, so the first row for a key always wins.
+      losers.push({ id: row.id, of: winner.id, company: row.company, title: row.title });
     } else {
       winners.set(key, { id: row.id, company: row.company, title: row.title });
     }
