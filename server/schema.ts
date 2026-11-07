@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS source_health (
 
 -- Additive migrations for databases created by earlier versions.
 ALTER TABLE employers ADD COLUMN IF NOT EXISTS fail_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE employers ADD COLUMN IF NOT EXISTS last_resolve_at TIMESTAMPTZ;
 ALTER TABLE discovery_queue ADD COLUMN IF NOT EXISTS company_size TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS link_status TEXT;

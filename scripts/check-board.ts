@@ -23,7 +23,7 @@ function employerFor(spec: string, index: number): EmployerRow {
     industry: null, company_size: null, hq_state: null,
     careers_url: isWorkday ? target : null,
     black_owned: false, ownership_status: 'Not researched', ownership_source: null,
-    last_searched_at: null, active: true,
+    last_searched_at: null, last_resolve_at: null, active: true,
   };
 }
 
