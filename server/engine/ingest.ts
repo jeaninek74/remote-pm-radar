@@ -956,7 +956,7 @@ async function dedupeJobs(): Promise<number> {
   }>(
     `SELECT id, company, title, link_type, posted_at::text, bucket
        FROM jobs
-      WHERE bucket IN ('tab0','tab1','tab2','queue')
+      WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
       ORDER BY (link_type = 'employer') DESC, posted_at ASC NULLS LAST, id ASC`,
   );
   const winners = new Map<string, { id: number; company: string; title: string }>();
