@@ -184,3 +184,13 @@ export function uniqueValues(jobs: Job[], key: keyof Job): string[] {
   }
   return [...values].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * Splits a board name so the final word can be accented, e.g. "Remote PM Radar"
+ * becomes ["Remote PM", "Radar"]. Family-driven, so any board name works.
+ */
+export function splitBoardName(name: string): [string, string] {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [name ?? '', ''];
+  return [parts.slice(0, -1).join(' '), parts[parts.length - 1]];
+}

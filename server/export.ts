@@ -1,4 +1,6 @@
 import ExcelJS from 'exceljs';
+import { PROFILE } from './profile';
+import { RULES } from './config';
 import type { JobRow, RunRow, EmployerRowOut } from './queries';
 
 const INK = 'FF0F1720';
@@ -156,7 +158,7 @@ export async function buildWorkbook(input: {
   stats: Record<string, string | number | null>;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Remote PM Radar';
+  workbook.creator = PROFILE.boardName;
   workbook.created = new Date();
 
   const tab1 = input.jobs.filter((j) => j.bucket === 'tab1');
@@ -164,8 +166,8 @@ export async function buildWorkbook(input: {
   const queue = input.jobs.filter((j) => j.bucket === 'queue');
   const archived = input.jobs.filter((j) => j.bucket === 'archived');
 
-  addJobSheet(workbook, { title: '$110K–$130K', jobs: tab1, tabColor: 'FFB4552A' });
-  addJobSheet(workbook, { title: '$150K+', jobs: tab2, tabColor: 'FF0F1720' });
+  addJobSheet(workbook, { title: RULES.tab1Label, jobs: tab1, tabColor: 'FFB4552A' });
+  addJobSheet(workbook, { title: RULES.tab2Label, jobs: tab2, tabColor: 'FF0F1720' });
   addJobSheet(workbook, { title: 'Needs Verification', jobs: queue, tabColor: 'FF9A8C68' });
   addJobSheet(workbook, { title: 'Archived', jobs: archived, tabColor: 'FF6B7280' });
 
@@ -228,10 +230,10 @@ export async function buildWorkbook(input: {
     { header: 'Sources Checked', key: 'sourcesChecked', width: 16 },
     { header: 'Sources Failed', key: 'sourcesFailed', width: 14 },
     { header: 'Postings Read', key: 'jobsFetched', width: 14 },
-    { header: 'PM Roles Found', key: 'jobsMatched', width: 14 },
+    { header: 'Roles Found', key: 'jobsMatched', width: 14 },
     { header: 'New Leads', key: 'newJobs', width: 12 },
-    { header: 'Added to $110–130K', key: 'addedTab1', width: 16 },
-    { header: 'Added to $150K+', key: 'addedTab2', width: 14 },
+    { header: 'Added to narrow band', key: 'addedTab1', width: 16 },
+    { header: 'Added to top band', key: 'addedTab2', width: 14 },
     { header: 'Queued', key: 'queued', width: 10 },
     { header: 'Duplicates Removed', key: 'duplicates', width: 16 },
     { header: 'Archived', key: 'archived', width: 10 },

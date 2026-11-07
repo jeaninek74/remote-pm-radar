@@ -1,65 +1,71 @@
 /**
- * Title taxonomy for project / program management roles.
+ * Title taxonomy.
+ *
+ * The engine holds no title knowledge of its own: every pattern comes from a
+ * `RoleFamily` (see `roles/`). Callers either pass a family explicitly or rely on
+ * the family selected by the active profile.
  *
  * Deliberately broad (employers invent titles constantly) but rejects roles that
- * only mention projects incidentally, e.g. "Software Engineer, Project Atlas".
+ * only mention the profession incidentally, e.g. "Software Engineer, Project
+ * Atlas" is not a project-management role.
  */
 
-const LEADS = String.raw`(?:project|program|programme|portfolio|pmo|delivery|implementation|transformation|integration|deployment|onboarding|migration|pmo operations)`;
-const RANKS = String.raw`(?:manager|management|director|lead|leader|head|officer|principal|consultant|specialist|coordinator|administrator|supervisor)`;
+import { ACTIVE_ROLE_FAMILY } from './roles/active';
+import { getRoleFamily } from './roles';
+import type { RoleFamily } from './roles/types';
 
-const PATTERNS: RegExp[] = [
-  // "Project Manager", "Senior Program Manager", "Technical Project Management"
-  new RegExp(String.raw`\b${LEADS}\b[\s,\-/]+(?:[a-z&,\- ]{0,28}?)\b${RANKS}\b`, 'i'),
-  // "Manager, Project Management", "Director of Program Management", "Head of PMO"
-  new RegExp(String.raw`\b${RANKS}\b[\s,\-]*(?:of\s+)?(?:[a-z&,\- ]{0,20}?)\b${LEADS}\b`, 'i'),
-  // "PMO" on its own in a leadership context
-  /\bpmo\b/i,
-  /\bprogram management office\b/i,
-  /\bproject management office\b/i,
-  // Common senior equivalents
-  /\bchief of staff\b/i,
-  /\btransformation (?:lead|manager|director)\b/i,
-  /\bchange management (?:lead|manager|director)\b/i,
-  /\boperational excellence (?:manager|lead|director)\b/i,
-  /\bstrategic initiatives (?:manager|lead|director)\b/i,
-  /\bcontinuous improvement (?:manager|lead|director)\b/i,
-];
+const MAX_TITLE_LENGTH = 160;
 
-/** Roles that should never be classified as PM even when the JD mentions projects. */
-const DISQUALIFIERS: RegExp[] = [
-  /\b(software|backend|frontend|full[- ]stack|data|machine learning|ml|platform|infrastructure|network|security|cloud|devops|qa|test|systems|hardware|electrical|mechanical|civil|project|field|site|construction) engineer\b/i,
-  /\b(developer|programmer|architect|scientist|researcher|designer|accountant|bookkeeper|attorney|lawyer|paralegal|nurse|physician|therapist|pharmacist|electrician|plumber|welder|carpenter|estimator|superintendent|technician|recruiter|sourcer|account executive|sales representative|sales manager|business development representative|customer support representative|service desk|help desk)\b/i,
-  /\b(assistant|intern|apprentice)\b/i,
-];
-
-/** Very junior PM titles are out of scope for a 15+ year executive. */
-const JUNIOR = /\b(associate|junior|jr\.?|assistant|coordinator i\b|entry[- ]level|intern)\b/i;
-
-export function isPmTitle(rawTitle: string): boolean {
+/** True when the title names a role inside `family`. */
+export function isRoleTitle(rawTitle: string, family: RoleFamily = ACTIVE_ROLE_FAMILY): boolean {
   const title = (rawTitle ?? '').trim();
-  if (!title || title.length > 160) return false;
-  if (!PATTERNS.some((re) => re.test(title))) return false;
-  // A disqualified engineering/IC title only passes when it also names a PM rank word.
-  if (DISQUALIFIERS.some((re) => re.test(title))) {
-    const beat = /\b(project manager|program manager|programme manager|project director|program director|pmo (?:manager|director|lead)|portfolio manager|project management)\b/i.test(title);
-    if (!beat) return false;
+  if (!title || title.length > MAX_TITLE_LENGTH) return false;
+  if (!family.titlePatterns.some((re) => re.test(title))) return false;
+
+  // A disqualified adjacent title only passes when it also names the target role.
+  if (family.disqualifiers.some((re) => re.test(title))) {
+    return family.disqualifiedAllow ? family.disqualifiedAllow.test(title) : false;
   }
   return true;
 }
 
-export function isJuniorTitle(title: string): boolean {
-  return JUNIOR.test(title ?? '');
+/** True when the title is too junior for the candidate the board is built for. */
+export function isJuniorTitle(title: string, family: RoleFamily = ACTIVE_ROLE_FAMILY): boolean {
+  return family.juniorPattern.test(title ?? '');
 }
 
 /** Normalised title family used for filtering and duplicate detection. */
-export function titleFamily(rawTitle: string): string {
+export function titleFamily(rawTitle: string, family: RoleFamily = ACTIVE_ROLE_FAMILY): string {
   const t = (rawTitle ?? '').toLowerCase();
-  if (/pmo|project management office|program management office/.test(t)) return 'PMO';
-  if (/portfolio/.test(t)) return 'Portfolio';
-  if (/program|programme/.test(t)) return 'Program';
-  if (/project/.test(t)) return 'Project';
-  if (/transformation|change management/.test(t)) return 'Transformation';
-  if (/implementation|deployment|integration|migration|onboarding|delivery/.test(t)) return 'Implementation / Delivery';
-  return 'Project';
+  for (const rule of family.titleFamilies) {
+    if (rule.patterns.some((re) => re.test(t))) return rule.label;
+  }
+  return family.defaultTitleFamily;
+}
+
+/** Every display family for the active family, in priority order. */
+export function titleFamilies(family: RoleFamily = ACTIVE_ROLE_FAMILY): string[] {
+  return family.titleFamilies.map((rule) => rule.label);
+}
+
+/** Search terms for ATS feeds that need a query string instead of a full board dump. */
+export function searchTerms(family: RoleFamily = ACTIVE_ROLE_FAMILY): string[] {
+  return family.searchTerms;
+}
+
+/* ------------------------------------------------------------------ legacy API
+ *
+ * The original build was PM-only, and several feed adapters still call the
+ * PM-named helpers. They now delegate to the active family so behaviour follows
+ * the profile instead of a hardcoded profession.
+ */
+
+/** @deprecated Use `isRoleTitle` with an explicit family. */
+export function isPmTitle(rawTitle: string): boolean {
+  return isRoleTitle(rawTitle, ACTIVE_ROLE_FAMILY);
+}
+
+/** Resolve a family by id for callers that switch families at runtime. */
+export function roleFamily(id?: string | null): RoleFamily {
+  return getRoleFamily(id);
 }

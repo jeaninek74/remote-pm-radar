@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Bootstrap, Employer, Job, Run, SourceHealth } from './types';
-import {
-  download, loadBootstrap, loadEmployers, loadJobs, loadRuns, refreshStatus, saveTracking, shortDateTime, startRefresh,
-} from './lib';
+import { download, loadBootstrap, loadEmployers, loadJobs, loadRuns, refreshStatus, saveTracking, shortDateTime, splitBoardName, startRefresh } from './lib';
 import { KpiBand } from './components/KpiBand';
 import { SimpleBoard } from './components/SimpleBoard';
 import { DEFAULT_FILTERS, Filters } from './components/Filters';
@@ -291,8 +289,16 @@ export default function App() {
         <div className="masthead-inner">
           <div>
             <div className="wordmark">
-              <h1>Remote PM <span>Radar</span></h1>
-              <div className="tagline">Project &amp; Program Management · fully remote · California-eligible</div>
+              <h1>
+                {boot?.profile ? splitBoardName(boot.profile.boardName)[0] : 'Remote'}{' '}
+                <span>{boot?.profile ? splitBoardName(boot.profile.boardName)[1] : 'Radar'}</span>
+              </h1>
+              <div className="tagline">
+                {boot?.profile?.roleFamilyLabel ?? 'Remote roles'} · fully remote ·{' '}
+                {boot?.profile?.eligibleStates?.length
+                  ? `${boot.profile.eligibleStates.join(', ')}-eligible`
+                  : 'US-eligible'}
+              </div>
             </div>
             <p className="masthead-sub">
               Verified against employer job boards every four hours. Two salary bands, one verification queue,

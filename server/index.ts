@@ -9,7 +9,12 @@ import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
 import { buildCsv, buildWorkbook } from './export';
-import { describeProfile } from './profile';
+import { PROFILE, describeProfile } from './profile';
+
+/** Filename stem for exports, derived from the board name so nothing is branded by hand. */
+function exportSlug(): string {
+  return PROFILE.boardName.trim().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'job-radar';
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CRON_ENABLED = process.env.ENABLE_CRON !== '0';
@@ -190,7 +195,7 @@ app.get('/api/export.xlsx', async (_req, res, next) => {
     });
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Remote-PM-Radar-${stamp}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${exportSlug()}-${stamp}.xlsx"`);
     res.send(buffer);
   } catch (err) {
     next(err);
@@ -203,7 +208,7 @@ app.get('/api/export.csv', async (req, res, next) => {
     const jobs = (await listJobs()).filter((job) => bucket === 'all' || job.bucket === bucket);
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="Remote-PM-Radar-${bucket}-${stamp}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${exportSlug()}-${bucket}-${stamp}.csv"`);
     res.send(buildCsv(jobs));
   } catch (err) {
     next(err);
@@ -237,11 +242,11 @@ async function main(): Promise<void> {
   await migrate();
   await markInterruptedRuns();
 
-  const employers = await q<{ count: string }>(`SELECT count(*)::text AS count FROM employers`);
-  if (!employers[0] || employers[0].count === '0') {
-    const inserted = await seedEmployers();
-    console.log(`[startup] seeded ${inserted} employers`);
-  }
+  // Seeding is idempotent (ON CONFLICT DO NOTHING) and runs on every boot so a
+  // deploy that grows the registry actually reaches the live database instead of
+  // waiting for an empty table.
+  const inserted = await seedEmployers();
+  console.log(`[startup] seeded ${inserted} new employers`);
 
   if (CRON_ENABLED && cron.validate(CRON_EXPRESSION)) {
     cron.schedule(CRON_EXPRESSION, () => {

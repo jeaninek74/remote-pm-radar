@@ -149,7 +149,12 @@ export interface Bootstrap {
   profile: {
     boardName: string;
     owner: string;
+    roleFamilyId: string;
     roleFamily: string;
+    roleFamilyLabel: string;
+    shortLabel: string;
+    jobNoun: string;
+    lanes: { id: string; label: string }[];
     windowDays: number;
     bands: { tab1: { min: number; max: number | null; label: string }; tab2: { min: number; max: number | null; label: string } };
     eligibleStates: string[];

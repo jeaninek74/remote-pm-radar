@@ -1,5 +1,5 @@
 import { fetchJson } from './http';
-import { isPmTitle } from './titles';
+import { isRoleTitle, searchTerms } from './titles';
 import { isoDate, stripHtml } from './text';
 import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type ParsedSalary } from './salary';
 import type { Ats, BoardFetchResult, RawJob } from './types';
@@ -44,7 +44,7 @@ async function greenhouse(employer: EmployerRow): Promise<BoardFetchResult> {
   const listUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(employer.slug)}/jobs?content=false`;
   const list = await fetchJson<{ jobs?: GhJob[] }>(listUrl);
   const all = Array.isArray(list.jobs) ? list.jobs : [];
-  const candidates = all.filter((job) => isPmTitle(job.title ?? '')).slice(0, MAX_DETAIL_FETCHES);
+  const candidates = all.filter((job) => isRoleTitle(job.title ?? '')).slice(0, MAX_DETAIL_FETCHES);
 
   const jobs: RawJob[] = [];
   for (const job of candidates) {
@@ -112,7 +112,7 @@ async function lever(employer: EmployerRow): Promise<BoardFetchResult> {
   const all = Array.isArray(postings) ? postings : [];
   const jobs: RawJob[] = [];
   for (const posting of all) {
-    if (!isPmTitle(posting.text ?? '')) continue;
+    if (!isRoleTitle(posting.text ?? '')) continue;
     const description = [posting.descriptionPlain, posting.additionalPlain].filter(Boolean).join('\n\n');
     let salary: ParsedSalary | null = null;
     if (posting.salaryRange?.min) {
@@ -191,7 +191,7 @@ async function ashby(employer: EmployerRow): Promise<BoardFetchResult> {
   const all = Array.isArray(data.jobs) ? data.jobs : [];
   const jobs: RawJob[] = [];
   for (const job of all) {
-    if (!isPmTitle(job.title ?? '')) continue;
+    if (!isRoleTitle(job.title ?? '')) continue;
     const description = job.descriptionPlain ?? clean(job.descriptionHtml);
     let salary = parseAshbyCompensation(job.compensation);
     if (!salary) salary = pickSalary(description, 'Ashby posting');
@@ -249,7 +249,7 @@ async function workable(employer: EmployerRow): Promise<BoardFetchResult> {
   const all = Array.isArray(data.jobs) ? data.jobs : [];
   const jobs: RawJob[] = [];
   for (const job of all) {
-    if (!isPmTitle(job.title ?? '')) continue;
+    if (!isRoleTitle(job.title ?? '')) continue;
     const description = clean(job.description);
     const salary = pickSalary(description, 'Workable posting');
     const locations = (job.locations ?? []).length
@@ -307,7 +307,7 @@ async function recruitee(employer: EmployerRow): Promise<BoardFetchResult> {
   const all = Array.isArray(data.offers) ? data.offers : [];
   const jobs: RawJob[] = [];
   for (const offer of all) {
-    if (!isPmTitle(offer.title ?? '')) continue;
+    if (!isRoleTitle(offer.title ?? '')) continue;
     const description = clean(offer.description);
     let salary: ParsedSalary | null = null;
     const min = Number(offer.salary?.min);
@@ -364,7 +364,7 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
     `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(employer.slug)}/postings?limit=100`,
   );
   const all = Array.isArray(data.content) ? data.content : [];
-  const candidates = all.filter((p) => isPmTitle(p.name ?? '')).slice(0, 15);
+  const candidates = all.filter((p) => isRoleTitle(p.name ?? '')).slice(0, 15);
   const jobs: RawJob[] = [];
   for (const posting of candidates) {
     let description = '';
@@ -409,6 +409,8 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
 
 const ADAPTERS: Record<Ats, (employer: EmployerRow) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
+  // Workday coordinates live in careers_url, so the adapter ignores the slug.
+  workday: fetchWorkday,
 };
 
 
@@ -471,13 +473,13 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   const { tenant, wd, site } = coords;
   const collected = new Map<string, WorkdayPosting>();
   try {
-    for (const text of ['project manager', 'program manager']) {
+    for (const text of searchTerms()) {
       for (const offset of [0, 20, 40]) {
         const page = await workdaySearch(tenant, wd, site, text, offset);
         for (const posting of page.jobPostings ?? []) {
-          // Only keep titles that are genuinely project/program roles: it avoids fetching details
+          // Only keep titles that genuinely belong to the active role family: it avoids fetching details
           // for unrelated search hits and keeps the run inside its time budget.
-          if (!posting.externalPath || !isPmTitle(posting.title ?? '')) continue;
+          if (!posting.externalPath || !isRoleTitle(posting.title ?? '')) continue;
           if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
         }
         if ((page.jobPostings ?? []).length < 20) break;
@@ -561,7 +563,7 @@ async function himalayas(pages: number): Promise<RawJob[]> {
     const batch = Array.isArray(data.jobs) ? data.jobs : [];
     if (!batch.length) break;
     for (const job of batch) {
-      if (!isPmTitle(job.title ?? '')) continue;
+      if (!isRoleTitle(job.title ?? '')) continue;
       let salary: ParsedSalary | null = null;
       if (job.minSalary && (job.currency ?? 'USD') === 'USD') {
         const period = (job.salaryPeriod ?? 'annual').toLowerCase();
@@ -624,7 +626,7 @@ async function remotive(): Promise<RawJob[]> {
   const all = Array.isArray(data.jobs) ? data.jobs : [];
   const jobs: RawJob[] = [];
   for (const job of all) {
-    if (!isPmTitle(job.title ?? '')) continue;
+    if (!isRoleTitle(job.title ?? '')) continue;
     const description = clean(job.description);
     const salary = parseSalaryFromText(job.salary ?? '', 'Remotive listing') ?? pickSalary(description, 'Remotive description');
     jobs.push({
@@ -669,7 +671,7 @@ async function remoteok(): Promise<RawJob[]> {
   const all = Array.isArray(data) ? data.filter((row) => row && typeof row === 'object' && row.id && row.position) : [];
   const jobs: RawJob[] = [];
   for (const job of all) {
-    if (!isPmTitle(job.position ?? '')) continue;
+    if (!isRoleTitle(job.position ?? '')) continue;
     const description = clean(job.description);
     let salary: ParsedSalary | null = null;
     if (job.salary_min && job.salary_min > 40_000) {

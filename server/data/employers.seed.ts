@@ -1,4 +1,6 @@
 import type { Ats, CompanySize } from '../engine/types';
+import { ROLE_FAMILIES } from '../engine/roles';
+import { WORKDAY_EMPLOYERS, workdayCareersUrl } from './workday-employers';
 
 export interface SeedEmployer {
   name: string;
@@ -7,9 +9,38 @@ export interface SeedEmployer {
   industry: string;
   size: CompanySize;
   hq: string;
+  /**
+   * Role families this employer is a productive source for. Derived from the
+   * industry unless a row overrides it, so the registry carries no assumption
+   * that every employer is being searched for the same profession.
+   */
+  roleFamilies: string[];
+  /** Explicit careers URL; derived from the ATS and slug when omitted. */
+  careersUrl?: string;
 }
 
-type Row = [string, Ats, string, string, CompanySize, string];
+/** [name, ats, slug, industry, size, hq, optional explicit role families] */
+type Row = [string, Ats, string, string, CompanySize, string, string[]?];
+
+/**
+ * Maps an employer's industry onto the role families that recruit there.
+ *
+ * Each family publishes its own `employerIndustries` list, so this function has
+ * no profession baked in: adding a family automatically makes every matching
+ * employer available to it. Industries nothing claims stay available to all
+ * families rather than silently disappearing from every board.
+ */
+export function familiesForIndustry(industry: string): string[] {
+  const needle = (industry ?? '').trim().toLowerCase();
+  if (!needle) return ROLE_FAMILIES.map((family) => family.id);
+  const matched = ROLE_FAMILIES.filter((family) =>
+    family.employerIndustries.some((candidate) => {
+      const value = candidate.trim().toLowerCase();
+      return value === needle || needle.includes(value) || value.includes(needle);
+    }),
+  ).map((family) => family.id);
+  return matched.length ? matched : ROLE_FAMILIES.map((family) => family.id);
+}
 
 /**
  * Seed inventory of employers with PUBLIC applicant-tracking-system job feeds.
@@ -17,8 +48,13 @@ type Row = [string, Ats, string, string, CompanySize, string];
  * Coverage is deliberately spread across industries (healthcare, government,
  * construction, energy, marketing, nonprofits, financial services, retail,
  * manufacturing, logistics), sizes (startups to enterprises) and headquarter
- * states. Slugs are verified live during the first refresh: any board that does
- * not answer is marked inactive instead of being reported as searched.
+ * states, because those industries are where the seeded role families hire.
+ *
+ * The inventory is shared across role families: `roleFamilies` records which
+ * boards are worth searching for which profession, and `employersForRoleFamily`
+ * is how the refresh cycle asks for its slice. Slugs are verified live during
+ * the first refresh: any board that does not answer is marked inactive instead
+ * of being reported as searched.
  */
 const RAW: Row[] = [
   // ------------------------------------------------------------ AI
@@ -579,19 +615,111 @@ const RAW: Row[] = [
   ['Angi', 'ashby', 'angi', 'Technology', 'Large', 'IN'],
   ['CarGurus', 'greenhouse', 'cargurus', 'Technology', 'Large', 'MA'],
   ['GoDaddy', 'greenhouse', 'godaddy', 'Technology', 'Large', 'AZ'],
+
+  // ------------------------------------- coverage expansion (verified live boards)
+  // Probed with scripts/expand-employers.ts: every slug below answered its public
+  // ATS API with live postings at the time of the audit.
+  ['Monks', 'greenhouse', 'monks', 'Marketing', 'Large', 'NY'],
+  ['WPP', 'greenhouse', 'wpp', 'Marketing', 'Enterprise', 'NY'],
+  ['AlixPartners', 'greenhouse', 'alixpartners', 'Consulting', 'Large', 'NY'],
+  ['Code and Theory', 'greenhouse', 'codeandtheory', 'Marketing', 'Midsize', 'NY'],
+  ['Ogilvy', 'greenhouse', 'ogilvy', 'Marketing', 'Large', 'NY'],
+  ['AKQA', 'greenhouse', 'akqa', 'Marketing', 'Large', 'CA'],
+  ['Expeditors', 'smartrecruiters', 'expeditors', 'Logistics', 'Enterprise', 'WA'],
+  ['Local Initiatives Support Corporation', 'greenhouse', 'lisc', 'Nonprofit', 'Midsize', 'NY'],
+  ['Planned Parenthood Federation of America', 'lever', 'ppfa', 'Nonprofit', 'Large', 'NY'],
+  ['ACLU', 'greenhouse', 'aclu', 'Nonprofit', 'Large', 'NY'],
+  ['FourKites', 'greenhouse', 'fourkites', 'Logistics', 'Midsize', 'IL'],
+  ['Brookings Institution', 'lever', 'brookings', 'Nonprofit', 'Midsize', 'DC'],
+  ['KIPP Foundation', 'smartrecruiters', 'kipp', 'Nonprofit', 'Large', 'NY'],
+  ['Uber Freight', 'greenhouse', 'uberfreight', 'Logistics', 'Large', 'IL'],
+  ['Coursera', 'greenhouse', 'coursera', 'Education', 'Large', 'CA'],
+  ['Virta Health', 'ashby', 'virtahealth', 'Healthcare', 'Midsize', 'CO'],
+  ['Weber Shandwick', 'greenhouse', 'webershandwick', 'Marketing', 'Large', 'NY'],
+  ['Wieden+Kennedy', 'greenhouse', 'wk', 'Marketing', 'Midsize', 'OR'],
+  ['CACI International', 'smartrecruiters', 'caci', 'Government Contracting', 'Enterprise', 'VA'],
+  ['R/GA', 'greenhouse', 'rga', 'Marketing', 'Midsize', 'NY'],
+  ['Candid', 'greenhouse', 'candid', 'Nonprofit', 'Midsize', 'NY'],
+  ['RTI International', 'greenhouse', 'rti', 'Consulting', 'Large', 'NC'],
+  ['Palantir Technologies', 'smartrecruiters', 'palantir', 'Software', 'Large', 'CO'],
+  ['Doximity', 'greenhouse', 'doximity', 'Healthcare', 'Large', 'CA'],
+  ['Ashoka', 'lever', 'ashoka', 'Nonprofit', 'Midsize', 'VA'],
+  ['HealthPartners', 'smartrecruiters', 'healthpartners', 'Healthcare', 'Large', 'MN'],
+  ['GoodRx', 'ashby', 'goodrx', 'Healthcare', 'Large', 'CA'],
+  ['Constellation Energy', 'ashby', 'constellation', 'Energy', 'Enterprise', 'MD'],
+  ['Acumen', 'greenhouse', 'acumen', 'Nonprofit', 'Small', 'NY'],
+  ['Sierra Club', 'lever', 'sierraclub', 'Nonprofit', 'Midsize', 'CA'],
+  ['Golin', 'greenhouse', 'golin', 'Marketing', 'Midsize', 'IL'],
+  ['Nonprofit Finance Fund', 'greenhouse', 'nonprofitfinancefund', 'Nonprofit', 'Small', 'NY'],
+  ['Khan Academy', 'greenhouse', 'khanacademy', 'Nonprofit', 'Midsize', 'CA'],
+  ['Clearway Energy Group', 'greenhouse', 'clearway', 'Renewable Energy', 'Midsize', 'CA'],
+  ['Catchafire', 'ashby', 'catchafire', 'Nonprofit', 'Small', 'NY'],
+  ['Oliver Wyman', 'lever', 'oliverwyman', 'Consulting', 'Large', 'NY'],
+  ['Devoted Health', 'smartrecruiters', 'devotedhealth', 'Health Insurance', 'Midsize', 'MA'],
+  ['Teladoc Health', 'smartrecruiters', 'teladochealth', 'Healthcare', 'Large', 'NY'],
+  ['Sunnova', 'greenhouse', 'sunnova', 'Renewable Energy', 'Midsize', 'TX'],
+  ['FleishmanHillard', 'greenhouse', 'fleishmanhillard', 'Marketing', 'Large', 'MO'],
+  ['BoardSource', 'smartrecruiters', 'boardsource', 'Nonprofit', 'Small', 'DC'],
+  ['Turner Construction', 'smartrecruiters', 'turnerconstruction', 'Construction', 'Large', 'NY'],
+  ['Sutter Health', 'smartrecruiters', 'sutterhealth', 'Healthcare', 'Enterprise', 'CA'],
+  ['Ramp', 'greenhouse', 'ramp', 'Fintech', 'Midsize', 'NY'],
+  ['2U', 'greenhouse', '2u', 'Education', 'Large', 'MD'],
+  ['Southwest Airlines', 'smartrecruiters', 'southwest', 'Transportation', 'Enterprise', 'TX'],
+
 ];
 
-export const SEED_EMPLOYERS: SeedEmployer[] = RAW.map(([name, ats, slug, industry, size, hq]) => ({
-  name, ats, slug, industry, size, hq,
+/**
+ * Workday boards are seeded from the resolved list rather than the open-ATS
+ * table, because their coordinates are three-part (tenant / pod / site) and are
+ * read from the live careers page instead of guessed.
+ */
+const WORKDAY_SEEDS: SeedEmployer[] = WORKDAY_EMPLOYERS.map((employer) => ({
+  name: employer.name,
+  ats: 'workday' as Ats,
+  slug: `${employer.tenant}/${employer.site}`,
+  industry: employer.industry,
+  size: employer.size,
+  hq: employer.hq,
+  roleFamilies: familiesForIndustry(employer.industry),
+  careersUrl: workdayCareersUrl(employer),
 }));
+
+export const SEED_EMPLOYERS: SeedEmployer[] = [
+  ...RAW.map(([name, ats, slug, industry, size, hq, explicitFamilies]) => ({
+    name, ats, slug, industry, size, hq,
+    roleFamilies: explicitFamilies?.length ? explicitFamilies : familiesForIndustry(industry),
+  })),
+  ...WORKDAY_SEEDS,
+];
+
+/**
+ * The employer slice a role family should search.
+ *
+ * This is the only entry point the ingest cycle needs; it never filters on a
+ * profession name itself.
+ */
+export function employersForRoleFamily(roleFamilyId: string): SeedEmployer[] {
+  return SEED_EMPLOYERS.filter((employer) => employer.roleFamilies.includes(roleFamilyId));
+}
 
 /**
  * Employers tracked for ownership verification and manual checking where no
  * public job feed exists. They are stored inactive with the reason recorded so
  * the tracker never implies it searched a board that is not machine-readable.
  */
-export const WATCHLIST: { name: string; industry: string; size: CompanySize; hq: string; careersUrl: string; note: string }[] = [
-  { name: 'H.J. Russell & Company', industry: 'Construction', size: 'Midsize', hq: 'GA', careersUrl: 'https://www.hjrussell.com/careers', note: 'Construction/program management employer; no public ATS feed.' },
+export interface WatchlistEmployer {
+  name: string;
+  industry: string;
+  size: CompanySize;
+  hq: string;
+  careersUrl: string;
+  /** Why the board is not machine-readable, phrased for the tracker UI. */
+  note: string;
+  roleFamilies: string[];
+}
+
+const WATCH_RAW: Omit<WatchlistEmployer, 'roleFamilies'>[] = [
+  { name: 'H.J. Russell & Company', industry: 'Construction', size: 'Midsize', hq: 'GA', careersUrl: 'https://www.hjrussell.com/careers', note: 'Construction employer; no public ATS feed.' },
   { name: 'C.D. Moody Construction', industry: 'Construction', size: 'Small', hq: 'GA', careersUrl: 'https://www.cdmoody.com/careers', note: 'Construction employer; applications handled by email/form.' },
   { name: 'The Integral Group', industry: 'Real Estate', size: 'Midsize', hq: 'GA', careersUrl: 'https://www.integralgroup.com/careers', note: 'Real-estate development employer; no public ATS feed.' },
   { name: 'BITHGROUP Technologies', industry: 'IT Consulting', size: 'Small', hq: 'MD', careersUrl: 'https://www.bithgroup.com/careers', note: 'IT consulting employer; no public ATS feed.' },
@@ -602,3 +730,8 @@ export const WATCHLIST: { name: string; industry: string; size: CompanySize; hq:
   { name: 'UNCF', industry: 'Nonprofit', size: 'Large', hq: 'DC', careersUrl: 'https://uncf.org/careers', note: 'Nonprofit; Workday-based portal that blocks automated feeds.' },
   { name: 'SoLa Impact', industry: 'Real Estate', size: 'Midsize', hq: 'CA', careersUrl: 'https://www.solaimpact.com/careers', note: 'Impact real-estate developer; postings on own site.' },
 ];
+
+export const WATCHLIST: WatchlistEmployer[] = WATCH_RAW.map((entry) => ({
+  ...entry,
+  roleFamilies: familiesForIndustry(entry.industry),
+}));

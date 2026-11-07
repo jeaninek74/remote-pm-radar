@@ -1,0 +1,1417 @@
+{
+  "verified": [
+    {
+      "name": "Monks",
+      "industry": "Marketing",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "monks",
+      "total": 340,
+      "roleHits": 27,
+      "remoteHits": 0,
+      "sample": [
+        "シニアコピーライター — Tokyo",
+        "シニア・アカウント・ディレクター — Tokyo",
+        "Accountant (On Site) — Bogotá, Bogotá, Colombia"
+      ]
+    },
+    {
+      "name": "WPP",
+      "industry": "Marketing",
+      "size": "Enterprise",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "wpp",
+      "total": 229,
+      "roleHits": 20,
+      "remoteHits": 0,
+      "sample": [
+        "Analyst - Accounts Payable - ANZ (Contract) — Mumbai",
+        "Analyst - Agency Reporting — India",
+        "Analyst - Billing - US — Insert City, Country"
+      ]
+    },
+    {
+      "name": "Block",
+      "industry": "Fintech",
+      "size": "Enterprise",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "block",
+      "total": 200,
+      "roleHits": 10,
+      "remoteHits": 0,
+      "sample": [
+        "Applied Research Intern, Proactive Intelligence & Customer World Models (PhD / Graduate Co-op) — Bay Area, CA, United States of America",
+        "Applied Research Intern, Proactive Intelligence & Customer World Models (PhD / Graduate Co-op) — Toronto, Ontario , Canada",
+        "B2B Content Marketing Lead — Bay Area, CA, United States of America"
+      ]
+    },
+    {
+      "name": "AlixPartners",
+      "industry": "Consulting",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "alixpartners",
+      "total": 127,
+      "roleHits": 10,
+      "remoteHits": 0,
+      "sample": [
+        "AI & Data – Intern — Paris",
+        "AI & Machine Learning Consultant — Buenos Aires",
+        "AI & Machine Learning Director  — United States"
+      ]
+    },
+    {
+      "name": "Code and Theory",
+      "industry": "Marketing",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "codeandtheory",
+      "total": 50,
+      "roleHits": 10,
+      "remoteHits": 16,
+      "sample": [
+        "Adobe Multi-Solution Architect, Adobe Commerce (US) — New York, New York, United States; Remote",
+        "Adobe Multi-Solution Architect, AEM/EDS (US) — New York, New York, United States; Remote",
+        "Adobe Multi-Solution Architect, AEP/CDP (US) — New York, New York, United States; Remote"
+      ]
+    },
+    {
+      "name": "Oscar Health",
+      "industry": "Health Insurance",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "oscar",
+      "total": 207,
+      "roleHits": 9,
+      "remoteHits": 63,
+      "sample": [
+        "1099 Supervising Physician - APP Supervision — Georgia, United States",
+        "Actuarial Analyst, Valuation — New York, New York, United States",
+        "Actuarial Intern — New York, New York, United States"
+      ]
+    },
+    {
+      "name": "Coinbase",
+      "industry": "Fintech",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "coinbase",
+      "total": 285,
+      "roleHits": 7,
+      "remoteHits": 208,
+      "sample": [
+        "Acceleration Programs Intern — Hybrid - New York, NY",
+        "Accounting Intern — Hybrid - New York, NY",
+        "Accounting Manager, GL Operations & Intercompany — Remote - USA"
+      ]
+    },
+    {
+      "name": "Affirm",
+      "industry": "Fintech",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "affirm",
+      "total": 223,
+      "roleHits": 7,
+      "remoteHits": 215,
+      "sample": [
+        "Analyst, Early Career (Full Stack) — New York, New York, United States; San Francisco, California, United States",
+        "Analyst II, Credit — Remote UK",
+        "Analytics Engineer II, Full Stack (Revenue Analytics) — Remote Poland"
+      ]
+    },
+    {
+      "name": "Robinhood",
+      "industry": "Fintech",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "robinhood",
+      "total": 150,
+      "roleHits": 6,
+      "remoteHits": 0,
+      "sample": [
+        "Android Engineer, Government Products — New York, NY",
+        "Android Engineer, Money Experience — Menlo Park, CA",
+        "Android Engineer, Social — Menlo Park, CA; New York, NY"
+      ]
+    },
+    {
+      "name": "Mercury",
+      "industry": "Fintech",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "mercury",
+      "total": 79,
+      "roleHits": 5,
+      "remoteHits": 71,
+      "sample": [
+        "Account Executive - Startups — New York, NY or San Francisco, CA",
+        "Business Continuity Management Lead — San Francisco, CA, New York, NY, Portland, OR, or Remote within Canada or United States",
+        "Business Risk Officer — San Francisco, CA, New York, NY, Portland, OR, or Remote within Canada or United States"
+      ]
+    },
+    {
+      "name": "Ogilvy",
+      "industry": "Marketing",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "ogilvy",
+      "total": 115,
+      "roleHits": 4,
+      "remoteHits": 0,
+      "sample": [
+        "Account Director — Makati City,Philippines",
+        "Account Director — New York, New York",
+        "Account Director — Toronto, Canada"
+      ]
+    },
+    {
+      "name": "AKQA",
+      "industry": "Marketing",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "akqa",
+      "total": 29,
+      "roleHits": 4,
+      "remoteHits": 0,
+      "sample": [
+        "Account Director — Stockholm, Gothenburg",
+        "Account Director — Amsterdam",
+        "Account Manager  — Berlin"
+      ]
+    },
+    {
+      "name": "Duolingo",
+      "industry": "Education",
+      "size": "Large",
+      "hq": "PA",
+      "ats": "greenhouse",
+      "slug": "duolingo",
+      "total": 59,
+      "roleHits": 3,
+      "remoteHits": 2,
+      "sample": [
+        "Ad Sales Lead, Programmatic — New York, NY",
+        "Ad Sales Lead - West — Remote - California",
+        "AI Research Engineer, New PhD Graduate  — New York, NY; Pittsburgh, PA"
+      ]
+    },
+    {
+      "name": "Flexport",
+      "industry": "Logistics",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "flexport",
+      "total": 192,
+      "roleHits": 2,
+      "remoteHits": 6,
+      "sample": [
+        "Account Executive  — San Diego, California, United States",
+        "Account Executive  — Atlanta, Georgia, United States",
+        "Account Executive, Enterprise — Switzerland Remote"
+      ]
+    },
+    {
+      "name": "Mozilla Foundation",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "mozilla",
+      "total": 113,
+      "roleHits": 2,
+      "remoteHits": 113,
+      "sample": [
+        "Chief of Staff to the CEO  — Remote Canada; Remote Germany; Remote UK; Remote US",
+        "Contract Senior Data Analyst (SQL,Telemetry,Browser Engine) — Remote UK",
+        "Contract Sr Data Analyst (SQL,Telemetry,Browser Engine) — Remote Canada"
+      ]
+    },
+    {
+      "name": "Expeditors",
+      "industry": "Logistics",
+      "size": "Enterprise",
+      "hq": "WA",
+      "ats": "smartrecruiters",
+      "slug": "expeditors",
+      "total": 100,
+      "roleHits": 2,
+      "remoteHits": 0,
+      "sample": [
+        "Domestic Logistics Customer Service Agent — Hawthorne, us",
+        "Brokerage Agent, FTZ  — Laredo, us",
+        "Brokerage Agent, Imports — Laredo, us"
+      ]
+    },
+    {
+      "name": "Chime",
+      "industry": "Fintech",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "chime",
+      "total": 72,
+      "roleHits": 2,
+      "remoteHits": 2,
+      "sample": [
+        "AI/ML Engineer — Chicago, IL, USA; New York, NY, USA; San Francisco, CA, USA",
+        "Business Control Manager — Chicago, IL, USA; New York, NY, USA; San Francisco, CA, USA",
+        "Business Control Manager — Chicago, IL, USA; New York, NY, USA; San Francisco, CA, USA"
+      ]
+    },
+    {
+      "name": "Thoughtworks",
+      "industry": "Consulting",
+      "size": "Large",
+      "hq": "IL",
+      "ats": "greenhouse",
+      "slug": "thoughtworks",
+      "total": 44,
+      "roleHits": 2,
+      "remoteHits": 0,
+      "sample": [
+        "Agentic AI Principal  — Amsterdam, Netherlands",
+        "Associate (Graduate) Developer — Quito, Ecuador",
+        "Associate (Graduate) Developer — Santiago, Chile"
+      ]
+    },
+    {
+      "name": "project44",
+      "industry": "Logistics",
+      "size": "Midsize",
+      "hq": "IL",
+      "ats": "greenhouse",
+      "slug": "project44",
+      "total": 26,
+      "roleHits": 2,
+      "remoteHits": 3,
+      "sample": [
+        "Agent Solution Architect (Logistics) — Bengaluru, India",
+        "Agent Solution Architect (Logistics) — Krakow, Poland",
+        "Enterprise Account Executive — Dallas "
+      ]
+    },
+    {
+      "name": "Local Initiatives Support Corporation",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "lisc",
+      "total": 7,
+      "roleHits": 2,
+      "remoteHits": 4,
+      "sample": [
+        "Assistant Program Officer — Hybrid; Virginia, United States",
+        "Director of Community Capital Investments  — New York City - LISC National Headquarters; Remote",
+        "Manager, Risk and Compliance  — Remote"
+      ]
+    },
+    {
+      "name": "Plaid",
+      "industry": "Fintech",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "ashby",
+      "slug": "plaid",
+      "total": 142,
+      "roleHits": 1,
+      "remoteHits": 11,
+      "sample": [
+        "Strategic Initiatives — San Francisco HQ",
+        "TechOps Site Support — Seattle Office",
+        "TechOps Site Support — New York City Office"
+      ]
+    },
+    {
+      "name": "Handshake",
+      "industry": "Education",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "ashby",
+      "slug": "handshake",
+      "total": 78,
+      "roleHits": 1,
+      "remoteHits": 6,
+      "sample": [
+        "Strategic Projects Lead — San Francisco, CA",
+        "Revenue Operations Manager — San Francisco, CA",
+        "Engagement Manager — San Francisco, CA"
+      ]
+    },
+    {
+      "name": "Zocdoc",
+      "industry": "Healthcare",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "zocdoc",
+      "total": 64,
+      "roleHits": 1,
+      "remoteHits": 18,
+      "sample": [
+        "Account Director, Health Systems — USA Remote",
+        "Account Executive, Enterprise — New York, NY",
+        "Account Executive, Mid-Market — New York, NY"
+      ]
+    },
+    {
+      "name": "ChargePoint",
+      "industry": "Renewable Energy",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "chargepoint",
+      "total": 44,
+      "roleHits": 1,
+      "remoteHits": 12,
+      "sample": [
+        "Account Executive - Northern California — CA - Remote",
+        "Associate Technical Support Engineer(BBA/BA/Bcom/BSc/BCA) — IN-Karnataka-Bangalore",
+        "Associate Technical Support Engineer (Only BCA/BBA/B.Com/B.Sc. graduates) — IN-Karnataka-Bangalore"
+      ]
+    },
+    {
+      "name": "Planned Parenthood Federation of America",
+      "industry": "Nonprofit",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "lever",
+      "slug": "ppfa",
+      "total": 26,
+      "roleHits": 1,
+      "remoteHits": 0,
+      "sample": [
+        "Assistant General Counsel — New York, NY",
+        "Associate Director, Campaign Services — New York, NY",
+        "Associate Director, Information Security Engineer — New York, NY"
+      ]
+    },
+    {
+      "name": "ACLU",
+      "industry": "Nonprofit",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "aclu",
+      "total": 18,
+      "roleHits": 1,
+      "remoteHits": 0,
+      "sample": [
+        "Associate, Nationwide Portfolio Strategy & Prospect Development — New York, New York, United States",
+        "Deputy Director, Development Systems Support, Business Intelligence and Analysis. — New York, New York, United States",
+        "Deputy Director, National Organizing — New York, New York, United States"
+      ]
+    },
+    {
+      "name": "Omada Health",
+      "industry": "Healthcare",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "omadahealth",
+      "total": 17,
+      "roleHits": 1,
+      "remoteHits": 17,
+      "sample": [
+        "Chief Revenue Officer — Remote, USA",
+        "Director, Employer Sales - National Accounts — Remote, USA",
+        "Director, GLP-1 & Cardiometabolic Product Marketing — Remote, USA"
+      ]
+    },
+    {
+      "name": "FourKites",
+      "industry": "Logistics",
+      "size": "Midsize",
+      "hq": "IL",
+      "ats": "greenhouse",
+      "slug": "fourkites",
+      "total": 16,
+      "roleHits": 1,
+      "remoteHits": 14,
+      "sample": [
+        "AI Architect  — Chennai or Remote  India",
+        "Associate Product Manager  — Chicago, IL or Remote, USA",
+        "Associate Product Manager / Product Manager — Over-the-Road Visibility — Chennai or Remote, India"
+      ]
+    },
+    {
+      "name": "Wikimedia Foundation",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "wikimedia",
+      "total": 15,
+      "roleHits": 1,
+      "remoteHits": 15,
+      "sample": [
+        "Communications Lead, Wikimedia Enterprise (Contract) — Remote",
+        "Community Management Associate — Remote",
+        "Group Product Manager, Data Platforms — Remote"
+      ]
+    },
+    {
+      "name": "Code for America",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "codeforamerica",
+      "total": 10,
+      "roleHits": 1,
+      "remoteHits": 10,
+      "sample": [
+        "Associate Director, Government Partnerships — Remote (in the U.S.)",
+        "Director, Product Marketing — Remote (in the U.S.)",
+        "Engineering Manager  — Remote (in the U.S.)"
+      ]
+    },
+    {
+      "name": "Brookings Institution",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "DC",
+      "ats": "lever",
+      "slug": "brookings",
+      "total": 6,
+      "roleHits": 1,
+      "remoteHits": 0,
+      "sample": [
+        "Account Manager — San Francisco, CA",
+        "Financial Analyst — San Francisco, CA",
+        "Research Assistant — Multiple Locations"
+      ]
+    },
+    {
+      "name": "charity: water",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "lever",
+      "slug": "charitywater",
+      "total": 5,
+      "roleHits": 1,
+      "remoteHits": 0,
+      "sample": [
+        "Donor Lifecycle Marketing Manager (Remote) — United States",
+        "Key Relationships Officer (Remote, Northeast) — Northeast",
+        "Key Relationships Officer (Remote, Texas) — Texas"
+      ]
+    },
+    {
+      "name": "KIPP Foundation",
+      "industry": "Nonprofit",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "smartrecruiters",
+      "slug": "kipp",
+      "total": 100,
+      "roleHits": 0,
+      "remoteHits": 1,
+      "sample": [
+        "Community Outreach Specialist Seasonal Support — New York, us",
+        "Primary School Teachers (K-4th) — New Orleans, us",
+        "26.27 Nurse Coordinator — St. Louis, us"
+      ]
+    },
+    {
+      "name": "Uber Freight",
+      "industry": "Logistics",
+      "size": "Large",
+      "hq": "IL",
+      "ats": "greenhouse",
+      "slug": "uberfreight",
+      "total": 98,
+      "roleHits": 0,
+      "remoteHits": 2,
+      "sample": [
+        "Account Manager II, Intermodal  — Chicago, IL 60607, United States",
+        "Account Manager II - Specialized — Little Rock, Arkansas 72201, United States",
+        "Account Manager II (Transportation) — Stuttgart, AR 72160, United States"
+      ]
+    },
+    {
+      "name": "SoFi",
+      "industry": "Fintech",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "sofi",
+      "total": 46,
+      "roleHits": 0,
+      "remoteHits": 1,
+      "sample": [
+        "Direct Mail Marketing Manager, Credit Card (Contract)\t — CA - San Francisco HQ; CA-Remote",
+        "Director Product Manager, Commercial Banking — CA - San Francisco; NY - New York City; WA - Seattle",
+        "Director - Special Investigations (FIU) — United States"
+      ]
+    },
+    {
+      "name": "Coursera",
+      "industry": "Education",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "coursera",
+      "total": 40,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Account Development Representative — Singapore",
+        "Account Lead - C4B — Singapore",
+        "Accounts Payable Specialist (Gurugram) — India"
+      ]
+    },
+    {
+      "name": "Virta Health",
+      "industry": "Healthcare",
+      "size": "Midsize",
+      "hq": "CO",
+      "ats": "ashby",
+      "slug": "virtahealth",
+      "total": 24,
+      "roleHits": 0,
+      "remoteHits": 21,
+      "sample": [
+        "General Counsel — Remote",
+        "SDR, Health Plans/Systems — Remote",
+        "Senior Software Engineer II — San Francisco, CA"
+      ]
+    },
+    {
+      "name": "Weber Shandwick",
+      "industry": "Marketing",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "webershandwick",
+      "total": 20,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Account Director, Public Relations - Healthcare (Pharma/Rx) (m/w/div) — Berlin, Germany; Frankfurt, Germany; Köln, Germany; München, Germany",
+        "Account Director - Publikums-PR Healthcare (m/w/div)  — Berlin, Germany; Frankfurt, Germany; Köln, Germany; München, Germany",
+        "Account Manager Digital - Health & Corporate — Paris, France"
+      ]
+    },
+    {
+      "name": "Wieden+Kennedy",
+      "industry": "Marketing",
+      "size": "Midsize",
+      "hq": "OR",
+      "ats": "greenhouse",
+      "slug": "wk",
+      "total": 15,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "BI Manager — São Paulo, São Paulo, Brazil",
+        "Producer — Shanghai, China",
+        "Producer — Mexico City"
+      ]
+    },
+    {
+      "name": "CACI International",
+      "industry": "Government Contracting",
+      "size": "Enterprise",
+      "hq": "VA",
+      "ats": "smartrecruiters",
+      "slug": "caci",
+      "total": 14,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "(Chinese/ Mandarin) Linguist/Analyst 3 — Washington, us",
+        "CNO Instructor- Job ID 100812  and 100813 — Fort Meade, us",
+        "Russian OSINT ANALYST — Darmstadt, de"
+      ]
+    },
+    {
+      "name": "R/GA",
+      "industry": "Marketing",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "rga",
+      "total": 12,
+      "roleHits": 0,
+      "remoteHits": 1,
+      "sample": [
+        "Community Manager — Buenos Aires",
+        "Creative Technology Director — United States",
+        "Design Director — New York, NY"
+      ]
+    },
+    {
+      "name": "Candid",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "candid",
+      "total": 11,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Account Executive - General Inquiry — United States",
+        "Account Executive - Northern Los Angeles  — Northern Los Angeles, California ",
+        "Account Executive - Portland — Portland, Oregon"
+      ]
+    },
+    {
+      "name": "RTI International",
+      "industry": "Consulting",
+      "size": "Large",
+      "hq": "NC",
+      "ats": "greenhouse",
+      "slug": "rti",
+      "total": 10,
+      "roleHits": 0,
+      "remoteHits": 2,
+      "sample": [
+        "Embedded Lab Engineer — Sunnyvale, CA",
+        "Field Application Engineer — Germany",
+        "IT Engineer I — Denver, Colorado"
+      ]
+    },
+    {
+      "name": "Palantir Technologies",
+      "industry": "Software",
+      "size": "Large",
+      "hq": "CO",
+      "ats": "smartrecruiters",
+      "slug": "palantir",
+      "total": 10,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Lead QA — London, gb",
+        "Intermediate C# Full Stack Developer — Westhill, gb",
+        "Intermediate C# Full Stack Developer — London, gb"
+      ]
+    },
+    {
+      "name": "Doximity",
+      "industry": "Healthcare",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "doximity",
+      "total": 10,
+      "roleHits": 0,
+      "remoteHits": 7,
+      "sample": [
+        "Business Intelligence Analyst (Contractor) — San Francisco, CA or Remote (U.S.)",
+        "Client Success Manager, Enterprise — San Francisco, CA or Remote (U.S.)",
+        "Clinical Product Manager, AI — San Francisco, CA"
+      ]
+    },
+    {
+      "name": "Ashoka",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "VA",
+      "ats": "lever",
+      "slug": "ashoka",
+      "total": 7,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Empathy Movement Leader, South Asia — Bangalore, India",
+        "Empathy Movement Leader, Southeast Asia — Jakarta, Indonesia",
+        "Estágio em gestão de projetos e comunicação - Ashoka Portugal — Madrid, Spain"
+      ]
+    },
+    {
+      "name": "HealthPartners",
+      "industry": "Healthcare",
+      "size": "Large",
+      "hq": "MN",
+      "ats": "smartrecruiters",
+      "slug": "healthpartners",
+      "total": 7,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "RN Clinic Supervisor — Brooklyn Center, us",
+        "CareLine Telephone Triage RN Supervisor — Bloomington, us",
+        "Nurse Supervisor, Telephone Triage Center — Bloomington, us"
+      ]
+    },
+    {
+      "name": "GoodRx",
+      "industry": "Healthcare",
+      "size": "Large",
+      "hq": "CA",
+      "ats": "ashby",
+      "slug": "goodrx",
+      "total": 7,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Test_Scrum Master   — Santa Monica, CA",
+        "Test_Insight Coordinator  — Santa Monica, CA",
+        "Head of Test (TEST) — CA HQ"
+      ]
+    },
+    {
+      "name": "Constellation Energy",
+      "industry": "Energy",
+      "size": "Enterprise",
+      "hq": "MD",
+      "ats": "ashby",
+      "slug": "constellation",
+      "total": 7,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Shoot Your Shot — San Francisco",
+        "Research Scientist — San Francisco",
+        "Senior Software Engineer — San Francisco"
+      ]
+    },
+    {
+      "name": "DonorsChoose",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "donorschoose",
+      "total": 5,
+      "roleHits": 0,
+      "remoteHits": 3,
+      "sample": [
+        "No current openings that interest you? Submit your profile here. — HQ",
+        "Senior Foundation Partnerships Manager — Remote",
+        "Strategic Finance Director — Remote"
+      ]
+    },
+    {
+      "name": "Acumen",
+      "industry": "Nonprofit",
+      "size": "Small",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "acumen",
+      "total": 5,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Associate Director of Finance  — New York",
+        "Associate, Program Operations, Acumen Academy — Bogota, Colombia",
+        "Head of People & Talent — New York"
+      ]
+    },
+    {
+      "name": "Sierra Club",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "lever",
+      "slug": "sierraclub",
+      "total": 5,
+      "roleHits": 0,
+      "remoteHits": 1,
+      "sample": [
+        "Advancement Director, West — Seattle, WA",
+        "Legal Intern — Oakland, CA",
+        "Legislative Director — Atlanta, GA"
+      ]
+    },
+    {
+      "name": "Golin",
+      "industry": "Marketing",
+      "size": "Midsize",
+      "hq": "IL",
+      "ats": "greenhouse",
+      "slug": "golin",
+      "total": 5,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Art Director — Hong Kong SAR",
+        "Associate, Corporate Communications  — Hong Kong SAR",
+        "Director, Corporate Communications — Hong Kong SAR"
+      ]
+    },
+    {
+      "name": "ProPublica",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "propublica",
+      "total": 4,
+      "roleHits": 0,
+      "remoteHits": 3,
+      "sample": [
+        "Freelance Pitch Form — Remote, United States",
+        "Local Reporting Network Fellow — Remote, United States",
+        "Product Engineer, Membership and Front-End — Remote, United States"
+      ]
+    },
+    {
+      "name": "Nonprofit Finance Fund",
+      "industry": "Nonprofit",
+      "size": "Small",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "nonprofitfinancefund",
+      "total": 3,
+      "roleHits": 0,
+      "remoteHits": 3,
+      "sample": [
+        "Business Intelligence Manager, Consulting — Remote",
+        "General Applications — Remote",
+        "Staff Accountant — Boston, Massachusetts, United States; Los Angeles, California, United States; New York, New York, United States; Oakland, California, United States; Philadelphia, Pennsylvania, United States; Remote"
+      ]
+    },
+    {
+      "name": "Khan Academy",
+      "industry": "Nonprofit",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "khanacademy",
+      "total": 3,
+      "roleHits": 0,
+      "remoteHits": 3,
+      "sample": [
+        "Principal Experience Architect — San Mateo, CA / Remote (Continental US + Hawaii + Canada Only)",
+        "Senior Efficacy Research and Psychometrics Analyst, Khan Kids (24 months fixed-term) — San Mateo, CA / Remote (Continental US + Hawaii + Canada Only)",
+        "Senior Search & AI Discoverability Engineer (12 month contract, 40 hours/week, $85/hour) — Mountain View, CA / Remote (Continental US + Hawaii + Canada Only)"
+      ]
+    },
+    {
+      "name": "Clearway Energy Group",
+      "industry": "Renewable Energy",
+      "size": "Midsize",
+      "hq": "CA",
+      "ats": "greenhouse",
+      "slug": "clearway",
+      "total": 3,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Control Centre Operative — Goole",
+        "Field Support Driver — Milton Keynes area",
+        "Vacant Property Inspector — Coventry, Northampton, Milton Keynes and Birmingham"
+      ]
+    },
+    {
+      "name": "Catchafire",
+      "industry": "Nonprofit",
+      "size": "Small",
+      "hq": "NY",
+      "ats": "ashby",
+      "slug": "catchafire",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Senior Product Manager — United States",
+        "Sr. Customer Success Manager — United States"
+      ]
+    },
+    {
+      "name": "Oliver Wyman",
+      "industry": "Consulting",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "lever",
+      "slug": "oliverwyman",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Account Executive — San Francisco, CA",
+        "Software Engineer — San Francisco, CA"
+      ]
+    },
+    {
+      "name": "Devoted Health",
+      "industry": "Health Insurance",
+      "size": "Midsize",
+      "hq": "MA",
+      "ats": "smartrecruiters",
+      "slug": "devotedhealth",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Full Time Nurse Practitioner: Home Visit (hybrid in-home & remote) - Scottsdale AZ — Scottsdale, us",
+        "Full Time Nurse Practitioner: Home Visit (hybrid in-home & remote) - Gilbert AZ — Gilbert, us"
+      ]
+    },
+    {
+      "name": "Teladoc Health",
+      "industry": "Healthcare",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "smartrecruiters",
+      "slug": "teladochealth",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Customer Service Representative — Harrison, us",
+        "Web Developer — New York, us"
+      ]
+    },
+    {
+      "name": "Sunnova",
+      "industry": "Renewable Energy",
+      "size": "Midsize",
+      "hq": "TX",
+      "ats": "greenhouse",
+      "slug": "sunnova",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Director, Accounting — Houston, TX",
+        "Join the Sunnova Talent Pool! — Houston, TX; United States"
+      ]
+    },
+    {
+      "name": "FleishmanHillard",
+      "industry": "Marketing",
+      "size": "Large",
+      "hq": "MO",
+      "ats": "greenhouse",
+      "slug": "fleishmanhillard",
+      "total": 2,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Graduate Intern, Financial Services Public Affairs, 6-month paid internship, Brussels — Brussels-Capital, Belgium",
+        "Human Resources Intern, Public Affairs Consultancy 6-month paid internship, Brussels  — Brussels-Capital, Belgium"
+      ]
+    },
+    {
+      "name": "BoardSource",
+      "industry": "Nonprofit",
+      "size": "Small",
+      "hq": "DC",
+      "ats": "smartrecruiters",
+      "slug": "boardsource",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Senior Director, Foundation Relations — Washington, us"
+      ]
+    },
+    {
+      "name": "Turner Construction",
+      "industry": "Construction",
+      "size": "Large",
+      "hq": "NY",
+      "ats": "smartrecruiters",
+      "slug": "turnerconstruction",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Customer Service Representative — Houston, us"
+      ]
+    },
+    {
+      "name": "Sutter Health",
+      "industry": "Healthcare",
+      "size": "Enterprise",
+      "hq": "CA",
+      "ats": "smartrecruiters",
+      "slug": "sutterhealth",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Family Medicine Physician BC/BE — Santa Cruz, us"
+      ]
+    },
+    {
+      "name": "Ramp",
+      "industry": "Fintech",
+      "size": "Midsize",
+      "hq": "NY",
+      "ats": "greenhouse",
+      "slug": "ramp",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Copy of Chief Legal Officer — dublin"
+      ]
+    },
+    {
+      "name": "2U",
+      "industry": "Education",
+      "size": "Large",
+      "hq": "MD",
+      "ats": "greenhouse",
+      "slug": "2u",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 1,
+      "sample": [
+        "Senior Manager, Corporate FP&A — US Remote"
+      ]
+    },
+    {
+      "name": "Southwest Airlines",
+      "industry": "Transportation",
+      "size": "Enterprise",
+      "hq": "TX",
+      "ats": "smartrecruiters",
+      "slug": "southwest",
+      "total": 1,
+      "roleHits": 0,
+      "remoteHits": 0,
+      "sample": [
+        "Manager — Atlanta, us"
+      ]
+    }
+  ],
+  "missing": [
+    "Kiva",
+    "Teach For America",
+    "City Year",
+    "Natural Resources Defense Council",
+    "Environmental Defense Fund",
+    "The Nature Conservancy",
+    "World Wildlife Fund",
+    "Oxfam America",
+    "CARE USA",
+    "Mercy Corps",
+    "International Rescue Committee",
+    "Save the Children US",
+    "Boys & Girls Clubs of America",
+    "YMCA of the USA",
+    "American Red Cross",
+    "Feeding America",
+    "Goodwill Industries International",
+    "Habitat for Humanity International",
+    "United Way Worldwide",
+    "Bill & Melinda Gates Foundation",
+    "Ford Foundation",
+    "John D. and Catherine T. MacArthur Foundation",
+    "The Rockefeller Foundation",
+    "Robert Wood Johnson Foundation",
+    "KFF",
+    "The Commonwealth Fund",
+    "Echoing Green",
+    "Grameen America",
+    "DataKind",
+    "Global Fund for Women",
+    "Women for Women International",
+    "Room to Read",
+    "Pencils of Promise",
+    "Charity Navigator",
+    "Independent Sector",
+    "Enterprise Community Partners",
+    "NeighborWorks America",
+    "DoSomething.org",
+    "Creative Commons",
+    "Internet Archive",
+    "Electronic Frontier Foundation",
+    "NPR",
+    "PBS",
+    "PRX",
+    "NTEN",
+    "VolunteerMatch",
+    "Idealist",
+    "Slalom",
+    "West Monroe",
+    "Infosys",
+    "Cognizant",
+    "Wipro",
+    "HCLTech",
+    "Capgemini",
+    "Accenture",
+    "Deloitte",
+    "EY",
+    "KPMG",
+    "PwC",
+    "McKinsey & Company",
+    "Boston Consulting Group",
+    "Bain & Company",
+    "Kearney",
+    "Analysis Group",
+    "Guidehouse",
+    "Protiviti",
+    "Grant Thornton",
+    "RSM US",
+    "BDO USA",
+    "CBIZ",
+    "Huron Consulting Group",
+    "FTI Consulting",
+    "Ankura",
+    "Berkeley Research Group",
+    "Charles River Associates",
+    "Cornerstone Research",
+    "Exponent",
+    "ICF",
+    "Abt Global",
+    "Mathematica",
+    "NORC at the University of Chicago",
+    "Westat",
+    "Urban Institute",
+    "RAND Corporation",
+    "Public Consulting Group",
+    "Maximus",
+    "Serco",
+    "AECOM",
+    "Jacobs",
+    "Stantec",
+    "HDR",
+    "Kimley-Horn",
+    "Dewberry",
+    "Tetra Tech",
+    "Arcadis",
+    "WSP",
+    "Black & Veatch",
+    "Burns & McDonnell",
+    "Hensel Phelps",
+    "Skanska",
+    "Clark Construction",
+    "Whiting-Turner",
+    "Gilbane",
+    "McCarthy Building Companies",
+    "PCL Construction",
+    "Suffolk Construction",
+    "DPR Construction",
+    "Leidos",
+    "SAIC",
+    "Booz Allen Hamilton",
+    "GDIT",
+    "Peraton",
+    "ManTech",
+    "Amentum",
+    "KBR",
+    "Parsons Corporation",
+    "Akima",
+    "Chenega Corporation",
+    "ASRC Federal",
+    "Huntington Ingalls Industries",
+    "General Dynamics",
+    "Northrop Grumman",
+    "Lockheed Martin",
+    "RTX",
+    "L3Harris Technologies",
+    "BAE Systems",
+    "Providence",
+    "CommonSpirit Health",
+    "Ascension",
+    "Banner Health",
+    "Mayo Clinic",
+    "Cleveland Clinic",
+    "Mass General Brigham",
+    "Intermountain Health",
+    "Geisinger",
+    "Sentara Health",
+    "Ochsner Health",
+    "Baylor Scott & White Health",
+    "Houston Methodist",
+    "Cedars-Sinai",
+    "Stanford Health Care",
+    "Highmark Health",
+    "Elevance Health",
+    "Cigna",
+    "UnitedHealth Group",
+    "Humana",
+    "Centene",
+    "Molina Healthcare",
+    "Oak Street Health",
+    "Included Health",
+    "Hinge Health",
+    "Athenahealth",
+    "Waystar",
+    "R1 RCM",
+    "JPMorgan Chase",
+    "Bank of America",
+    "Wells Fargo",
+    "Citigroup",
+    "Goldman Sachs",
+    "Morgan Stanley",
+    "Capital One",
+    "American Express",
+    "Visa",
+    "Mastercard",
+    "PayPal",
+    "Klarna",
+    "Fidelity Investments",
+    "Charles Schwab",
+    "BlackRock",
+    "Vanguard",
+    "State Street",
+    "Northern Trust",
+    "U.S. Bank",
+    "PNC Financial Services",
+    "Truist",
+    "Regions Bank",
+    "Fifth Third Bank",
+    "Ally Financial",
+    "Discover Financial",
+    "Synchrony",
+    "MetLife",
+    "Prudential Financial",
+    "AIG",
+    "Travelers",
+    "Allstate",
+    "Progressive",
+    "Liberty Mutual",
+    "Nationwide",
+    "Chubb",
+    "The Hartford",
+    "Marsh McLennan",
+    "Aon",
+    "WTW",
+    "NextEra Energy",
+    "Duke Energy",
+    "Southern Company",
+    "Dominion Energy",
+    "Exelon",
+    "American Electric Power",
+    "Entergy",
+    "Xcel Energy",
+    "Sempra",
+    "PG&E",
+    "Edison International",
+    "Con Edison",
+    "National Grid",
+    "CenterPoint Energy",
+    "Ameren",
+    "DTE Energy",
+    "PSEG",
+    "FirstEnergy",
+    "Eversource Energy",
+    "WEC Energy Group",
+    "AES",
+    "NRG Energy",
+    "Vistra",
+    "Invenergy",
+    "Ørsted",
+    "Pattern Energy",
+    "Sunrun",
+    "Enphase Energy",
+    "SolarEdge",
+    "Tesla",
+    "Rivian",
+    "Arizona State University",
+    "University of Michigan",
+    "Ohio State University",
+    "Pennsylvania State University",
+    "University of Texas at Austin",
+    "Texas A&M University",
+    "Georgia Institute of Technology",
+    "Purdue University",
+    "University of Washington",
+    "Johns Hopkins University",
+    "Howard University",
+    "Spelman College",
+    "Morehouse College",
+    "Florida A&M University",
+    "North Carolina A&T State University",
+    "Jackson State University",
+    "Tennessee State University",
+    "Prairie View A&M University",
+    "Southern University System",
+    "Chegg",
+    "Walmart",
+    "Target",
+    "Costco Wholesale",
+    "The Kroger Co.",
+    "Albertsons Companies",
+    "Publix",
+    "Whole Foods Market",
+    "The Home Depot",
+    "Lowe's",
+    "Best Buy",
+    "Nordstrom",
+    "Macy's",
+    "Gap Inc.",
+    "Nike",
+    "Lululemon",
+    "Starbucks",
+    "McDonald's",
+    "Chipotle Mexican Grill",
+    "Yum! Brands",
+    "The Coca-Cola Company",
+    "PepsiCo",
+    "Procter & Gamble",
+    "Unilever",
+    "Colgate-Palmolive",
+    "Kimberly-Clark",
+    "General Mills",
+    "Kellanova",
+    "Kraft Heinz",
+    "Mondelez International",
+    "Mars",
+    "Nestlé USA",
+    "Hormel Foods",
+    "Tyson Foods",
+    "FedEx",
+    "UPS",
+    "XPO",
+    "Ryder System",
+    "C.H. Robinson",
+    "DHL Supply Chain",
+    "Maersk",
+    "Delta Air Lines",
+    "United Airlines",
+    "American Airlines",
+    "Union Pacific",
+    "CSX",
+    "Norfolk Southern",
+    "Omnicom Group",
+    "Publicis Groupe",
+    "Dentsu",
+    "Havas",
+    "BBDO",
+    "DDB Worldwide",
+    "TBWA Worldwide",
+    "McCann Worldgroup",
+    "Leo Burnett",
+    "Edelman",
+    "Ketchum",
+    "Porter Novelli",
+    "Huge",
+    "VML",
+    "Tinuiti",
+    "Horizon Media",
+    "GroupM",
+    "Publicis Sapient",
+    "Vista Equity Partners",
+    "RLJ Companies",
+    "Carver Bancorp",
+    "Broadway Financial Corporation",
+    "BlocPower",
+    "Blavity",
+    "Black Enterprise",
+    "Uncle Nearest",
+    "The Lip Bar",
+    "Mielle Organics",
+    "McBride Sisters Collection",
+    "Harlem Capital",
+    "Collab Capital",
+    "Slauson & Co.",
+    "Squadra Ventures",
+    "M&R Consultants",
+    "Sagepath"
+  ]
+}

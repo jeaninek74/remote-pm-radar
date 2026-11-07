@@ -1,6 +1,6 @@
 import { migrate, one, q } from '../db';
 import { REFRESH, RULES } from '../config';
-import { SEED_EMPLOYERS, WATCHLIST } from '../data/employers.seed';
+import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { fetchBoard } from './sources';
@@ -9,7 +9,8 @@ import { classifyCategory } from './category';
 import { classifySalary } from './salary';
 import { scoreJob } from './match';
 import { detectUrgency } from './urgency';
-import { isPmTitle } from './titles';
+import { isRoleTitle } from './titles';
+import { ACTIVE_ROLE_FAMILY } from './roles/active';
 import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
 import type { Ats, EmployerRow, RawJob } from './types';
@@ -25,13 +26,14 @@ export function isRefreshing(): boolean {
 
 export async function seedEmployers(): Promise<number> {
   let inserted = 0;
-  for (const seed of SEED_EMPLOYERS) {
+  // Only the employers whose industries this role family actually recruits from.
+  for (const seed of employersForRoleFamily(ACTIVE_ROLE_FAMILY.id)) {
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Seed inventory',TRUE)
        ON CONFLICT (ats, slug) DO NOTHING
        RETURNING id`,
-      [seed.name, seed.ats, seed.slug, seed.industry, seed.size, seed.hq, careersUrlFor(seed.ats, seed.slug)],
+      [seed.name, seed.ats, seed.slug, seed.industry, seed.size, seed.hq, seed.careersUrl ?? careersUrlFor(seed.ats, seed.slug)],
     );
     inserted += res.length;
   }
@@ -46,7 +48,7 @@ export async function seedEmployers(): Promise<number> {
     );
     inserted += res.length;
   }
-  for (const watch of WATCHLIST) {
+  for (const watch of WATCHLIST.filter((entry) => entry.roleFamilies.includes(ACTIVE_ROLE_FAMILY.id))) {
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
        VALUES ($1,'manual',$2,$3,$4,$5,$6,'Ownership watchlist',FALSE,$7)
@@ -62,6 +64,8 @@ export async function seedEmployers(): Promise<number> {
 
 export function careersUrlFor(ats: string, slug: string): string {
   switch (ats) {
+    // Workday slugs carry their own tenant/site pair, e.g. "accenture/AccentureCareers".
+    case 'workday': return slug.includes('/') ? `https://${slug.split('/')[0]}.wd1.myworkdayjobs.com/${slug.split('/')[1]}` : '';
     case 'greenhouse': return `https://boards.greenhouse.io/${slug}`;
     case 'lever': return `https://jobs.lever.co/${slug}`;
     case 'ashby': return `https://jobs.ashbyhq.com/${slug}`;
@@ -137,12 +141,13 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
     forced = { bucket: 'queue', reason: `Residency restricted to ${(loc.states ?? []).join(', ') || 'another state'}; California applicants cannot be considered.` };
   }
 
-  const category = classifyCategory(raw.title, description);
+  const category = classifyCategory(raw.title, description, ACTIVE_ROLE_FAMILY);
   const match = scoreJob({
     title: raw.title,
     description,
     category,
     industry: raw.industry ?? employer?.industry ?? null,
+    family: ACTIVE_ROLE_FAMILY,
   });
   const urgency = detectUrgency(description);
   const salary = raw.salary ?? null;
@@ -509,7 +514,7 @@ async function executeRun(runId: number): Promise<number> {
             SET last_searched_at = now(), last_status = $2, last_error = NULL,
                 jobs_seen = $3, fail_count = 0
           WHERE id = $1`,
-        [employer.id, `${result.totalListed} postings, ${matched} PM roles`, result.totalListed],
+        [employer.id, `${result.totalListed} postings, ${matched} ${ACTIVE_ROLE_FAMILY.jobNoun}`, result.totalListed],
       );
       await recordSource(`${employer.ats}:${employer.slug}`, employer.name, true, result.totalListed);
     });

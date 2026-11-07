@@ -55,7 +55,7 @@ export const REFRESH = {
 };
 
 export const USER_AGENT =
-  'RemotePMRadar/1.0 (personal job-search aggregator; contact: Jeaninek74@gmail.com)';
+  `${APP.name.replace(/[^A-Za-z0-9]/g, '')}/1.0 (personal job-search aggregator; contact: ${process.env.CONTACT_EMAIL ?? 'Jeaninek74@gmail.com'})`;
 
 export const APP_STATUSES = [
   'Not Applied',

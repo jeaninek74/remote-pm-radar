@@ -24,7 +24,7 @@ export function RunsTab({ runs, sources }: { runs: Run[]; sources: SourceHealth[
                 <th className="right">Employers</th>
                 <th className="right">Sources ok / failed</th>
                 <th className="right">Postings read</th>
-                <th className="right">PM roles</th>
+                <th className="right">Roles found</th>
                 <th className="right">New leads</th>
                 <th className="right">Tab 1</th>
                 <th className="right">Tab 2</th>

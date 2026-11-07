@@ -1,12 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { DEFAULT_ROLE_FAMILY_ID, getRoleFamily } from './engine/roles';
+import type { RoleFamily } from './engine/roles';
 
 /**
  * A search profile describes *who* the board is for and *what* counts as a match.
  *
- * Everything personal is data: the salary bands, the posting window, the states a candidate may
- * work from, and the labels on the board. The engine itself is generic, so the same codebase can
- * run a different board for a different person by pointing PROFILE_FILE at another JSON file.
+ * Everything personal is data: the role family, the salary bands, the posting
+ * window, the states a candidate may work from, and the labels on the board.
+ * The engine itself is generic, so the same codebase can run a board for a data
+ * analyst or an engineer by pointing PROFILE_FILE at another JSON file.
  */
 
 export interface SalaryBand {
@@ -21,8 +24,18 @@ export interface SalaryBand {
 export interface SearchProfile {
   boardName: string;
   owner: string;
+  /**
+   * Which role family this board searches for. Matches a `RoleFamily.id` from
+   * `server/engine/roles` — e.g. `project-management`, `data-analytics`,
+   * `engineering`. Unknown values fall back to the default family with a warning.
+   */
+  roleFamilyId: string;
   /** What the board is looking for, in one line — shown in the interface. */
   roleFamily: string;
+  /** Plural noun for counters and logs, e.g. "PM roles". */
+  jobNoun: string;
+  /** Compact label for tight UI spaces, e.g. "PM". */
+  shortLabel: string;
   /** Only postings whose original date falls inside this many days qualify. */
   windowDays: number;
   bands: {
@@ -37,10 +50,16 @@ export interface SearchProfile {
   requireEligibleState: boolean;
 }
 
+const BASE_FAMILY = getRoleFamily(DEFAULT_ROLE_FAMILY_ID);
+
+/** Defaults are derived from the role family so nothing here names a profession. */
 export const DEFAULT_PROFILE: SearchProfile = {
-  boardName: 'Remote PM Radar',
+  boardName: BASE_FAMILY.defaultBoardName,
   owner: 'Jeanine Kendricks',
-  roleFamily: 'Remote project, program and delivery roles in the United States',
+  roleFamilyId: BASE_FAMILY.id,
+  roleFamily: BASE_FAMILY.defaultRoleFamily,
+  jobNoun: BASE_FAMILY.jobNoun,
+  shortLabel: BASE_FAMILY.shortLabel,
   windowDays: 14,
   bands: {
     tab1: { min: 110_000, max: 130_000, label: '$110K–$130K' },
@@ -50,8 +69,25 @@ export const DEFAULT_PROFILE: SearchProfile = {
   requireEligibleState: true,
 };
 
-function merge(base: SearchProfile, override: Partial<SearchProfile>): SearchProfile {
+/**
+ * Fills in every family-derived field from `roleFamilyId`, so a profile file only
+ * has to state the family and the numbers. Explicit values in the file still win,
+ * which lets one board re-label itself without forking a family.
+ */
+function withFamilyDefaults(profile: SearchProfile, family: RoleFamily): SearchProfile {
   return {
+    ...profile,
+    roleFamilyId: family.id,
+    jobNoun: profile.jobNoun || family.jobNoun,
+    shortLabel: profile.shortLabel || family.shortLabel,
+    boardName: profile.boardName || family.defaultBoardName,
+    roleFamily: profile.roleFamily || family.defaultRoleFamily,
+  };
+}
+
+function merge(base: SearchProfile, override: Partial<SearchProfile>): SearchProfile {
+  const family = getRoleFamily(override.roleFamilyId ?? base.roleFamilyId);
+  const merged: SearchProfile = {
     ...base,
     ...override,
     bands: {
@@ -60,6 +96,14 @@ function merge(base: SearchProfile, override: Partial<SearchProfile>): SearchPro
     },
     eligibleStates: override.eligibleStates?.length ? override.eligibleStates : base.eligibleStates,
   };
+  // Clear inherited labels when the family changed, so the new family's wording is used.
+  if (override.roleFamilyId && override.roleFamilyId !== base.roleFamilyId) {
+    if (!override.jobNoun) merged.jobNoun = '';
+    if (!override.shortLabel) merged.shortLabel = '';
+    if (!override.roleFamily) merged.roleFamily = '';
+    if (!override.boardName) merged.boardName = '';
+  }
+  return withFamilyDefaults(merged, family);
 }
 
 /** Reads the profile named by PROFILE_FILE, falling back to profiles/default.json, then to defaults. */
@@ -91,14 +135,20 @@ export const PROFILE = loadProfile();
 
 /** Short summary used by the API and the interface. */
 export function describeProfile(profile: SearchProfile = PROFILE) {
+  const family = getRoleFamily(profile.roleFamilyId);
   return {
     boardName: profile.boardName,
     owner: profile.owner,
+    roleFamilyId: family.id,
     roleFamily: profile.roleFamily,
+    roleFamilyLabel: family.label,
+    shortLabel: profile.shortLabel,
+    jobNoun: profile.jobNoun,
     windowDays: profile.windowDays,
     bands: profile.bands,
     eligibleStates: profile.eligibleStates,
     requireEligibleState: profile.requireEligibleState,
+    lanes: family.lanes.map((lane) => ({ id: lane.id, label: lane.label })),
     source: process.env.PROFILE_FILE ?? 'profiles/default.json',
   };
 }
