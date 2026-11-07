@@ -42,7 +42,13 @@ export async function seedEmployers(): Promise<number> {
   for (const manual of MANUAL_EMPLOYERS) {
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
-       VALUES ($1,'manual',$2,$3,$4,$5,$6,'50-state careers sweep',FALSE,$7)
+       SELECT $1,'manual',$2,$3,$4,$5,$6,'50-state careers sweep',FALSE,$7
+        WHERE NOT EXISTS (
+          SELECT 1 FROM employers
+           WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
+               = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+             AND ats <> 'manual'
+        )
        ON CONFLICT (ats, slug) DO NOTHING
        RETURNING id`,
       [manual.name, slugify(manual.name), manual.industry, manual.size, manual.hq, manual.careersUrl,
@@ -72,7 +78,13 @@ export async function seedEmployers(): Promise<number> {
   for (const watch of WATCHLIST.filter((entry) => entry.roleFamilies.includes(ACTIVE_ROLE_FAMILY.id))) {
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
-       VALUES ($1,'manual',$2,$3,$4,$5,$6,'Ownership watchlist',FALSE,$7)
+       SELECT $1,'manual',$2,$3,$4,$5,$6,'Ownership watchlist',FALSE,$7
+        WHERE NOT EXISTS (
+          SELECT 1 FROM employers
+           WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
+               = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+             AND ats <> 'manual'
+        )
        ON CONFLICT (ats, slug) DO UPDATE SET careers_url = EXCLUDED.careers_url
        RETURNING (xmax = 0) AS inserted`,
       [watch.name, slugify(watch.name), watch.industry, watch.size, watch.hq, watch.careersUrl, watch.note],
