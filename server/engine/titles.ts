@@ -35,8 +35,8 @@ export function isRoleTitle(
 ): boolean {
   const title = (rawTitle ?? '').trim();
   if (!title || title.length > MAX_TITLE_LENGTH) return false;
-  if (isOwnershipWatchTitle(title, employer)) return true;
-  if (!family.titlePatterns.some((re) => re.test(title))) return false;
+  const watched = isOwnershipWatchTitle(title, employer);
+  if (!watched && !family.titlePatterns.some((re) => re.test(title))) return false;
 
   // A disqualified adjacent title only passes when it also names the target role.
   if (family.disqualifiers.some((re) => re.test(title))) {
