@@ -17,7 +17,11 @@ function exportSlug(): string {
 }
 
 const PORT = Number(process.env.PORT ?? 3000);
-const CRON_ENABLED = process.env.ENABLE_CRON !== '0';
+// Opt-in, not opt-out. Two processes sweeping one Neon database produce
+// "Authentication timed out" and corrupt each other's run bookkeeping, so a copy of
+// this app only schedules work when it is explicitly told to. The production service
+// sets ENABLE_CRON=1; every other copy (previews, scratch containers) stays quiet.
+const CRON_ENABLED = process.env.ENABLE_CRON === '1';
 const CRON_EXPRESSION = process.env.REFRESH_CRON ?? '*/30 * * * *';
 /** Works whether the server runs from dist/ (production) or server/ (tsx dev). */
 const PUBLIC_DIR = [
