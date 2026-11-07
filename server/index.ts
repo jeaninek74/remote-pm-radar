@@ -271,12 +271,20 @@ async function main(): Promise<void> {
   // thirty minutes away. If the latest run was interrupted, or no run has started in the last
   // slot, start one now so no half hour is skipped.
   try {
-    const last = await one<{ status: string; started_at: string; age_s: string }>(
-      `SELECT status, started_at::text, extract(epoch FROM now() - started_at)::text AS age_s
+    const last = await one<{ status: string; finished_epoch: string | null }>(
+      `SELECT status, extract(epoch FROM finished_at)::text AS finished_epoch
          FROM refresh_runs ORDER BY id DESC LIMIT 1`,
     );
-    if (last && (last.status === 'interrupted' || Number(last.age_s) > 30 * 60)) {
-      console.log(`[startup] last run ${last.status} (${Math.round(Number(last.age_s) / 60)} min ago) — starting a catch-up refresh`);
+    // Missed slot: the default half-hour cadence passed a boundary after the last run finished.
+    const slotMs = 30 * 60_000;
+    const lastBoundary = Math.floor(Date.now() / slotMs) * slotMs;
+    const missedSlot =
+      CRON_EXPRESSION === '*/30 * * * *' &&
+      last?.status === 'completed' &&
+      last.finished_epoch !== null &&
+      Number(last.finished_epoch) * 1000 < lastBoundary;
+    if (CRON_ENABLED && last && (last.status === 'interrupted' || missedSlot)) {
+      console.log(`[startup] last run ${last.status}${missedSlot ? ', slot missed' : ''} — starting a catch-up refresh`);
       startRefresh('catch-up')
         .then(({ runId, alreadyRunning }) => console.log(`[startup] catch-up refresh ${runId}${alreadyRunning ? ' joined an existing run' : ' started'}`))
         .catch((err) => console.error('[startup] catch-up refresh failed', err));
