@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import express from 'express';
 import cron from 'node-cron';
-import { healthCheck, migrate, q, refreshLockHeldElsewhere } from './db';
+import { healthCheck, migrate, q, refreshLockHeldElsewhere, one } from './db';
 import { APP, REFRESH, RULES } from './config';
 import { discoveryStatus, isRefreshing, runRefresh, seedEmployers, startDiscovery, startRefresh } from './engine/ingest';
 import {
@@ -267,6 +267,23 @@ async function main(): Promise<void> {
   // waiting for an empty table.
   const inserted = await seedEmployers();
   console.log(`[startup] seeded ${inserted} new employers`);
+  // A deploy that lands on a slot boundary kills the run that just started and the next one is
+  // thirty minutes away. If the latest run was interrupted, or no run has started in the last
+  // slot, start one now so no half hour is skipped.
+  try {
+    const last = await one<{ status: string; started_at: string; age_s: string }>(
+      `SELECT status, started_at::text, extract(epoch FROM now() - started_at)::text AS age_s
+         FROM refresh_runs ORDER BY id DESC LIMIT 1`,
+    );
+    if (last && (last.status === 'interrupted' || Number(last.age_s) > 30 * 60)) {
+      console.log(`[startup] last run ${last.status} (${Math.round(Number(last.age_s) / 60)} min ago) — starting a catch-up refresh`);
+      startRefresh('catch-up')
+        .then(({ runId, alreadyRunning }) => console.log(`[startup] catch-up refresh ${runId}${alreadyRunning ? ' joined an existing run' : ' started'}`))
+        .catch((err) => console.error('[startup] catch-up refresh failed', err));
+    }
+  } catch (err) {
+    console.error('[startup] could not check last run', (err as Error).message);
+  }
   // A new database has a schema and an employer registry but no postings, and the
   // scheduled cycle can be hours away — a deploy would come up as an empty board and
   // look broken. When the table is empty, start one refresh immediately and let it run
