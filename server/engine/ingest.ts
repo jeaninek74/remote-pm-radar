@@ -131,6 +131,9 @@ function standardiseOwnership(status: string): string {
  * all (not remote, non-US, state-restricted). Placement failures that a human
  * could still act on land in the verification queue instead of the tabs.
  */
+/** A verb of ownership within a clause of the noun: "lead cross-functional projects", "manage the program budget". */
+const PROJECT_RESPONSIBILITY = /\b(?:manag\w*|lead\w*|oversee\w*|own\w*|driv\w*|deliver\w*|coordinat\w*|direct\w*|run\w*|execut\w*)\b[^.;]{0,60}\b(?:projects?|programs?|programmes?|initiatives?|pmo|portfolio|implementations?)\b/i;
+
 export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): EvaluatedJob | null {
   const description = (raw.descriptionText ?? '').replace(/\s+/g, ' ').trim();
   const postedAt = raw.postedAt ?? null;
@@ -141,7 +144,7 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   // A watched title at a Black-owned employer (master prompt §9) qualifies only when the posting
   // actually describes project or program responsibilities; the title alone is not evidence.
   if (!isRoleTitle(raw.title) && isOwnershipWatchTitle(raw.title, employer)) {
-    if (!/\b(?:project|program|programme|pmo|portfolio)\b/i.test(description)) return null;
+    if (!PROJECT_RESPONSIBILITY.test(description)) return null;
   }
 
   const loc = evaluateLocation({
@@ -330,27 +333,32 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
 
 /* ---------------------------------------------------------------- discovery */
 
-async function probeAts(name: string): Promise<{ ats: Ats; slug: string } | null> {
+async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; slug: string } | null> {
   const base = slugify(name);
   if (!base || base.length < 3) return null;
   const variants = [...new Set([base, base.replace(/-/g, ''), base.split('-')[0]])].filter((v) => v.length >= 3);
   for (const slug of variants) {
+    if (Date.now() > deadline) return null;
     try {
       const gh = await fetchJson<{ jobs?: unknown[] }>(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=false`, 12_000);
       if (Array.isArray(gh.jobs)) return { ats: 'greenhouse', slug };
     } catch { /* not this one */ }
+    if (Date.now() > deadline) return null;
     try {
       const ab = await fetchJson<{ jobs?: unknown[] }>(`https://api.ashbyhq.com/posting-api/job-board/${slug}`, 12_000);
       if (Array.isArray(ab.jobs)) return { ats: 'ashby', slug };
     } catch { /* not this one */ }
+    if (Date.now() > deadline) return null;
     try {
       const lv = await fetchJson<unknown[]>(`https://api.lever.co/v0/postings/${slug}?mode=json`, 12_000);
       if (Array.isArray(lv) && lv.length) return { ats: 'lever', slug };
     } catch { /* not this one */ }
+    if (Date.now() > deadline) return null;
     try {
       const sr = await fetchJson<{ content?: unknown[] }>(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=1`, 12_000);
       if (Array.isArray(sr.content) && sr.content.length) return { ats: 'smartrecruiters', slug };
     } catch { /* not this one */ }
+    if (Date.now() > deadline) return null;
     try {
       const wk = await fetchJson<{ jobs?: unknown[] }>(`https://apply.workable.com/api/v1/widget/accounts/${slug}`, 12_000);
       if (Array.isArray(wk.jobs)) return { ats: 'workable', slug };
@@ -594,8 +602,9 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       }
       counters.jobsMatched += matched;
 
-      // Anything previously live for this employer but no longer listed has closed.
-      if (seenKeys.size || matched === 0) {
+      // Anything previously live for this employer but no longer listed has closed — unless the
+      // board was only partly read (time budget), in which case absence proves nothing.
+      if (!result.truncated && (seenKeys.size || matched === 0)) {
         const closed = await q<{ id: number }>(
           `UPDATE jobs
               SET bucket='archived',
@@ -642,7 +651,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       const discoveryDeadline = Date.now() + REFRESH.discoverBudgetMs;
       await mapLimit(pending, 4, async (row) => {
         if (Date.now() > discoveryDeadline) return;
-        const found = await probeAts(row.name);
+        const found = await probeAts(row.name, discoveryDeadline);
         if (found) {
           const inserted = await q<{ id: number }>(
             `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
@@ -656,7 +665,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
             `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
             [row.id, found.ats, found.slug],
           );
-        } else {
+        } else if (Date.now() <= discoveryDeadline) {
           await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
         }
       });

@@ -47,10 +47,11 @@ async function greenhouse(employer: EmployerRow): Promise<BoardFetchResult> {
   // No numeric cap on detail fetches: every matching title is read, inside the employer time budget.
   const candidates = all.filter((job) => isRoleTitle(job.title ?? '', undefined, employer));
   const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let truncated = false;
 
   const jobs: RawJob[] = [];
   for (const job of candidates) {
-    if (Date.now() > deadline) break;
+    if (Date.now() > deadline) { truncated = true; break; }
     let description = '';
     let rawContent = '';
     let detail: GhJob | null = null;
@@ -89,7 +90,7 @@ async function greenhouse(employer: EmployerRow): Promise<BoardFetchResult> {
       hqState: employer.hq_state,
     });
   }
-  return { jobs, ok: true, totalListed: all.length };
+  return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
 /* ------------------------------------------------------------------------ Lever */
@@ -376,9 +377,10 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
   }
   const candidates = all.filter((p) => isRoleTitle(p.name ?? '', undefined, employer));
   const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let truncated = false;
   const jobs: RawJob[] = [];
   for (const posting of candidates) {
-    if (Date.now() > deadline) break;
+    if (Date.now() > deadline) { truncated = true; break; }
     let description = '';
     try {
       const detail = await fetchJson<{
@@ -416,7 +418,7 @@ async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult>
       hqState: employer.hq_state,
     });
   }
-  return { jobs, ok: true, totalListed: all.length };
+  return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
 const ADAPTERS: Record<Ats, (employer: EmployerRow) => Promise<BoardFetchResult>> = {
@@ -501,6 +503,24 @@ export function workdayPostedDate(
   return { date: d.toISOString().slice(0, 10), confidence: lowerBound ? 'inferred' : 'confirmed' };
 }
 
+/**
+ * The generic phrases ("project manager", "program manager") always run first because they match
+ * most of a board; the remaining phrases start from a different point each half-hour slot, per
+ * employer, so a board that hits its time budget still sees every phrase across the day instead
+ * of restarting from the top and never reaching the later ones.
+ */
+export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
+  const all = searchTerms();
+  const generic = all.filter((t) => /^(?:project|program|programme) (?:manager|management)$/.test(t));
+  const rest = all.filter((t) => !generic.includes(t));
+  if (!rest.length) return all;
+  let hash = 0;
+  for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const slot = Math.floor(now / (30 * 60 * 1000));
+  const start = (hash + slot) % rest.length;
+  return [...generic, ...rest.slice(start), ...rest.slice(0, start)];
+}
+
 async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
   const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
     method: 'POST',
@@ -557,7 +577,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
     // against highmarkhealth.wd1), so a board is read 20 at a time until it stops returning
     // results. Jeanine's rule is no numeric cap on searches: the only stop besides the end of
     // the results is the per-employer time budget, and what was collected by then is kept.
-    terms: for (const text of searchTerms()) {
+    terms: for (const text of rotatedSearchTerms(employer.slug)) {
       for (let offset = 0; ; offset += 20) {
         if (Date.now() > deadline) { truncated = true; break terms; }
         const page = await workdaySearch(tenant, wd, site, text, offset);
@@ -578,7 +598,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
 
   const jobs: RawJob[] = [];
   for (const [path, posting] of collected) {
-    if (Date.now() > deadline + REFRESH.employerBudgetMs) break;
+    if (Date.now() > deadline + REFRESH.employerBudgetMs) { truncated = true; break; }
     const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';
@@ -608,7 +628,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
       hqState: employer.hq_state,
     });
   }
-  return { jobs, ok: true, totalListed: collected.size };
+  return { jobs, ok: true, totalListed: collected.size, truncated };
 }
 
 export async function fetchBoard(employer: EmployerRow): Promise<BoardFetchResult> {
