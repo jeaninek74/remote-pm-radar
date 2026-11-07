@@ -425,7 +425,7 @@ export async function discoverEmployers(
   let probed = 0;
   let found = 0;
   const seenIds = new Set<number>();
-  while (Date.now() < deadline && (maxProbes <= 0 || probed < maxProbes)) {
+  while (Date.now() < passDeadline(deadline) && (maxProbes <= 0 || probed < maxProbes)) {
     const limit = maxProbes > 0 ? Math.min(pageSize, maxProbes - probed) : pageSize;
     const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
       `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
@@ -440,9 +440,9 @@ export async function discoverEmployers(
     if (!fresh.length) break;
     for (const row of fresh) seenIds.add(row.id);
     await mapLimit(fresh, 6, async (row) => {
-      if (Date.now() > deadline) return;
+      if (Date.now() > passDeadline(deadline)) return;
       probed += 1;
-      const hit = await probeAts(row.name, deadline);
+      const hit = await probeAts(row.name, passDeadline(deadline));
       if (hit) {
         const inserted = await q<{ id: number }>(
           `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
@@ -456,7 +456,7 @@ export async function discoverEmployers(
           `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
           [row.id, hit.ats, hit.slug],
         );
-      } else if (Date.now() <= deadline) {
+      } else if (Date.now() <= passDeadline(deadline)) {
         await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
       } else {
         await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
@@ -469,7 +469,24 @@ export async function discoverEmployers(
   return { probed, found };
 }
 
-let discoveryPass: { startedAt: string; probed: number; found: number } | null = null;
+let discoveryPass: { startedAt: string; probed: number; found: number; cutoff: number } | null = null;
+
+/** Deadline for the running pass, pulled forward when a sweep needs the lock. */
+function passDeadline(deadline: number): number {
+  return discoveryPass ? Math.min(deadline, discoveryPass.cutoff) : deadline;
+}
+
+/**
+ * A sweep always wins over discovery: if a pass holds the lock when a sweep is due, the pass is
+ * told to stop and the sweep waits (up to a minute) for it to release the lock.
+ */
+async function yieldDiscoveryTo(acquire: () => Promise<RefreshLock | null>): Promise<RefreshLock | null> {
+  if (!discoveryPass) return null;
+  discoveryPass.cutoff = Date.now();
+  const until = Date.now() + 60_000;
+  while (discoveryPass && Date.now() < until) await new Promise((r) => setTimeout(r, 500));
+  return acquire();
+}
 
 /** Current standalone discovery pass, if one is running. */
 export function discoveryStatus(): { running: boolean; startedAt?: string } {
@@ -485,7 +502,7 @@ export async function startDiscovery(budgetMs: number): Promise<{ started: boole
   if (discoveryPass) return { started: false, reason: 'A discovery pass is already running.' };
   const lock = await acquireRefreshLock();
   if (!lock) return { started: false, reason: 'A refresh is running; discovery waits for the next gap.' };
-  const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0 };
+  const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0, cutoff: Infinity };
   discoveryPass = pass;
   void (async () => {
     try {
@@ -597,7 +614,7 @@ async function claimRun(trigger: string, lock: RefreshLock): Promise<number> {
  */
 export async function startRefresh(trigger: string): Promise<{ runId: number; alreadyRunning: boolean }> {
   await migrate();
-  const lock = await acquireRefreshLock();
+  const lock = (await acquireRefreshLock()) ?? (await yieldDiscoveryTo(acquireRefreshLock));
   if (!lock) {
     const existing = await currentRunningRun();
     return { runId: existing ?? 0, alreadyRunning: true };
