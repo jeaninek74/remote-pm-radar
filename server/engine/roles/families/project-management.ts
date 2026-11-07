@@ -116,11 +116,11 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     },
     {
       label: 'Healthcare & clinical systems', weight: 8, lane: 'exec',
-      keywords: ['healthcare', 'health system', 'hospital', 'epic', 'ehr', 'electronic health record', 'medicare', 'medicaid', 'clinical', 'payer', 'provider', 'health plan', 'patient'],
+      keywords: ['healthcare', 'health system', 'hospital', 'epic', 'cerner', 'ehr', 'electronic health record', 'medicare', 'medicaid', 'cms', 'clinical', 'payer', 'provider', 'health plan', 'patient'],
     },
     {
       label: 'Technology delivery & digital transformation', weight: 7, lane: 'exec',
-      keywords: ['digital transformation', 'it project', 'technology', 'software', 'cloud', 'data', 'cybersecurity', 'infrastructure', 'platform', 'agile', 'scrum', 'product'],
+      keywords: ['digital transformation', 'it project', 'technology', 'software', 'cloud', 'data', 'cybersecurity', 'infrastructure', 'platform', 'agile', 'scrum', 'product', 'disaster recovery', 'business continuity', 'telecommunications', 'ivr'],
     },
     {
       label: 'AI & workflow automation', weight: 5, lane: 'exec',
@@ -132,7 +132,7 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     },
     {
       label: 'Energy, utilities & sustainability', weight: 6, lane: 'construction',
-      keywords: ['solar', 'renewable', 'utility', 'utilities', 'energy', 'grid', 'decarbon', 'sustainability', 'clean energy', 'wind', 'battery'],
+      keywords: ['solar', 'renewable', 'utility', 'utilities', 'energy', 'grid', 'smart grid', 'photovoltaic', 'fuel cell', 'biogas', 'decarbon', 'sustainability', 'clean energy', 'wind', 'battery'],
     },
     {
       label: 'Marketing, creative & agency operations', weight: 7, lane: 'exec',
@@ -172,7 +172,7 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     },
     {
       label: 'Agile delivery & PM tooling', weight: 5, lane: 'exec',
-      keywords: ['jira', 'asana', 'ms project', 'microsoft project', 'smartsheet', 'confluence', 'agile', 'waterfall', 'scrum', 'kanban', 'pmp', 'project plan'],
+      keywords: ['jira', 'asana', 'ms project', 'microsoft project', 'primavera', 'p6', 'smartsheet', 'confluence', 'sharepoint', 'agile', 'waterfall', 'scrum', 'kanban', 'pmp', 'project plan'],
     },
   ],
 

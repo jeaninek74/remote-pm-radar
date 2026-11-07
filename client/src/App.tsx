@@ -301,7 +301,7 @@ export default function App() {
               </div>
             </div>
             <p className="masthead-sub">
-              Verified against employer career sites every four hours. Two salary bands, one verification queue,
+              Verified against employer career sites every thirty minutes. Two salary bands, one verification queue,
               and every field traceable to a source — no estimated salaries, no hybrid roles wearing a remote badge.
             </p>
           </div>

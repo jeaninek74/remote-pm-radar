@@ -143,6 +143,8 @@ async function connectWithRetry(): Promise<PoolClient> {
  * connection dies the server drops it too, so a crash cannot leave it stuck.
  */
 const REFRESH_LOCK_KEY = 7_420_119;
+/** How often the lock transaction is touched so Neon's idle-in-transaction timeout never fires. */
+const LOCK_HEARTBEAT_MS = Number(process.env.PG_LOCK_HEARTBEAT_MS ?? 60_000);
 
 export interface RefreshLock {
   /** False once the lock connection has errored or closed — the lock is gone with it. */
@@ -182,11 +184,28 @@ export async function acquireRefreshLock(): Promise<RefreshLock | null> {
   client.on('error', onError);
   client.on('end', onEnd);
 
+  // Neon terminates a connection that sits idle inside a transaction for five minutes, and a
+  // sweep with several Workday tenants runs longer than that (run 27 lost its lock at 5:00).
+  // A periodic no-op statement keeps the lock transaction active for as long as the sweep runs.
+  let beating = false;
+  const heartbeat = setInterval(() => {
+    if (!alive || released || beating) return;
+    beating = true;
+    client
+      .query('SELECT 1')
+      .catch((err: Error) => lost(`heartbeat failed (${err.message})`))
+      .finally(() => {
+        beating = false;
+      });
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref();
+
   return {
     get held() { return alive; },
     async release() {
       if (released) return;
       released = true;
+      clearInterval(heartbeat);
       try {
         if (alive) await client.query('ROLLBACK');
         client.release(!alive);
