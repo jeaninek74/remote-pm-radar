@@ -1,4 +1,4 @@
-import { migrate, one, q } from '../db';
+import { acquireRefreshLock, migrate, one, q, type RefreshLock } from '../db';
 import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
@@ -408,14 +408,29 @@ async function currentRunningRun(): Promise<number | null> {
   return existing?.id ?? null;
 }
 
-/** Blocking refresh used by the CLI and the four-hourly schedule. */
+/**
+ * Blocking refresh used by the CLI and the schedule. Only one sweep may run per database,
+ * whichever process asks: a second caller gets the id of the run already in flight.
+ */
 export async function runRefresh(trigger: string): Promise<number> {
   await migrate();
-  if (running) {
+  const lock = await acquireRefreshLock();
+  if (!lock) {
     const existing = await currentRunningRun();
     if (existing) return existing;
+    throw new Error('A refresh is already running in another process');
   }
-  return executeRun(await createRunRow(trigger));
+  return executeRun(await claimRun(trigger, lock), lock);
+}
+
+/** Creates the run row; if that fails the lock is given back rather than held until exit. */
+async function claimRun(trigger: string, lock: RefreshLock): Promise<number> {
+  try {
+    return await createRunRow(trigger);
+  } catch (err) {
+    await lock.release();
+    throw err;
+  }
 }
 
 /**
@@ -424,12 +439,13 @@ export async function runRefresh(trigger: string): Promise<number> {
  */
 export async function startRefresh(trigger: string): Promise<{ runId: number; alreadyRunning: boolean }> {
   await migrate();
-  if (running) {
+  const lock = await acquireRefreshLock();
+  if (!lock) {
     const existing = await currentRunningRun();
-    if (existing) return { runId: existing, alreadyRunning: true };
+    return { runId: existing ?? 0, alreadyRunning: true };
   }
-  const runId = await createRunRow(trigger);
-  void executeRun(runId).catch((err) => console.error('[refresh] run failed', err));
+  const runId = await claimRun(trigger, lock);
+  void executeRun(runId, lock).catch((err) => console.error('[refresh] run failed', err));
   return { runId, alreadyRunning: false };
 }
 
@@ -448,13 +464,16 @@ function counterValues(c: RunCounters): unknown[] {
   ];
 }
 
-async function executeRun(runId: number): Promise<number> {
+async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   running = true;
   const counters = emptyCounters();
 
   // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
   // how many employers it searched and how many postings it read, instead of zeros.
   const progress = async (message: string) => {
+    // The lock lives on its own connection. If Neon dropped that connection the lock went
+    // with it and another process may already be sweeping; stop rather than run two at once.
+    if (!lock.held) throw new Error('Refresh lock connection lost; stopping so a second sweep cannot overlap');
     await q(
       `UPDATE refresh_runs SET progress=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
       [runId, message.slice(0, 300), ...counterValues(counters)],
@@ -694,6 +713,7 @@ async function executeRun(runId: number): Promise<number> {
     throw err;
   } finally {
     running = false;
+    await lock.release();
   }
 }
 

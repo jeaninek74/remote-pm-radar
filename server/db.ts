@@ -113,6 +113,103 @@ export async function one<T extends QueryResultRow = QueryResultRow>(
   return rows[0] ?? null;
 }
 
+async function connectWithRetry(): Promise<PoolClient> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await pool.connect();
+    } catch (err) {
+      lastError = err;
+      if (!isTransientDbError(err) || attempt === RETRY_ATTEMPTS - 1) throw err;
+      const wait = 1000 * 3 ** attempt;
+      console.warn(`[db] connect failed (${(err as Error).message}); retrying in ${wait / 1000}s`);
+      await sleep(wait);
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * One sweep per database, across processes. The in-process `running` flag cannot see a
+ * second container (a rolling deploy, a second service, an old copy still pointed at the
+ * same DATABASE_URL); at 08:00Z on 2026-11-07 three schedulers fired together and the
+ * connection storm produced "Authentication timed out" for all of them.
+ *
+ * The lock is a transaction-level advisory lock inside a transaction that stays open on a
+ * dedicated client for the length of the run. Transaction scope matters: Neon's pooled
+ * endpoint (PgBouncer, transaction mode) hands a backend to a client only for the duration
+ * of a transaction, so a session-level lock could be taken on one backend and "released" on
+ * another. An open transaction pins the backend; ROLLBACK drops the lock; and if the
+ * connection dies the server drops it too, so a crash cannot leave it stuck.
+ */
+const REFRESH_LOCK_KEY = 7_420_119;
+
+export interface RefreshLock {
+  /** False once the lock connection has errored or closed — the lock is gone with it. */
+  readonly held: boolean;
+  release(): Promise<void>;
+}
+
+/** Returns the lock, or null when another process already holds it. */
+export async function acquireRefreshLock(): Promise<RefreshLock | null> {
+  const client = await connectWithRetry();
+  let locked = false;
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_xact_lock($1) AS locked', [REFRESH_LOCK_KEY],
+    );
+    locked = rows[0]?.locked === true;
+    if (!locked) await client.query('ROLLBACK');
+  } catch (err) {
+    client.release(true);
+    throw err;
+  }
+  if (!locked) {
+    client.release();
+    return null;
+  }
+
+  let alive = true;
+  let released = false;
+  const lost = (reason: string) => {
+    if (!alive) return;
+    alive = false;
+    if (!released) console.error(`[db] refresh lock connection ${reason}; the lock is no longer held`);
+  };
+  const onError = (err: Error) => lost(`errored (${err.message})`);
+  const onEnd = () => lost('closed');
+  client.on('error', onError);
+  client.on('end', onEnd);
+
+  return {
+    get held() { return alive; },
+    async release() {
+      if (released) return;
+      released = true;
+      try {
+        if (alive) await client.query('ROLLBACK');
+        client.release(!alive);
+      } catch {
+        client.release(true);
+      } finally {
+        // Detached only after ROLLBACK: a disconnect during it must still have a listener,
+        // and the client goes back to the pool without listeners from this run.
+        client.off('error', onError);
+        client.off('end', onEnd);
+      }
+    },
+  };
+}
+
+/** True while some process — this one or another — is inside a refresh. */
+export async function refreshLockHeldElsewhere(): Promise<boolean> {
+  const lock = await acquireRefreshLock();
+  if (!lock) return true;
+  await lock.release();
+  return false;
+}
+
 export async function withClient<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {

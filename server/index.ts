@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import express from 'express';
 import cron from 'node-cron';
-import { healthCheck, migrate, q } from './db';
+import { healthCheck, migrate, q, refreshLockHeldElsewhere } from './db';
 import { APP, RULES } from './config';
 import { isRefreshing, runRefresh, seedEmployers, startRefresh } from './engine/ingest';
 import {
@@ -234,6 +234,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 /* ------------------------------------------------------------------ startup */
 
 async function markInterruptedRuns(): Promise<void> {
+  // Another container may be mid-sweep right now (rolling deploy, second service). Its run
+  // row is live, not orphaned; only close rows when nobody holds the refresh lock.
+  if (await refreshLockHeldElsewhere()) {
+    console.log('[boot] a refresh is running in another process; leaving its run open');
+    return;
+  }
   await q(
     `UPDATE refresh_runs
         SET status='interrupted', finished_at=now(), message='Process restarted before this run finished.'
