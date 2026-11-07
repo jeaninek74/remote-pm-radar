@@ -187,14 +187,16 @@ export async function acquireRefreshLock(): Promise<RefreshLock | null> {
     async release() {
       if (released) return;
       released = true;
-      // The client goes back to the pool; listeners must not follow it into the next run.
-      client.off('error', onError);
-      client.off('end', onEnd);
       try {
         if (alive) await client.query('ROLLBACK');
         client.release(!alive);
       } catch {
         client.release(true);
+      } finally {
+        // Detached only after ROLLBACK: a disconnect during it must still have a listener,
+        // and the client goes back to the pool without listeners from this run.
+        client.off('error', onError);
+        client.off('end', onEnd);
       }
     },
   };
