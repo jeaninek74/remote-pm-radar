@@ -89,7 +89,7 @@ const INDUSTRY_CATEGORIES: [string, string[]][] = [
   ['Medical Services', ['Medical_and_health_organizations_based_in_the_United_States']],
   ['Pharmaceuticals', ['Pharmaceutical_companies_of_the_United_States']],
   ['Biotechnology', ['Biotechnology_companies_of_the_United_States']],
-  ['Federal Contracting', ['Defense_contractors_of_the_United_States', 'Government_services_companies_of_the_United_States']],
+  // Wikipedia has no federal-contracting category; defense and management/IT consulting cover those employers.
   ['Defense', ['Defense_companies_of_the_United_States']],
   ['Management Consulting', ['Management_consulting_firms_of_the_United_States', 'Consulting_firms_of_the_United_States']],
   ['IT Consulting', ['Information_technology_consulting_firms_of_the_United_States']],
