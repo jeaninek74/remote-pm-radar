@@ -474,12 +474,19 @@ export function workdayPostedDate(
   const exact = isoDate(startDate);
   if (exact) return { date: exact, confidence: 'confirmed' };
   const text = (postedOn ?? '').trim();
+  // "Posted Today" / "Posted 3 Days Ago" is Workday's own posting date, exact to the day, so it
+  // counts as confirmed. "Posted 30+ Days Ago" is only a lower bound: store the earliest it can
+  // be (31 days) as inferred — old enough to be archived, never shown as a precise date.
   let daysAgo: number | null = null;
+  let lowerBound = false;
   if (/\btoday\b/i.test(text)) daysAgo = 0;
   else if (/\byesterday\b/i.test(text)) daysAgo = 1;
   else {
     const m = /(\d+)(\+?)\s*days?\s*ago/i.exec(text);
-    if (m) daysAgo = Number(m[1]) + (m[2] ? 1 : 0);
+    if (m) {
+      lowerBound = m[2] === '+';
+      daysAgo = Number(m[1]) + (lowerBound ? 1 : 0);
+    }
   }
   if (daysAgo === null) {
     const parsed = isoDate(text);
@@ -487,7 +494,7 @@ export function workdayPostedDate(
   }
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - daysAgo);
-  return { date: d.toISOString().slice(0, 10), confidence: 'inferred' };
+  return { date: d.toISOString().slice(0, 10), confidence: lowerBound ? 'inferred' : 'confirmed' };
 }
 
 async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
