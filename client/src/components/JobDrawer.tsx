@@ -67,7 +67,7 @@ export function JobDrawer({ job, onClose, onUpdated }: Props) {
       <aside className="drawer" onClick={(event) => event.stopPropagation()} aria-label={`${job.title} at ${job.company}`}>
         <div className="drawer-head">
           <div className="eyebrow">
-            <span>{job.bucket === 'tab1' ? '$110K–$130K tab' : job.bucket === 'tab2' ? '$150K+ tab' : job.bucket === 'queue' ? 'Needs verification' : 'Archived'}</span>
+            <span>{job.bucket === 'tab0' ? '$90K–$110K tab' : job.bucket === 'tab1' ? '$110K–$130K tab' : job.bucket === 'tab2' ? '$150K+ tab' : job.bucket === 'queue' ? 'Needs verification' : 'Archived'}</span>
             <span>{job.source}</span>
           </div>
           <h2>{job.title}</h2>

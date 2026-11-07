@@ -19,7 +19,7 @@ button. It stores everything in Postgres and refreshes on a thirty-minute schedu
 1. Fully remote positions only.
 2. Employers must accept California residents working remotely.
 3. Original posting date inside the posting window (see §4).
-4. Two salary tabs: **$110,000–$130,000** and **$150,000+ with no ceiling**.
+4. Three salary tabs: **$90,000–$110,000** (added 7 Nov 2026 at Jeanine's direction), **$110,000–$130,000** and **$150,000+ with no ceiling**.
 5. Technical and nontechnical project/program management have **equal** priority. Nontechnical means
    business operations, leadership, budgets, vendor management, planning, strategy, process
    improvement, project execution, compliance, procurement, administration and cross-functional
@@ -66,6 +66,7 @@ Classify on the **published minimum**, never the maximum.
 
 | Published minimum | Placement |
 | --- | --- |
+| $90,000–$109,999 | $90K–$110K tab (7 Nov 2026) |
 | $110,000–$130,000 | Tab 1 |
 | $130,001–$149,999 | Neither tab (queue) |
 | $150,000+ | Tab 2, no cap |

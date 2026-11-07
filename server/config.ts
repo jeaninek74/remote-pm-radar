@@ -24,6 +24,10 @@ export const RULES = {
    * with JOB_WINDOW_DAYS (7 restores the original rule).
    */
   windowDays: PROFILE.windowDays,
+  /** Tab 0: verified minimum annual base salary from $90K up to the Tab 1 floor. */
+  tab0Min: PROFILE.bands.tab0.min,
+  tab0Max: PROFILE.bands.tab0.max ?? PROFILE.bands.tab0.min,
+  tab0Label: PROFILE.bands.tab0.label,
   /** Tab 1: verified minimum annual base salary inside this inclusive range. */
   tab1Min: PROFILE.bands.tab1.min,
   tab1Max: PROFILE.bands.tab1.max ?? PROFILE.bands.tab1.min,

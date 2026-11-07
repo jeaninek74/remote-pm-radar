@@ -131,8 +131,8 @@ export async function listJobs(): Promise<JobRow[]> {
   const rows = await q<JobRecord>(
     `SELECT ${JOB_COLUMNS}
        FROM jobs
-      WHERE bucket IN ('tab1','tab2','unsalaried','queue','archived')
-      ORDER BY (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, match_score DESC, posted_at DESC NULLS LAST
+      WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived')
+      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, match_score DESC, posted_at DESC NULLS LAST
       LIMIT 4000`,
   );
   return rows.map(mapJob);
@@ -140,6 +140,7 @@ export async function listJobs(): Promise<JobRow[]> {
 
 export interface Stats {
   activeJobs: number;
+  tab0: number;
   tab1: number;
   tab2: number;
   unsalaried: number;
@@ -162,6 +163,8 @@ export interface Stats {
   sourcesOk: number;
   sourcesFailed: number;
   windowDays: number;
+  tab0Min: number;
+  tab0Max: number;
   tab1Min: number;
   tab1Max: number;
   tab2Min: number;
@@ -170,23 +173,24 @@ export interface Stats {
 
 export async function getStats(): Promise<Stats> {
   const row = await one<{
-    active: string; tab1: string; tab2: string; new_today: string; new_24h: string;
+    active: string; tab0: string; tab1: string; tab2: string; new_today: string; new_24h: string;
     nontechnical: string; technical: string; hybrid: string; urgent: string;
     black_owned_jobs: string; black_owned_employers: string; unsalaried: string;
     queue: string; archived: string;
   }>(
     `SELECT
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2'))::text AS active,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2'))::text AS active,
+       count(*) FILTER (WHERE bucket='tab0')::text AS tab0,
        count(*) FILTER (WHERE bucket='tab1')::text AS tab1,
        count(*) FILTER (WHERE bucket='tab2')::text AS tab2,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND first_seen_at >= CURRENT_DATE)::text AS new_today,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND first_seen_at > now() - INTERVAL '24 hours')::text AS new_24h,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND category='Nontechnical')::text AS nontechnical,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND category='Technical')::text AS technical,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND category='Hybrid')::text AS hybrid,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND urgency='High')::text AS urgent,
-       count(*) FILTER (WHERE bucket IN ('tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
-       count(DISTINCT company) FILTER (WHERE bucket IN ('tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND first_seen_at >= CURRENT_DATE)::text AS new_today,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND first_seen_at > now() - INTERVAL '24 hours')::text AS new_24h,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Nontechnical')::text AS nontechnical,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Technical')::text AS technical,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Hybrid')::text AS hybrid,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND urgency='High')::text AS urgent,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
+       count(DISTINCT company) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
        count(*) FILTER (WHERE bucket='unsalaried')::text AS unsalaried,
        count(*) FILTER (WHERE bucket='queue')::text AS queue,
        count(*) FILTER (WHERE bucket='archived')::text AS archived
@@ -213,6 +217,7 @@ export async function getStats(): Promise<Stats> {
 
   return {
     activeJobs: Number(row?.active ?? 0),
+    tab0: Number(row?.tab0 ?? 0),
     tab1: Number(row?.tab1 ?? 0),
     tab2: Number(row?.tab2 ?? 0),
     unsalaried: Number(row?.unsalaried ?? 0),
@@ -235,6 +240,8 @@ export async function getStats(): Promise<Stats> {
     sourcesOk: Number(sources?.ok ?? 0),
     sourcesFailed: Number(sources?.failed ?? 0),
     windowDays: RULES.windowDays,
+    tab0Min: RULES.tab0Min,
+    tab0Max: RULES.tab0Max,
     tab1Min: RULES.tab1Min,
     tab1Max: RULES.tab1Max,
     tab2Min: RULES.tab2Min,
@@ -273,7 +280,7 @@ export async function listEmployers(): Promise<EmployerRowOut[]> {
     `SELECT e.id, e.name, e.ats, e.slug, e.industry, e.company_size, e.hq_state, e.careers_url,
             e.black_owned, e.ownership_status, e.ownership_source, e.discovered_via,
             e.last_searched_at::text, e.last_status, e.jobs_seen, e.active,
-            count(j.id) FILTER (WHERE j.bucket IN ('tab1','tab2'))::text AS open_roles
+            count(j.id) FILTER (WHERE j.bucket IN ('tab0','tab1','tab2'))::text AS open_roles
        FROM employers e
        LEFT JOIN jobs j ON j.employer_id = e.id
       GROUP BY e.id

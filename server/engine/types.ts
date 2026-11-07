@@ -118,7 +118,7 @@ export interface EvaluatedJob {
    * it cannot be placed in either salary band. It is surfaced in its own tab instead
    * of being buried in the review queue.
    */
-  bucket: 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived' | 'excluded';
+  bucket: 'tab0' | 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived' | 'excluded';
   bucketReason: string;
   descriptionExcerpt: string;
   source: string;

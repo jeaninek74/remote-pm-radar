@@ -240,13 +240,13 @@ export function parseAshbyCompensation(compensation: unknown): ParsedSalary | nu
 }
 
 export interface SalaryClassification {
-  bucket: 'tab1' | 'tab2' | 'none';
+  bucket: 'tab0' | 'tab1' | 'tab2' | 'none';
   reason: string;
 }
 
 /**
  * Salary banding uses the PUBLISHED MINIMUM only:
- *   min 110,000–130,000 -> Tab 1 | min 150,000+ -> Tab 2 (no ceiling)
+ *   min 90,000–109,999 -> Tab 0 | min 110,000–130,000 -> Tab 1 | min 150,000+ -> Tab 2 (no ceiling)
  *   min 130,001–149,999 -> neither tab (verification queue)
  */
 export function classifySalary(min: number | null, max: number | null, interval: SalaryInterval | null, hourlyRate: number | null = null): SalaryClassification {
@@ -265,10 +265,11 @@ export function classifySalary(min: number | null, max: number | null, interval:
     const basis = `Hourly contract at $${rate.toLocaleString('en-US')}/hr \u2014 annualised at 2,080 hours ($${min.toLocaleString('en-US')}). Contract income, not guaranteed salary.`;
     if (min >= RULES.tab2Min) return { bucket: 'tab2', reason: basis };
     if (min >= RULES.tab1Min && min <= RULES.tab1Max) return { bucket: 'tab1', reason: basis };
+    if (min >= RULES.tab0Min && min <= RULES.tab0Max) return { bucket: 'tab0', reason: basis };
     if (min > RULES.tab1Max && min < RULES.tab2Min) {
       return { bucket: 'none', reason: `${basis} The annualised equivalent sits in the $130,001\u2013$149,999 gap.` };
     }
-    return { bucket: 'none', reason: `${basis} The annualised equivalent is below the $110K floor.` };
+    return { bucket: 'none', reason: `${basis} The annualised equivalent is below the $90K floor.` };
   }
   if (min >= RULES.tab2Min) {
     return { bucket: 'tab2', reason: `Published minimum of $${min.toLocaleString('en-US')} meets the $150K+ band.` };
@@ -282,5 +283,8 @@ export function classifySalary(min: number | null, max: number | null, interval:
       reason: `Published minimum of $${min.toLocaleString('en-US')} sits in the $130,001\u2013$149,999 gap between the two bands.`,
     };
   }
-  return { bucket: 'none', reason: `Published minimum of $${min.toLocaleString('en-US')} is below the $110K floor.` };
+  if (min >= RULES.tab0Min && min <= RULES.tab0Max) {
+    return { bucket: 'tab0', reason: `Published minimum of $${min.toLocaleString('en-US')} falls inside $90K\u2013$110K.` };
+  }
+  return { bucket: 'none', reason: `Published minimum of $${min.toLocaleString('en-US')} is below the $90K floor.` };
 }

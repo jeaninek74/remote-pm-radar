@@ -39,6 +39,8 @@ export interface SearchProfile {
   /** Only postings whose original date falls inside this many days qualify. */
   windowDays: number;
   bands: {
+    /** Entry band (added 7 Nov 2026 at Jeanine's direction): $90K up to, not including, the Tab 1 floor. */
+    tab0: SalaryBand;
     /** Narrow band, e.g. the first salary tab. */
     tab1: SalaryBand;
     /** Open-ended band, e.g. the second salary tab. */
@@ -62,6 +64,7 @@ export const DEFAULT_PROFILE: SearchProfile = {
   shortLabel: BASE_FAMILY.shortLabel,
   windowDays: 14,
   bands: {
+    tab0: { min: 90_000, max: 109_999, label: '$90K–$110K' },
     tab1: { min: 110_000, max: 130_000, label: '$110K–$130K' },
     tab2: { min: 150_000, max: null, label: '$150K+' },
   },
@@ -91,6 +94,7 @@ function merge(base: SearchProfile, override: Partial<SearchProfile>): SearchPro
     ...base,
     ...override,
     bands: {
+      tab0: { ...base.bands.tab0, ...(override.bands?.tab0 ?? {}) },
       tab1: { ...base.bands.tab1, ...(override.bands?.tab1 ?? {}) },
       tab2: { ...base.bands.tab2, ...(override.bands?.tab2 ?? {}) },
     },

@@ -1,6 +1,9 @@
 import { classifySalary } from '../server/engine/salary';
 
 const cases: { label: string; min: number; max: number | null; want: string }[] = [
+  { label: '$95K–$120K', min: 95_000, max: 120_000, want: 'tab0' },
+  { label: '$90K–$100K', min: 90_000, max: 100_000, want: 'tab0' },
+  { label: '$85K–$120K', min: 85_000, max: 120_000, want: 'none' },
   { label: '$115K–$125K', min: 115_000, max: 125_000, want: 'tab1' },
   { label: '$125K–$150K', min: 125_000, max: 150_000, want: 'tab1' },
   { label: '$130K–$170K', min: 130_000, max: 170_000, want: 'tab1' },
@@ -10,7 +13,7 @@ const cases: { label: string; min: number; max: number | null; want: string }[] 
   { label: '$200K–$300K', min: 200_000, max: 300_000, want: 'tab2' },
   { label: 'boundary $130,001', min: 130_001, max: 160_000, want: 'none' },
   { label: 'boundary $149,999', min: 149_999, max: 190_000, want: 'none' },
-  { label: 'boundary $109,999', min: 109_999, max: 130_000, want: 'none' },
+  { label: 'boundary $109,999', min: 109_999, max: 130_000, want: 'tab0' },
   { label: 'boundary $150,000', min: 150_000, max: 150_000, want: 'tab2' },
   { label: 'no salary', min: Number.NaN, max: null, want: 'none' },
 ];

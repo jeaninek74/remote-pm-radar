@@ -1,4 +1,4 @@
-export type Bucket = 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived';
+export type Bucket = 'tab0' | 'tab1' | 'tab2' | 'unsalaried' | 'queue' | 'archived';
 export type Category = 'Technical' | 'Nontechnical' | 'Hybrid';
 export type Urgency = 'High' | 'Medium' | 'Low' | 'Unknown';
 
@@ -52,6 +52,7 @@ export interface Job {
 
 export interface Stats {
   activeJobs: number;
+  tab0: number;
   tab1: number;
   tab2: number;
   newToday: number;
@@ -73,6 +74,8 @@ export interface Stats {
   sourcesOk: number;
   sourcesFailed: number;
   windowDays: number;
+  tab0Min: number;
+  tab0Max: number;
   tab1Min: number;
   tab1Max: number;
   tab2Min: number;
@@ -156,7 +159,7 @@ export interface Bootstrap {
     jobNoun: string;
     lanes: { id: string; label: string }[];
     windowDays: number;
-    bands: { tab1: { min: number; max: number | null; label: string }; tab2: { min: number; max: number | null; label: string } };
+    bands: { tab0: { min: number; max: number | null; label: string }; tab1: { min: number; max: number | null; label: string }; tab2: { min: number; max: number | null; label: string } };
     eligibleStates: string[];
     source: string;
   };

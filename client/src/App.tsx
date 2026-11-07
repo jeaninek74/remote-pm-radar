@@ -11,9 +11,10 @@ import { EmployersTab } from './components/EmployersTab';
 import { RunsTab } from './components/RunsTab';
 import { HowTo } from './components/HowTo';
 
-type TabKey = 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
+type TabKey = 'tab0' | 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
 
 const TAB_LABELS: Record<TabKey, string> = {
+  tab0: '$90K–$110K',
   tab1: '$110K–$130K',
   tab2: '$150K+',
   queue: 'Needs verification',
@@ -56,6 +57,7 @@ export default function App() {
       const hasTab1 = jobPayload.jobs.some((job) => job.bucket === 'tab1');
       const hasTab2 = jobPayload.jobs.some((job) => job.bucket === 'tab2');
       if (!hasTab1 && hasTab2) return 'tab2';
+      if (!hasTab1 && jobPayload.jobs.some((job) => job.bucket === 'tab0')) return 'tab0';
       return current;
     });
     setRefreshing(bootstrap.refreshing);
@@ -156,7 +158,7 @@ export default function App() {
   }, []);
 
   const tabJobs = useMemo(() => {
-    const bucket = tab === 'tab1' ? 'tab1' : tab === 'tab2' ? 'tab2' : tab === 'queue' ? 'queue' : 'archived';
+    const bucket = tab === 'tab0' ? 'tab0' : tab === 'tab1' ? 'tab1' : tab === 'tab2' ? 'tab2' : tab === 'queue' ? 'queue' : 'archived';
     return jobs.filter((job) => job.bucket === bucket);
   }, [jobs, tab]);
 
@@ -209,6 +211,7 @@ export default function App() {
   const selected = jobs.find((job) => job.id === selectedId) ?? null;
 
   const counts = useMemo(() => ({
+    tab0: jobs.filter((job) => job.bucket === 'tab0').length,
     tab1: jobs.filter((job) => job.bucket === 'tab1').length,
     tab2: jobs.filter((job) => job.bucket === 'tab2').length,
     queue: jobs.filter((job) => job.bucket === 'queue').length,

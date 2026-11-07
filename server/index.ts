@@ -180,6 +180,7 @@ app.get('/api/export.xlsx', async (_req, res, next) => {
       runs,
       stats: {
         'Report generated': new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
+        'Active jobs in $90K–$110K tab': stats.tab0,
         'Active jobs in $110K–$130K tab': stats.tab1,
         'Active jobs in $150K+ tab': stats.tab2,
         'Nontechnical roles': stats.nontechnical,
