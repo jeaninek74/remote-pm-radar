@@ -765,6 +765,7 @@ export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
 
 const WORKDAY_PACE_MS = Number(process.env.WORKDAY_PACE_MS ?? 400);
 const WORKDAY_MAX_RETRY_WAIT_MS = 20_000;
+const WORKDAY_FULL_READ_MAX = Number(process.env.WORKDAY_FULL_READ_MAX ?? 2000);
 
 /**
  * One tenant is asked for hundreds of pages per sweep (249 phrases, 20 postings a page), and in
@@ -838,29 +839,59 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
   // shift a posting a day younger than it is.
   const listedAt = new Date();
   let truncated = false;
+  let fullReadIncomplete = false;
+  const collectPostings = (postings: WorkdayPosting[], seenExternalPaths?: Set<string>) => {
+    for (const posting of postings) {
+      if (posting.externalPath) seenExternalPaths?.add(posting.externalPath);
+      if (!posting.externalPath || !isRoleTitle(posting.title ?? '', undefined, employer)) continue;
+      if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
+    }
+  };
   try {
+    // Small boards are read in full because that is complete and far cheaper than 249 phrase searches.
     // Workday returns at most 20 postings per request (a larger limit returns nothing, verified
-    // against highmarkhealth.wd1), so a board is read 20 at a time until it stops returning
-    // results. Jeanine's rule is no numeric cap on searches: the only stop besides the end of
-    // the results is the per-employer time budget, and what was collected by then is kept.
-    terms: for (const text of rotatedSearchTerms(employer.slug)) {
-      for (let offset = 0; ; offset += 20) {
-        if (Date.now() > deadline) { truncated = true; break terms; }
-        const page = await workdaySearch(tenant, wd, site, text, offset);
-        const postings = page.jobPostings ?? [];
-        for (const posting of postings) {
-          // Only keep titles that genuinely belong to the active role family: it avoids fetching details
-          // for unrelated search hits and keeps the run inside its time budget.
-          if (!posting.externalPath || !isRoleTitle(posting.title ?? '', undefined, employer)) continue;
-          if (!collected.has(posting.externalPath)) collected.set(posting.externalPath, posting);
+    // against highmarkhealth.wd1); full reads page to the reported total, while large or unknown
+    // boards retain rotating phrase searches. The threshold chooses a strategy, never a read cap.
+    if (Date.now() > deadline) {
+      truncated = true;
+    } else {
+      const firstPage = await workdaySearch(tenant, wd, site, '', 0);
+      const firstPostings = firstPage.jobPostings ?? [];
+      if (typeof firstPage.total === 'number' && firstPage.total <= WORKDAY_FULL_READ_MAX) {
+        const seenExternalPaths = new Set<string>();
+        collectPostings(firstPostings, seenExternalPaths);
+        let offset = firstPostings.length;
+        while (firstPostings.length >= 20 && offset < firstPage.total) {
+          if (Date.now() > deadline) { truncated = true; break; }
+          const page = await workdaySearch(tenant, wd, site, '', offset);
+          const postings = page.jobPostings ?? [];
+          collectPostings(postings, seenExternalPaths);
+          if (postings.length < 20) break;
+          offset += postings.length;
         }
-        if (postings.length < 20) break;
+        // Offset pages can shift when postings close, so only a complete unique-ID count proves absence.
+        if (seenExternalPaths.size < firstPage.total) {
+          truncated = true;
+          fullReadIncomplete = true;
+          console.warn(`[workday] ${tenant}/${site}: full read saw ${seenExternalPaths.size} of ${firstPage.total} unique postings`);
+        }
+      } else {
+        collectPostings(firstPostings);
+        terms: for (const text of rotatedSearchTerms(employer.slug)) {
+          for (let offset = 0; ; offset += 20) {
+            if (Date.now() > deadline) { truncated = true; break terms; }
+            const page = await workdaySearch(tenant, wd, site, text, offset);
+            const postings = page.jobPostings ?? [];
+            collectPostings(postings);
+            if (postings.length < 20) break;
+          }
+        }
       }
     }
   } catch (err) {
     return { jobs: [], ok: false, error: (err as Error).message, retryable: isRetryableBoardError(err), totalListed: collected.size };
   }
-  if (truncated) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
+  if (truncated && !fullReadIncomplete) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
 
   const jobs: RawJob[] = [];
   for (const [path, posting] of collected) {
