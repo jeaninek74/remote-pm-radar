@@ -26,9 +26,12 @@ const needsSsl =
 
 export const pool = new Pool({
   connectionString,
-  max: Number(process.env.PG_POOL_MAX ?? 8),
+  max: Number(process.env.PG_POOL_MAX ?? 24),
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 15_000,
+  // A sweep writes several statements per employer while the API keeps serving. Eight
+  // connections and a fifteen-second wait exhausted the pool and the refresh died with
+  // "Connection terminated due to connection timeout" before searching a single board.
+  connectionTimeoutMillis: 60_000,
   ssl: needsSsl && !/sslmode=disable/i.test(connectionString)
     ? { rejectUnauthorized: false }
     : undefined,
