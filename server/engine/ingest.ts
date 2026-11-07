@@ -502,11 +502,16 @@ export async function startDiscovery(budgetMs: number): Promise<{ started: boole
   if (discoveryPass) return { started: false, reason: 'A discovery pass is already running.' };
   const lock = await acquireRefreshLock();
   if (!lock) return { started: false, reason: 'A refresh is running; discovery waits for the next gap.' };
+  // Never run into the next :00/:30 sweep: the pass ends at least a minute before the slot.
+  const now = Date.now();
+  const slotMs = 30 * 60_000;
+  const nextSlot = Math.ceil((now + 1) / slotMs) * slotMs;
+  const budget = Math.max(30_000, Math.min(budgetMs, nextSlot - now - 60_000));
   const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0, cutoff: Infinity };
   discoveryPass = pass;
   void (async () => {
     try {
-      const result = await discoverEmployers(Date.now() + budgetMs);
+      const result = await discoverEmployers(Date.now() + budget);
       pass.probed = result.probed;
       pass.found = result.found;
       console.log(`[discovery] pass finished: ${result.probed} probed, ${result.found} new employers`);
