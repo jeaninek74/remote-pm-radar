@@ -247,6 +247,23 @@ async function main(): Promise<void> {
   // waiting for an empty table.
   const inserted = await seedEmployers();
   console.log(`[startup] seeded ${inserted} new employers`);
+  // A new database has a schema and an employer registry but no postings, and the
+  // scheduled cycle can be hours away — a deploy would come up as an empty board and
+  // look broken. When the table is empty, start one refresh immediately and let it run
+  // in the background so the server still begins listening on time.
+  try {
+    const [row] = await q<{ count: string }>('SELECT count(*)::text AS count FROM jobs');
+    if (Number(row?.count ?? 0) === 0) {
+      console.log('[startup] no postings yet — starting a bootstrap refresh');
+      startRefresh('manual')
+        .then(({ runId, alreadyRunning }) =>
+          console.log(`[startup] bootstrap refresh ${runId}${alreadyRunning ? ' joined an existing run' : ' started'}`),
+        )
+        .catch((err) => console.error('[startup] bootstrap refresh failed', err));
+    }
+  } catch (err) {
+    console.error('[startup] could not check job count', (err as Error).message);
+  }
 
   if (CRON_ENABLED && cron.validate(CRON_EXPRESSION)) {
     cron.schedule(CRON_EXPRESSION, () => {
