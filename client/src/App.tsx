@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Bootstrap, Employer, Job, Run, SourceHealth } from './types';
-import { download, loadBootstrap, loadEmployers, loadJobs, loadRuns, refreshStatus, saveTracking, shortDateTime, splitBoardName, startRefresh } from './lib';
+import { download, loadBootstrap, loadEmployers, loadJobs, loadRuns, refreshStatus, saveTracking, shortDateTime, splitBoardName, startRefresh, cronLabel } from './lib';
 import { KpiBand } from './components/KpiBand';
 import { SimpleBoard } from './components/SimpleBoard';
 import { DEFAULT_FILTERS, Filters } from './components/Filters';
@@ -314,7 +314,7 @@ export default function App() {
                 <div>Last refresh: <strong>{shortDateTime(boot?.stats.lastRefresh)}</strong></div>
                 <div>
                   {boot?.cronEnabled
-                    ? `Scheduled every 4 hours${boot.nextRefresh ? ` · next ${shortDateTime(boot.nextRefresh)}` : ''}`
+                    ? `Scheduled ${cronLabel(boot.cronExpression)}${boot.nextRefresh ? ` · next ${shortDateTime(boot.nextRefresh)}` : ''}`
                     : 'Scheduled refresh disabled'}
                 </div>
               </div>
@@ -338,7 +338,7 @@ export default function App() {
         </div>
       ) : null}
 
-      {boot ? <KpiBand stats={boot.stats} nextRefresh={boot.nextRefresh} cronEnabled={boot.cronEnabled} /> : null}
+      {boot ? <KpiBand stats={boot.stats} nextRefresh={boot.nextRefresh} cronEnabled={boot.cronEnabled} cronExpression={boot.cronExpression} /> : null}
 
       <nav className="tabbar">
         <div className="tabbar-inner">

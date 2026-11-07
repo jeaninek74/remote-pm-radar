@@ -1,10 +1,11 @@
 import type { Stats } from '../types';
-import { dateTimeLabel } from '../lib';
+import { cronLabel, dateTimeLabel } from '../lib';
 
 interface Props {
   stats: Stats;
   nextRefresh: string | null;
   cronEnabled: boolean;
+  cronExpression?: string | null;
 }
 
 function Kpi({ label, value, sub, accent, small }: {
@@ -19,7 +20,7 @@ function Kpi({ label, value, sub, accent, small }: {
   );
 }
 
-export function KpiBand({ stats, nextRefresh, cronEnabled }: Props) {
+export function KpiBand({ stats, nextRefresh, cronEnabled, cronExpression }: Props) {
   return (
     <section className="kpi-band" aria-label="Radar totals">
       <div className="kpi-grid">
@@ -36,7 +37,7 @@ export function KpiBand({ stats, nextRefresh, cronEnabled }: Props) {
         <Kpi label="States covered" value={stats.statesSearched} sub="employer headquarters" />
         <Kpi label="Last refresh" value={dateTimeLabel(stats.lastRefresh)} small />
         <Kpi label="Next scheduled" value={cronEnabled ? dateTimeLabel(nextRefresh) : 'Manual only'} small
-          sub={cronEnabled ? 'every 4 hours' : 'cron disabled'} />
+          sub={cronEnabled ? cronLabel(cronExpression) : 'cron disabled'} />
         <Kpi label="Needs verification" value={stats.queue} sub={`${stats.archived} archived`} />
       </div>
     </section>
