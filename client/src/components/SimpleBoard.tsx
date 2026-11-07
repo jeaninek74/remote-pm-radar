@@ -61,6 +61,17 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   );
   const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;
 
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  /**
+   * Immediate hires are counted across every tab, not the current one: the point of
+   * the strip is to show that work is moving right now even when the visible tab is
+   * quiet. Urgency only counts when the posting itself says so.
+   */
+  const urgent = useMemo(
+    () => [...tab1, ...tab2, ...nopay].filter((job) => job.urgency === 'High'),
+    [tab1, tab2, nopay],
+  );
+
   const counts = useMemo(() => ({
     all: active.length,
     Nontechnical: active.filter((job) => job.category === 'Nontechnical').length,
@@ -72,6 +83,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
     const needle = q.trim().toLowerCase();
     return active
       .filter((job) => {
+        if (urgentOnly && job.urgency !== 'High') return false;
         if (category !== 'all' && job.category !== category) return false;
         if (needle) {
           const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt}`.toLowerCase();
@@ -79,8 +91,13 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         }
         return true;
       })
-      .sort((a, b) => (b.matchScore - a.matchScore) || ((b.postedAt ?? '').localeCompare(a.postedAt ?? '')));
-  }, [active, category, q]);
+      .sort(
+        (a, b) =>
+          Number(b.urgency === 'High') - Number(a.urgency === 'High') ||
+          b.matchScore - a.matchScore ||
+          (b.postedAt ?? '').localeCompare(a.postedAt ?? ''),
+      );
+  }, [active, category, q, urgentOnly]);
 
   const visible = tab === 'nopay' ? shown.slice(0, 80) : shown;
   const current = TABS.find((item) => item.key === tab)!;
@@ -126,6 +143,20 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
             <span className="tab-count">{tabCount(item.key)}</span>
           </button>
         ))}
+      </div>
+
+      <div className={`urgent-strip${urgentOnly ? ' on' : ''}`}>
+        <div>
+          <strong>{urgent.length}</strong> {urgent.length === 1 ? 'role is' : 'roles are'} hiring immediately
+          {urgent.length ? <span className="urgent-why"> — the posting itself says so</span> : null}
+        </div>
+        <button
+          className="ghost-btn"
+          onClick={() => setUrgentOnly((value) => !value)}
+          disabled={urgent.length === 0}
+        >
+          {urgentOnly ? 'Show all roles' : 'Show immediate hires'}
+        </button>
       </div>
 
       <p className="tab-note">
