@@ -639,43 +639,52 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     // each company's own applicant-tracking system.
     await progress('Discovering new employers');
     try {
-      // Least-tried first, then least-recently touched: a company whose probe was cut off by the
-      // budget is stamped checked_at (not tried) and goes to the back instead of blocking the queue.
-      const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
-        `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
-          WHERE status='pending' AND tries < 3
-          ORDER BY tries ASC,
-                   CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
-                   checked_at ASC NULLS FIRST, id ASC
-          ${REFRESH.discoverPerRun > 0 ? 'LIMIT $1' : ''}`,
-        REFRESH.discoverPerRun > 0 ? [REFRESH.discoverPerRun] : [],
-      );
-      // Probes run four at a time inside a fixed budget so a batch of misses (five ATS
-      // lookups each, up to twelve seconds apiece) cannot eat the half-hour slot.
+      // Least-tried first, largest first, then least-recently touched. The queue holds hundreds of
+      // thousands of candidates, so it is read a page at a time until the budget runs out: a row
+      // that was probed (or cut off) is stamped checked_at and sorts behind the untouched ones.
       const discoveryDeadline = Date.now() + REFRESH.discoverBudgetMs;
-      await mapLimit(pending, 4, async (row) => {
-        if (Date.now() > discoveryDeadline) return;
-        const found = await probeAts(row.name, discoveryDeadline);
-        if (found) {
-          const inserted = await q<{ id: number }>(
-            `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'Portfolio discovery',TRUE)
-             ON CONFLICT (ats, slug) DO NOTHING
-             RETURNING id`,
-            [row.name, found.ats, found.slug, row.industry, row.company_size ?? 'Midsize', row.hq_state, careersUrlFor(found.ats, found.slug)],
-          );
-          if (inserted.length) counters.newEmployers += 1;
-          await q(
-            `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
-            [row.id, found.ats, found.slug],
-          );
-        } else if (Date.now() <= discoveryDeadline) {
-          await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
-        } else {
-          await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
-        }
-      });
-      if (pending.length) await progress(`Probed ${pending.length} new employers`);
+      const pageSize = 100;
+      let probed = 0;
+      const seenIds = new Set<number>();
+      while (Date.now() < discoveryDeadline && (REFRESH.discoverPerRun <= 0 || probed < REFRESH.discoverPerRun)) {
+        const limit = REFRESH.discoverPerRun > 0 ? Math.min(pageSize, REFRESH.discoverPerRun - probed) : pageSize;
+        const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
+          `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
+            WHERE status='pending' AND tries < 3
+            ORDER BY tries ASC,
+                     CASE company_size WHEN 'Enterprise' THEN 0 WHEN 'Large' THEN 1 WHEN 'Midsize' THEN 2 WHEN 'Small' THEN 3 ELSE 4 END,
+                     checked_at ASC NULLS FIRST, id ASC
+            LIMIT $1`,
+          [limit],
+        );
+        const fresh = pending.filter((row) => !seenIds.has(row.id));
+        if (!fresh.length) break;
+        for (const row of fresh) seenIds.add(row.id);
+        await mapLimit(fresh, 4, async (row) => {
+          if (Date.now() > discoveryDeadline) return;
+          probed += 1;
+          const found = await probeAts(row.name, discoveryDeadline);
+          if (found) {
+            const inserted = await q<{ id: number }>(
+              `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'Portfolio discovery',TRUE)
+               ON CONFLICT (ats, slug) DO NOTHING
+               RETURNING id`,
+              [row.name, found.ats, found.slug, row.industry, row.company_size ?? 'Midsize', row.hq_state, careersUrlFor(found.ats, found.slug)],
+            );
+            if (inserted.length) counters.newEmployers += 1;
+            await q(
+              `UPDATE discovery_queue SET status='found', tries=tries+1, found_ats=$2, found_slug=$3, checked_at=now() WHERE id=$1`,
+              [row.id, found.ats, found.slug],
+            );
+          } else if (Date.now() <= discoveryDeadline) {
+            await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
+          } else {
+            await q(`UPDATE discovery_queue SET checked_at=now() WHERE id=$1`, [row.id]);
+          }
+        });
+      }
+      if (probed) await progress(`Probed ${probed} new employers`);
     } catch (err) {
       counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });
     }
