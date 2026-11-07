@@ -4,6 +4,7 @@ import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { fetchBoard } from './sources';
+import { discoverCompanies } from './discover';
 import { evaluateLocation } from './location';
 import { classifyCategory } from './category';
 import { classifySalary } from './salary';
@@ -529,6 +530,11 @@ async function executeRun(runId: number): Promise<number> {
     // each company's own applicant-tracking system.
     await progress('Discovering new employers');
     try {
+      // Aggregators know who is hiring even when their board is not readable, so they are used
+      // only to harvest employer names. The prober below then checks whether that employer
+      // publishes a board we can read, which keeps every job link first-party.
+      const harvested = await discoverCompanies();
+      if (harvested) await progress(`Queued ${harvested} newly discovered employers`);
       const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null }>(
         `SELECT id, name, industry, hq_state FROM discovery_queue
           WHERE status='pending' AND tries < 3
