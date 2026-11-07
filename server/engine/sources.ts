@@ -543,6 +543,10 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   const { tenant, wd, site } = coords;
   const collected = new Map<string, WorkdayPosting>();
   const deadline = Date.now() + REFRESH.employerBudgetMs;
+  // "Posted N Days Ago" is relative to when the listing was read, not to when its detail page
+  // arrives minutes later; anchor the relative dates to the listing time so midnight cannot
+  // shift a posting a day younger than it is.
+  const listedAt = new Date();
   let truncated = false;
   try {
     // Workday returns 20 postings per page and each page is a different slice of the board,
@@ -577,7 +581,7 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';
     const locations = [detail?.location, ...(detail?.additionalLocations ?? [])].filter(Boolean) as string[];
-    const posted = workdayPostedDate(detail?.startDate, posting.postedOn);
+    const posted = workdayPostedDate(detail?.startDate, posting.postedOn, listedAt);
     jobs.push({
       source: 'Workday',
       ats: 'workday' as unknown as Ats,
