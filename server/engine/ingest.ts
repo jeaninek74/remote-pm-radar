@@ -2,6 +2,7 @@ import { acquireRefreshLock, migrate, one, q, type RefreshLock } from '../db';
 import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
+import { BLACK_OWNED_DIRECTORY } from '../data/black-owned-directory';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { TRACKED_STATE_EMPLOYERS } from '../data/state-employers';
 import { fetchBoard } from './sources';
@@ -72,11 +73,19 @@ export async function seedEmployers(): Promise<number> {
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
        VALUES ($1,'manual',$2,$3,$4,$5,$6,'Ownership watchlist',FALSE,$7)
-       ON CONFLICT (ats, slug) DO NOTHING
-       RETURNING id`,
+       ON CONFLICT (ats, slug) DO UPDATE SET careers_url = EXCLUDED.careers_url
+       RETURNING (xmax = 0) AS inserted`,
       [watch.name, slugify(watch.name), watch.industry, watch.size, watch.hq, watch.careersUrl, watch.note],
     );
-    inserted += res.length;
+    inserted += (res as unknown as { inserted: boolean }[]).filter((r) => r.inserted).length;
+  }
+  // Black-owned businesses from citable directories enter discovery so their boards are probed;
+  // ownership is applied once a board is found (see the discovery stage).
+  for (const entry of BLACK_OWNED_DIRECTORY) {
+    await q(
+      `INSERT INTO discovery_queue (name, industry, hq_state) VALUES ($1,$2,$3) ON CONFLICT (name) DO NOTHING`,
+      [entry.name, entry.industry, entry.hq],
+    );
   }
   await applyOwnership();
   return inserted;
@@ -337,7 +346,9 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
 async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; slug: string } | null> {
   const base = slugify(name);
   if (!base || base.length < 3) return null;
-  const variants = [...new Set([base, base.replace(/-/g, ''), base.split('-')[0]])].filter((v) => v.length >= 3);
+  // Only the full name, hyphenated or not. A first-word slug ("rush" for Rush University
+  // Medical Center) matches whoever owns that board name, which is almost never the company.
+  const variants = [...new Set([base, base.replace(/-/g, '')])].filter((v) => v.length >= 3);
   for (const slug of variants) {
     if (Date.now() > deadline) return null;
     try {
@@ -697,6 +708,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         });
       }
       if (probed) await progress(`Probed ${probed} new employers`);
+      await applyOwnership();
     } catch (err) {
       counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });
     }

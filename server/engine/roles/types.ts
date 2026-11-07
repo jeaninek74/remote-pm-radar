@@ -96,6 +96,8 @@ export interface RoleFamily {
   disqualifiers: RegExp[];
   /** Rescue pattern for a disqualified title that still names the target role. */
   disqualifiedAllow: RegExp | null;
+  /** Titles that never qualify, even when `disqualifiedAllow` would rescue them. */
+  hardExclusions?: RegExp[];
   /** Very junior titles are out of scope and score lower. */
   juniorPattern: RegExp;
   /** Ordered display-family rules. */

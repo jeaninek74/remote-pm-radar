@@ -35,6 +35,7 @@ export function isRoleTitle(
 ): boolean {
   const title = (rawTitle ?? '').trim();
   if (!title || title.length > MAX_TITLE_LENGTH) return false;
+  if (family.hardExclusions?.some((re) => re.test(title))) return false;
   const watched = isOwnershipWatchTitle(title, employer);
   if (!watched && !family.titlePatterns.some((re) => re.test(title))) return false;
 

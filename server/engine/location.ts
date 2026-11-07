@@ -121,8 +121,13 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const labels = [...locations, ...restrictions].join(', ') || 'Not stated';
 
   // --- Remote determination -------------------------------------------------
+  // A posting offered in several locations qualifies when one of them is fully remote
+  // ("New York (Hybrid); United States (Remote)"); a single "Remote/Hybrid" label does not.
+  const remoteOption = locations.some((l) => REMOTE_MARKERS.test(l) && !HYBRID_MARKERS.test(l));
   let remote: RemoteKind = 'unknown';
-  if (/hybrid/.test(workplace) || (HYBRID_MARKERS.test(locText) && !/fully remote|100% remote/i.test(locText))) {
+  if (remoteOption && !/hybrid|onsite|on-site|in[- ]person/.test(workplace)) {
+    remote = 'remote';
+  } else if (/hybrid/.test(workplace) || (HYBRID_MARKERS.test(locText) && !/fully remote|100% remote/i.test(locText))) {
     remote = 'hybrid';
   } else if (/onsite|on-site|in[- ]person/.test(workplace)) {
     remote = 'onsite';

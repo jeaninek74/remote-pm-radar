@@ -17,6 +17,8 @@ export interface OwnershipRecord {
  *
  * Full research trail: VERIFICATION.md.
  */
+import { ownershipRecordsFromDirectory } from './black-owned-directory';
+
 export const OWNERSHIP_RECORDS: OwnershipRecord[] = [
   {
     name: 'Esusu',
@@ -109,4 +111,33 @@ export const OWNERSHIP_RECORDS: OwnershipRecord[] = [
     source: 'https://www.solaimpact.com/about \u2014 impact real-estate developer led by Martin Muoto; describes its Black-led team and South LA mission. Company ownership structure not disclosed in a citable filing.',
     note: 'Manual-check employer.',
   },
+  {
+    name: 'SoLa Impact',
+    blackOwned: true,
+    status: 'Verified',
+    source: 'https://www.solaimpact.com/about \u2014 founded by Martin Muoto; described by the company and by the Los Angeles Business Journal as a Black-owned real-estate impact fund family (https://labusinessjournal.com/real-estate/sola-impact-black-owned-opportunity-zone-fund/)',
+    note: 'Workable board (solaimpact).',
+  },
+  {
+    name: 'Vista Equity Partners',
+    blackOwned: true,
+    status: 'Verified',
+    source: 'https://www.vistaequitypartners.com/about/leadership/robert-f-smith/ \u2014 founded in 2000 by Robert F. Smith, Founder, Chairman and CEO; https://en.wikipedia.org/wiki/Robert_F._Smith_(investor)',
+    note: 'Postings on own careers page.',
+  },
+  {
+    name: 'BlocPower',
+    blackOwned: true,
+    status: 'Verified',
+    source: 'https://www.blocpower.io/about \u2014 founded by Donnel Baird (Founder & CEO); https://en.wikipedia.org/wiki/BlocPower',
+    note: 'Greenhouse board (blocpower).',
+  },
+  {
+    name: 'RLJ Companies',
+    blackOwned: true,
+    status: 'Verified',
+    source: 'https://rljcompanies.com/ \u2014 founded by Robert L. Johnson; https://en.wikipedia.org/wiki/Robert_L._Johnson',
+    note: 'Postings on own site.',
+  },
+  ...ownershipRecordsFromDirectory(),
 ];

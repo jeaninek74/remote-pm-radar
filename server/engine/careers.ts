@@ -81,6 +81,21 @@ function absolute(href: string, base: string): string | null {
 }
 
 /** Posting links from the careers page HTML itself (server-rendered lists). */
+/**
+ * Without JobPosting data the only proof that a URL is one posting (not a category page such
+ * as "Project Management Jobs" or a service page called "Portfolio management") is a
+ * requisition-style identifier in the URL plus a title that names a role, not a discipline.
+ */
+const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
+const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
+
+function looksLikePostingPage(url: string, text: string): boolean {
+  if (!POSTING_ID.test(url)) return false;
+  const title = (text ?? '').trim();
+  return !!title && ROLE_NOUN.test(title) && !CATEGORY_TITLE.test(title);
+}
+
 function pageLinks(html: string, base: string): { url: string; text: string }[] {
   const out: { url: string; text: string }[] = [];
   for (const m of html.matchAll(ANCHOR)) {
@@ -123,6 +138,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
     let html = '';
     try { html = await fetchText(url, 20_000); } catch { continue; }
     const ld = jobPostingFrom(html);
+    if (!ld && !looksLikePostingPage(url, text)) continue;
     const title = (ld?.title ?? text ?? '').trim();
     if (!title || !isRoleTitle(title, undefined, employer)) continue;
     const locations = asArray(ld?.jobLocation).map((l) => {

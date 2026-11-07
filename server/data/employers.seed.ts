@@ -57,6 +57,10 @@ export function familiesForIndustry(industry: string): string[] {
  * of being reported as searched.
  */
 const RAW: Row[] = [
+  // ------------------------------------------------------------ documented Black-owned businesses (see data/ownership.ts)
+  ['SoLa Impact', 'workable', 'solaimpact', 'Real Estate', 'Midsize', 'CA'],
+  ['BlocPower', 'greenhouse', 'blocpower', 'Renewable Energy', 'Midsize', 'NY'],
+  ['Mayvenn', 'workable', 'mayvenn', 'Consumer Products', 'Midsize', 'CA'],
   // ------------------------------------------------------------ AI
   ['OpenAI', 'ashby', 'openai', 'AI', 'Large', 'CA'],
   ['Anthropic', 'greenhouse', 'anthropic', 'AI', 'Large', 'CA'],
@@ -935,14 +939,20 @@ export interface WatchlistEmployer {
 const WATCH_RAW: Omit<WatchlistEmployer, 'roleFamilies'>[] = [
   { name: 'H.J. Russell & Company', industry: 'Construction', size: 'Midsize', hq: 'GA', careersUrl: 'https://www.hjrussell.com/careers', note: 'Construction employer; no public ATS feed.' },
   { name: 'C.D. Moody Construction', industry: 'Construction', size: 'Small', hq: 'GA', careersUrl: 'https://www.cdmoody.com/careers', note: 'Construction employer; applications handled by email/form.' },
-  { name: 'The Integral Group', industry: 'Real Estate', size: 'Midsize', hq: 'GA', careersUrl: 'https://www.integralgroup.com/careers', note: 'Real-estate development employer; no public ATS feed.' },
+  { name: 'The Integral Group', industry: 'Real Estate', size: 'Midsize', hq: 'GA', careersUrl: 'https://integral-online.com/career/', note: 'Real-estate development employer; postings on own site (integral-online.com).' },
   { name: 'BITHGROUP Technologies', industry: 'IT Consulting', size: 'Small', hq: 'MD', careersUrl: 'https://www.bithgroup.com/careers', note: 'IT consulting employer; no public ATS feed.' },
-  { name: 'Ariel Investments', industry: 'Financial Services', size: 'Midsize', hq: 'IL', careersUrl: 'https://www.arielinvestments.com/careers', note: 'Asset manager; postings appear on own careers page only.' },
+  { name: 'Ariel Investments', industry: 'Financial Services', size: 'Midsize', hq: 'IL', careersUrl: 'https://www.arielinvestments.com/', note: 'Asset manager; no careers page on the site — postings are announced from the home page and LinkedIn page only.' },
   { name: 'Urban One', industry: 'Media', size: 'Large', hq: 'MD', careersUrl: 'https://urban1.com/careers/', note: 'Media employer; uses an internal careers portal.' },
   { name: 'Management Leadership for Tomorrow', industry: 'Nonprofit', size: 'Midsize', hq: 'NY', careersUrl: 'https://mlt.org/careers/', note: 'Nonprofit; postings on own site and Idealist.' },
   { name: 'Sponsors for Educational Opportunity', industry: 'Nonprofit', size: 'Midsize', hq: 'NY', careersUrl: 'https://www.seo-usa.org/careers/', note: 'Nonprofit; postings on own site.' },
   { name: 'UNCF', industry: 'Nonprofit', size: 'Large', hq: 'DC', careersUrl: 'https://uncf.org/careers', note: 'Nonprofit; Workday-based portal that blocks automated feeds.' },
-  { name: 'SoLa Impact', industry: 'Real Estate', size: 'Midsize', hq: 'CA', careersUrl: 'https://www.solaimpact.com/careers', note: 'Impact real-estate developer; postings on own site.' },
+  { name: 'World Wide Technology', industry: 'IT Consulting', size: 'Enterprise', hq: 'MO', careersUrl: 'https://www.wwt.com/corporate/who-we-are/careers', note: 'Largest Black-owned business (BE 100s #1); postings sit in an ADP portal the reader cannot render.' },
+  { name: 'Vista Equity Partners', industry: 'Financial Services', size: 'Large', hq: 'TX', careersUrl: 'https://www.vistaequitypartners.com/careers/', note: 'Private-equity firm; postings on own careers page.' },
+  { name: 'Blavity', industry: 'Media', size: 'Midsize', hq: 'CA', careersUrl: 'https://blavity.com/careers', note: 'Digital media; postings on own careers page.' },
+  { name: 'Esusu', industry: 'Fintech', size: 'Midsize', hq: 'NY', careersUrl: 'https://www.esusurent.com/', note: 'Rent-reporting fintech; postings on own site.' },
+  { name: 'RLJ Companies', industry: 'Financial Services', size: 'Midsize', hq: 'MD', careersUrl: 'https://rljcompanies.com/', note: 'Holding company; postings on own site.' },
+  { name: 'Act 1 Group', industry: 'Staffing', size: 'Enterprise', hq: 'CA', careersUrl: 'https://www.actonegroup.com/careers', note: 'Staffing and workforce solutions (BE 100s #2); postings on own site.' },
+  { name: 'Thompson Hospitality', industry: 'Hospitality', size: 'Large', hq: 'VA', careersUrl: 'https://www.thompsonhospitality.com/careers', note: 'Food-service and facilities management (BE 100s); postings on own site.' },
 ];
 
 export const WATCHLIST: WatchlistEmployer[] = WATCH_RAW.map((entry) => ({

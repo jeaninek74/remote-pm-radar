@@ -127,6 +127,11 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     /\b(assistant|intern|apprentice)\b/i,
   ],
 
+  // Lending, trust and investment "portfolio managers" manage money, not projects.
+  hardExclusions: [
+    /\b(commercial|trust|loan|lending|credit|investment|wealth|asset|mortgage|real estate|client|insurance|equity|fixed income|fund) portfolio manager\b/i,
+  ],
+
   disqualifiedAllow: /\b(project manager|program manager|programme manager|project director|program director|pmo (?:manager|director|lead)|portfolio manager|project management)\b/i,
 
   juniorPattern: /\b(associate|junior|jr\.?|assistant|coordinator i\b|entry[- ]level|intern)\b/i,
