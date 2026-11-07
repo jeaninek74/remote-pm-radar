@@ -89,7 +89,7 @@ const INDUSTRY_CATEGORIES: [string, string[]][] = [
   ['Medical Services', ['Medical_and_health_organizations_based_in_the_United_States']],
   ['Pharmaceuticals', ['Pharmaceutical_companies_of_the_United_States']],
   ['Biotechnology', ['Biotechnology_companies_of_the_United_States']],
-  ['Federal Contracting', ['Government_contractors_of_the_United_States']],
+  ['Federal Contracting', ['Defense_contractors_of_the_United_States', 'Government_services_companies_of_the_United_States']],
   ['Defense', ['Defense_companies_of_the_United_States']],
   ['Management Consulting', ['Management_consulting_firms_of_the_United_States', 'Consulting_firms_of_the_United_States']],
   ['IT Consulting', ['Information_technology_consulting_firms_of_the_United_States']],
@@ -128,6 +128,27 @@ const INDUSTRY_CATEGORIES: [string, string[]][] = [
   ['Environmental Services', ['Environmental_services_companies_of_the_United_States', 'Waste_management_companies_of_the_United_States']],
 ];
 
+type CategoryPage = { continue?: { cmcontinue?: string }; query?: { categorymembers?: { title: string }[] } };
+
+/** Wikipedia asks for one request at a time from bots; 429s are backed off, not fatal. */
+async function wikipedia(url: string): Promise<CategoryPage> {
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'RemotePMRadar/1.0 (job radar; https://github.com/jeaninek74/remote-pm-radar)' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.status === 429 && attempt < 6) {
+      const wait = Number(res.headers.get('retry-after') ?? 0) * 1000 || 2_000 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok) throw new Error(`wikipedia ${res.status} ${url}`);
+    const data = (await res.json()) as CategoryPage;
+    await new Promise((r) => setTimeout(r, 1_000));
+    return data;
+  }
+}
+
 async function industries(): Promise<Candidate[]> {
   const out: Candidate[] = [];
   for (const [industry, categories] of INDUSTRY_CATEGORIES) {
@@ -136,9 +157,7 @@ async function industries(): Promise<Candidate[]> {
       let cont: string | undefined;
       do {
         const url = `https://en.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:${category}&cmlimit=500&cmtype=page&format=json${cont ? `&cmcontinue=${encodeURIComponent(cont)}` : ''}`;
-        const res = await fetch(url, { headers: { 'User-Agent': 'RemotePMRadar/1.0 (job radar; contact via GitHub jeaninek74/remote-pm-radar)' }, signal: AbortSignal.timeout(30_000) });
-        if (!res.ok) throw new Error(`wikipedia ${category} ${res.status}`);
-        const data = (await res.json()) as { continue?: { cmcontinue?: string }; query?: { categorymembers?: { title: string }[] } };
+        const data = await wikipedia(url);
         for (const member of data.query?.categorymembers ?? []) {
           const title = member.title;
           if (/^(?:List of|Template:|Category:|Lists of)/.test(title)) continue;
