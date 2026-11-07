@@ -18,7 +18,7 @@ function exportSlug(): string {
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CRON_ENABLED = process.env.ENABLE_CRON !== '0';
-const CRON_EXPRESSION = process.env.REFRESH_CRON ?? '0 */4 * * *';
+const CRON_EXPRESSION = process.env.REFRESH_CRON ?? '*/30 * * * *';
 /** Works whether the server runs from dist/ (production) or server/ (tsx dev). */
 const PUBLIC_DIR = [
   path.join(__dirname, 'client'),
@@ -31,11 +31,14 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 
 function nextScheduledRefresh(from = new Date()): string | null {
-  if (!CRON_ENABLED || CRON_EXPRESSION !== '0 */4 * * *') return null;
+  // The schedule is every thirty minutes, so the next run is the next :00 or :30 in
+  // UTC. A custom cron expression cannot be predicted this cheaply, so it reports
+  // nothing rather than guessing a time the scheduler will not honour.
+  if (!CRON_ENABLED || CRON_EXPRESSION !== '*/30 * * * *') return null;
   const next = new Date(from);
-  next.setUTCMinutes(0, 0, 0);
-  const hour = next.getUTCHours();
-  next.setUTCHours(Math.floor(hour / 4) * 4 + 4);
+  next.setUTCSeconds(0, 0);
+  const minutes = next.getUTCMinutes();
+  next.setUTCMinutes(minutes + (minutes < 30 ? 30 - minutes : 60 - minutes));
   return next.toISOString();
 }
 

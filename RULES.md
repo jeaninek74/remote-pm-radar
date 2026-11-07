@@ -12,7 +12,7 @@ Last updated: 6 November 2026 (no-salary roles surface in their own tab).
 
 A working, continuously updating job finder — not a one-time search and not a mockup. It searches
 employer career sites directly, discovers employers of every size, and has a real REFRESH JOBS NOW
-button. It stores everything in Postgres and refreshes on a four-hour schedule.
+button. It stores everything in Postgres and refreshes on a thirty-minute schedule.
 
 ## 2. Non-negotiable requirements
 

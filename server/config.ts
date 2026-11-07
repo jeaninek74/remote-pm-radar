@@ -50,7 +50,7 @@ export const REFRESH = {
   /** Per-request timeout. */
   timeoutMs: Number(process.env.FETCH_TIMEOUT_MS ?? 20_000),
   /** Cron cadence: every 4 hours, on the hour (UTC). */
-  cron: process.env.REFRESH_CRON ?? '0 */4 * * *',
+  cron: process.env.REFRESH_CRON ?? '*/30 * * * *',
   /** Max new employers discovered (ATS slug probing) per cycle. */
   discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 24),
   /** How many brand-new tab listings get a live link check per cycle. */
