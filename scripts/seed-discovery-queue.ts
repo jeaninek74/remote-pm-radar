@@ -35,6 +35,25 @@ async function startups(): Promise<Candidate[]> {
 
 const MIN_NONPROFIT_INCOME = 25_000_000;
 
+/** RFC 4180 split: a quoted field may hold commas and doubled quotes. */
+function splitCsv(line: string): string[] {
+  const out: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { field += '"'; i += 1; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { out.push(field); field = ''; }
+    else field += ch;
+  }
+  out.push(field);
+  return out;
+}
+
 function titleCase(raw: string): string {
   return raw.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bInc\b/, 'Inc.');
 }
@@ -47,7 +66,7 @@ async function nonprofits(): Promise<Candidate[]> {
     const lines = createInterface({ input: Readable.fromWeb(res.body as never) });
     let header: string[] | null = null;
     for await (const line of lines) {
-      const cols = line.split(',');
+      const cols = splitCsv(line);
       if (!header) { header = cols; continue; }
       const row = Object.fromEntries(header.map((h, i) => [h, cols[i] ?? '']));
       const income = Number(row.INCOME_AMT || 0);
