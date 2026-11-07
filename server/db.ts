@@ -21,17 +21,30 @@ if (!configured && process.env.NODE_ENV === 'production') {
 const connectionString = configured ?? 'postgres://radar:radar@127.0.0.1:5432/radar';
 
 const needsSsl =
-  /sslmode=require|railway|proxy\.rlwy\.net/i.test(connectionString) ||
+  /sslmode=require|railway|proxy\.rlwy\.net|neon\.tech/i.test(connectionString) ||
   process.env.PGSSL === '1';
 
+/**
+ * Sizing notes, learned from production (Render free + Neon free):
+ *
+ * - A sweep runs `REFRESH.concurrency` workers that each issue a handful of statements per
+ *   employer, plus the API. Twelve connections is comfortably more than that; a bigger pool
+ *   only means more simultaneous TLS + SCRAM handshakes against Neon's proxy when idle
+ *   clients are recycled, which is what produced "Authentication timed out".
+ * - Boards are read for 30-90 seconds between statements, so a 30-second idle timeout threw
+ *   away every connection mid-sweep and the next statement paid for a brand-new handshake,
+ *   sometimes against a compute that Neon had just suspended. Idle clients are now kept for
+ *   ten minutes and the socket is kept alive.
+ * - `connectionTimeoutMillis` bounds a *new* handshake. Neon resumes a suspended compute in
+ *   a few seconds normally, but a cold start can take longer than fifteen.
+ */
 export const pool = new Pool({
   connectionString,
-  max: Number(process.env.PG_POOL_MAX ?? 24),
-  idleTimeoutMillis: 30_000,
-  // A sweep writes several statements per employer while the API keeps serving. Eight
-  // connections and a fifteen-second wait exhausted the pool and the refresh died with
-  // "Connection terminated due to connection timeout" before searching a single board.
-  connectionTimeoutMillis: 60_000,
+  max: Number(process.env.PG_POOL_MAX ?? 12),
+  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? 600_000),
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 60_000),
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
   ssl: needsSsl && !/sslmode=disable/i.test(connectionString)
     ? { rejectUnauthorized: false }
     : undefined,
@@ -41,12 +54,52 @@ pool.on('error', (err) => {
   console.error('[db] idle client error', err.message);
 });
 
+/**
+ * Errors that mean "the connection went away", not "the statement is wrong". Every one of
+ * these has been seen in production against Neon: the proxy drops a client during a compute
+ * resume, the handshake outlasts the pool's connection timeout, or an idle socket is reset.
+ * A statement that failed this way is safe to run again.
+ */
+const TRANSIENT_CODES = new Set([
+  '08000', '08003', '08006', '08001', '08004', // connection exception family
+  '57P01', '57P02', '57P03',                   // admin shutdown / crash shutdown / cannot connect now
+  '53300',                                     // too many connections
+]);
+const TRANSIENT_MESSAGE = /connection (terminated|timeout|reset|refused|closed)|authentication timed out|timeout exceeded when trying to connect|ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|EAI_AGAIN|socket hang up|server closed the connection|the database system is (starting|shutting)/i;
+
+export function isTransientDbError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const { code, message } = err as { code?: string; message?: string };
+  if (code && TRANSIENT_CODES.has(code)) return true;
+  return TRANSIENT_MESSAGE.test(message ?? '');
+}
+
+const RETRY_ATTEMPTS = Number(process.env.PG_RETRY_ATTEMPTS ?? 4);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs a statement, retrying only when the failure is a lost connection. Backoff is
+ * 1s, 3s, 9s — long enough for Neon to finish resuming a suspended compute. Anything
+ * else (syntax, constraint, type errors) is thrown immediately.
+ */
 export async function q<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const res = await pool.query<T>(sql, params as never[]);
-  return res.rows;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      const res = await pool.query<T>(sql, params as never[]);
+      return res.rows;
+    } catch (err) {
+      lastError = err;
+      if (!isTransientDbError(err) || attempt === RETRY_ATTEMPTS - 1) throw err;
+      const wait = 1000 * 3 ** attempt;
+      console.warn(`[db] transient error (${(err as Error).message}); retrying in ${wait / 1000}s`);
+      await sleep(wait);
+    }
+  }
+  throw lastError;
 }
 
 export async function one<T extends QueryResultRow = QueryResultRow>(
@@ -71,7 +124,7 @@ let migrated = false;
 /** Creates every table/index if missing. Never destructive. */
 export async function migrate(): Promise<void> {
   if (migrated) return;
-  await pool.query(SCHEMA_SQL);
+  await q(SCHEMA_SQL);
   migrated = true;
 }
 

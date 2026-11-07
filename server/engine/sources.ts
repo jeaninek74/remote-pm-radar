@@ -1,4 +1,5 @@
 import { fetchJson } from './http';
+import { REFRESH } from '../config';
 import { isRoleTitle, searchTerms } from './titles';
 import { isoDate, stripHtml } from './text';
 import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type ParsedSalary } from './salary';
@@ -360,11 +361,18 @@ interface SrPosting {
 }
 
 async function smartrecruiters(employer: EmployerRow): Promise<BoardFetchResult> {
-  const data = await fetchJson<{ content?: SrPosting[] }>(
-    `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(employer.slug)}/postings?limit=100`,
-  );
-  const all = Array.isArray(data.content) ? data.content : [];
-  const candidates = all.filter((p) => isRoleTitle(p.name ?? '')).slice(0, 15);
+  // The postings endpoint returns at most 100 per call and reports totalFound; large
+  // employers (CACI, Expeditors) list several hundred, so one page silently dropped most.
+  const all: SrPosting[] = [];
+  for (let offset = 0; offset < 100 * REFRESH.feedPages; offset += 100) {
+    const data = await fetchJson<{ content?: SrPosting[]; totalFound?: number }>(
+      `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(employer.slug)}/postings?limit=100&offset=${offset}`,
+    );
+    const page = Array.isArray(data.content) ? data.content : [];
+    all.push(...page);
+    if (page.length < 100 || all.length >= (data.totalFound ?? 0)) break;
+  }
+  const candidates = all.filter((p) => isRoleTitle(p.name ?? '')).slice(0, MAX_DETAIL_FETCHES);
   const jobs: RawJob[] = [];
   for (const posting of candidates) {
     let description = '';
@@ -441,15 +449,41 @@ export function parseWorkdayUrl(url: string | null | undefined): { tenant: strin
   return { tenant: m[1].toLowerCase(), wd: m[2], site: m[3] };
 }
 
+/**
+ * Workday answers a tenant that is inside its weekly maintenance window with a 303 to
+ * community.workday.com/maintenance-page. Following that redirect produced an HTML body
+ * and the misleading error "Unexpected token '<'"; every Workday board then looked broken
+ * for the length of the window. The redirect is caught here and reported as what it is.
+ */
+export class WorkdayMaintenance extends Error {
+  constructor() { super('Workday maintenance window — board unavailable, retry on the next run'); }
+}
+
+const WORKDAY_MAINTENANCE = /maintenance/i;
+
 async function workdaySearch(tenant: string, wd: string, site: string, text: string, offset: number, limit = 20) {
   const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
     method: 'POST',
+    redirect: 'manual',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
     body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: text }),
     signal: AbortSignal.timeout(15_000),
   });
+  if (res.status >= 300 && res.status < 400) {
+    if (WORKDAY_MAINTENANCE.test(res.headers.get('location') ?? '')) throw new WorkdayMaintenance();
+    throw new Error(`workday search redirected (${res.status})`);
+  }
   if (!res.ok) throw new Error(`workday search ${res.status}`);
   return res.json() as Promise<{ total?: number; jobPostings?: WorkdayPosting[] }>;
+}
+
+/** True for failures that say nothing about the board itself: timeouts, 5xx, maintenance. */
+export function isRetryableBoardError(err: unknown): boolean {
+  if (err instanceof WorkdayMaintenance) return true;
+  const message = (err as Error)?.message ?? '';
+  const status = (err as { status?: number })?.status ?? Number(/\b(429|5\d\d)\b/.exec(message)?.[1] ?? 0);
+  if (status === 429 || status >= 500) return true;
+  return /abort|timeout|timed out|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|maintenance/i.test(message);
 }
 
 async function workdayDetail(tenant: string, wd: string, site: string, externalPath: string) {
@@ -472,11 +506,17 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
   if (!coords) return { jobs: [], ok: false, error: 'not a workday url', totalListed: 0 };
   const { tenant, wd, site } = coords;
   const collected = new Map<string, WorkdayPosting>();
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let truncated = false;
   try {
     // Workday returns 20 postings per page and each page is a different slice of the board,
-    // so paging stops only when the board stops returning results.
-    for (const text of searchTerms()) {
+    // so paging stops only when the board stops returning results. Fifteen search phrases
+    // times up to twenty pages is a lot of requests for one employer, so paging also stops
+    // at the per-employer time budget: what was collected is kept and the rest is picked up
+    // by a later run (the employer is stamped last_searched_at and rotates to the back).
+    terms: for (const text of searchTerms()) {
       for (let offset = 0; offset < 400; offset += 20) {
+        if (Date.now() > deadline) { truncated = true; break terms; }
         const page = await workdaySearch(tenant, wd, site, text, offset);
         const postings = page.jobPostings ?? [];
         for (const posting of postings) {
@@ -490,11 +530,13 @@ async function fetchWorkday(employer: EmployerRow): Promise<BoardFetchResult> {
       }
     }
   } catch (err) {
-    return { jobs: [], ok: false, error: (err as Error).message, totalListed: collected.size };
+    return { jobs: [], ok: false, error: (err as Error).message, retryable: isRetryableBoardError(err), totalListed: collected.size };
   }
+  if (truncated) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
 
   const jobs: RawJob[] = [];
   for (const [path, posting] of [...collected].slice(0, 120)) {
+    if (Date.now() > deadline + REFRESH.employerBudgetMs) break;
     const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
     const html = detail?.jobDescription ?? null;
     const text = html ? stripHtml(html) : '';
@@ -535,7 +577,7 @@ export async function fetchBoard(employer: EmployerRow): Promise<BoardFetchResul
     const result = await adapter(employer);
     return result;
   } catch (err) {
-    return { jobs: [], ok: false, error: (err as Error).message.slice(0, 200), totalListed: 0 };
+    return { jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 };
   }
 }
 

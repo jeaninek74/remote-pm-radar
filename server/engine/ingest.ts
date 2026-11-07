@@ -433,12 +433,32 @@ export async function startRefresh(trigger: string): Promise<{ runId: number; al
   return { runId, alreadyRunning: false };
 }
 
+/** Counter columns written on every progress update, on completion and on failure. */
+const COUNTER_COLUMNS = `
+  employers_searched=$3, sources_checked=$4, sources_failed=$5,
+  jobs_fetched=$6, jobs_matched=$7, new_jobs=$8, added_tab1=$9, added_tab2=$10,
+  queued=$11, duplicates=$12, archived=$13, closed=$14, new_employers=$15,
+  links_checked=$16, links_valid=$17, errors=$18::jsonb`;
+
+function counterValues(c: RunCounters): unknown[] {
+  return [
+    c.employersSearched, c.sourcesChecked, c.sourcesFailed, c.jobsFetched, c.jobsMatched, c.newJobs,
+    c.addedTab1, c.addedTab2, c.queued, c.duplicates, c.archived, c.closed, c.newEmployers,
+    c.linksChecked, c.linksValid, JSON.stringify(c.errors.slice(0, 25)),
+  ];
+}
+
 async function executeRun(runId: number): Promise<number> {
   running = true;
   const counters = emptyCounters();
 
+  // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
+  // how many employers it searched and how many postings it read, instead of zeros.
   const progress = async (message: string) => {
-    await q(`UPDATE refresh_runs SET progress=$2 WHERE id=$1`, [runId, message.slice(0, 300)]);
+    await q(
+      `UPDATE refresh_runs SET progress=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
+      [runId, message.slice(0, 300), ...counterValues(counters)],
+    );
   };
 
   try {
@@ -467,25 +487,49 @@ async function executeRun(runId: number): Promise<number> {
     const linkCandidates: number[] = [];
     let processed = 0;
 
+    // One employer's failure — a board timing out, or a statement lost to a dropped
+    // connection that outlived its retries — is recorded against that employer and the
+    // sweep moves on. It must never abort the run: that is how runs 12-20 died with zero
+    // employers searched while the boards themselves were fine.
     await mapLimit(employers, REFRESH.concurrency, async (employer) => {
       processed += 1;
-      if (processed % 12 === 0) await progress(`Searching employer boards (${processed}/${employers.length})`);
+      try {
+        if (processed % 12 === 0) await progress(`Searching employer boards (${processed}/${employers.length})`);
+        await sweepEmployer(employer);
+      } catch (err) {
+        counters.sourcesFailed += 1;
+        counters.errors.push({ source: `${employer.ats}:${employer.slug}`, message: (err as Error).message.slice(0, 160) });
+        console.error(`[refresh] ${employer.ats}:${employer.slug} failed`, (err as Error).message);
+      }
+    });
+
+    async function sweepEmployer(employer: EmployerRow): Promise<void> {
       const result = await fetchBoard(employer);
       counters.sourcesChecked += 1;
 
       if (!result.ok) {
         counters.sourcesFailed += 1;
         counters.errors.push({ source: `${employer.ats}:${employer.slug}`, message: result.error ?? 'Unknown error' });
+        // A board is retired after three failures that say the board is gone (404, wrong
+        // slug, unsupported ATS). Timeouts, 5xx and Workday's maintenance window are the
+        // moment's fault, not the board's: they are recorded but never move fail_count, so a
+        // maintenance window cannot retire every Workday employer in one sweep.
         await q(
-          `UPDATE employers
-              SET last_searched_at = now(),
-                  last_status = CASE WHEN fail_count + 1 >= 3
-                                     THEN 'No public feed (retired after 3 failed checks)'
-                                     ELSE 'Unreachable board' END,
-                  last_error = $2,
-                  fail_count = fail_count + 1,
-                  active = CASE WHEN fail_count + 1 >= 3 THEN FALSE ELSE active END
-            WHERE id = $1`,
+          result.retryable
+            ? `UPDATE employers
+                  SET last_searched_at = now(),
+                      last_status = 'Board temporarily unavailable — will retry next run',
+                      last_error = $2
+                WHERE id = $1`
+            : `UPDATE employers
+                  SET last_searched_at = now(),
+                      last_status = CASE WHEN fail_count + 1 >= 3
+                                         THEN 'No public feed (retired after 3 failed checks)'
+                                         ELSE 'Unreachable board' END,
+                      last_error = $2,
+                      fail_count = fail_count + 1,
+                      active = CASE WHEN fail_count + 1 >= 3 THEN FALSE ELSE active END
+                WHERE id = $1`,
           [employer.id, (result.error ?? '').slice(0, 200)],
         );
         await recordSource(`${employer.ats}:${employer.slug}`, employer.name, false, 0, result.error);
@@ -541,7 +585,7 @@ async function executeRun(runId: number): Promise<number> {
         [employer.id, `${result.totalListed} postings, ${matched} ${ACTIVE_ROLE_FAMILY.jobNoun}`, result.totalListed],
       );
       await recordSource(`${employer.ats}:${employer.slug}`, employer.name, true, result.totalListed);
-    });
+    }
 
     // Employer job boards only. Aggregator feeds are deliberately not ingested:
     // every role must come from the employer's own career site so the link and
@@ -624,27 +668,29 @@ async function executeRun(runId: number): Promise<number> {
     await progress('Finalising');
     await q(
       `UPDATE refresh_runs SET
-          status='completed', finished_at=now(), progress='Complete',
-          employers_searched=$2, sources_checked=$3, sources_failed=$4,
-          jobs_fetched=$5, jobs_matched=$6, new_jobs=$7, added_tab1=$8, added_tab2=$9,
-          queued=$10, duplicates=$11, archived=$12, closed=$13, new_employers=$14,
-          links_checked=$15, links_valid=$16, errors=$17::jsonb,
-          message=$18
+          status='completed', finished_at=now(), progress='Complete', ${COUNTER_COLUMNS},
+          message=$2
         WHERE id=$1`,
       [
-        runId, counters.employersSearched, counters.sourcesChecked, counters.sourcesFailed,
-        counters.jobsFetched, counters.jobsMatched, counters.newJobs, counters.addedTab1, counters.addedTab2,
-        counters.queued, counters.duplicates, counters.archived, counters.closed, counters.newEmployers,
-        counters.linksChecked, counters.linksValid, JSON.stringify(counters.errors.slice(0, 25)),
+        runId,
         `${counters.newJobs} new leads, ${counters.addedTab1 + counters.addedTab2} added to salary tabs.`,
+        ...counterValues(counters),
       ],
     );
     return runId;
   } catch (err) {
-    await q(
-      `UPDATE refresh_runs SET status='failed', finished_at=now(), message=$2, errors=$3::jsonb WHERE id=$1`,
-      [runId, (err as Error).message.slice(0, 300), JSON.stringify([{ source: 'engine', message: (err as Error).message }])],
-    );
+    const message = (err as Error).message;
+    counters.errors.unshift({ source: 'engine', message });
+    try {
+      await q(
+        `UPDATE refresh_runs SET status='failed', finished_at=now(), message=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
+        [runId, message.slice(0, 300), ...counterValues(counters)],
+      );
+    } catch (writeErr) {
+      // The failure itself was probably a lost connection; if the record cannot be written
+      // the row stays 'running' and markInterruptedRuns() closes it on the next boot.
+      console.error('[refresh] could not record failure', (writeErr as Error).message);
+    }
     throw err;
   } finally {
     running = false;

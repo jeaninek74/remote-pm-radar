@@ -41,6 +41,11 @@ export interface BoardFetchResult {
   jobs: RawJob[];
   ok: boolean;
   error?: string;
+  /**
+   * The failure is the board's moment, not the board: a timeout, a 5xx, or Workday's
+   * maintenance window. It is logged, but it must not count toward retiring the employer.
+   */
+  retryable?: boolean;
   /** Total postings on the board before title filtering. */
   totalListed: number;
 }

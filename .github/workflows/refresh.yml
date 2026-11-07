@@ -4,11 +4,12 @@ name: Refresh job board
 #
 # Render's free web instance sleeps after ~15 minutes idle, so a cron inside the container cannot be
 # relied on. GitHub Actions is free for public repositories and can both wake the service and start
-# a refresh, which is what this workflow does every four hours.
+# a refresh, which is what this workflow does every thirty minutes (matching REFRESH_CRON). GitHub
+# may start a scheduled job several minutes late; that only shifts the slot, nothing is skipped.
 
 on:
   schedule:
-    - cron: '15 */4 * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +19,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 28
     steps:
       - name: Wake the service
         run: |
@@ -40,13 +41,14 @@ jobs:
 
       - name: Wait for the run to finish
         run: |
-          for attempt in $(seq 1 40); do
+          for attempt in $(seq 1 66); do
             body=$(curl -s -m 30 https://remote-pm-radar.onrender.com/api/refresh/status)
             state=$(printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print(r.get('status',''))")
-            echo "check $attempt: $state"
-            if [ "$state" = "completed" ] || [ "$state" = "failed" ]; then
-              printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print('run', r.get('id'), r.get('status'), '| new', r.get('new_jobs'), '| employers', r.get('employers_searched'))"
-              exit 0
+            progress=$(printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print(r.get('progress',''))")
+            echo "check $attempt: $state — $progress"
+            if [ "$state" = "completed" ] || [ "$state" = "failed" ] || [ "$state" = "interrupted" ]; then
+              printf '%s' "$body" | python3 -c "import json,sys; r=json.load(sys.stdin).get('run') or {}; print('run', r.get('id'), r.get('status'), '| employers', r.get('employers_searched'), '| postings read', r.get('jobs_fetched'), '| new', r.get('new_jobs'), '|', r.get('message'))"
+              [ "$state" = "completed" ] && exit 0 || exit 1
             fi
             sleep 20
           done
