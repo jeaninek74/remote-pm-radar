@@ -4,7 +4,7 @@ This file is the source of truth for this project. It is read before any change 
 matching engine or the employer registry. If a chat instruction and this file disagree, the newer
 instruction wins and this file is updated in the same commit.
 
-Last updated: 6 November 2026.
+Last updated: 6 November 2026 (no-salary roles surface in their own tab).
 
 ---
 
@@ -72,7 +72,10 @@ Classify on the **published minimum**, never the maximum.
 
 Hourly contracts are annualised at 2,080 hours and the hourly rate is shown; contract income is never
 presented as guaranteed salary. They are placed on the band their annualised equivalent falls into.
-Nothing is estimated. No published salary means the queue. `scripts/check-salary.ts` proves every
+Nothing is estimated. **No published salary no longer means the queue** — on 6 November 2026 Jeanine
+directed that these roles be added rather than dropped, so they are held live in a separate
+`Pay not published` tab, never inside a salary band and never with an estimated figure. OTE-only
+postings sit there too. `scripts/check-salary.ts` proves every
 example in the master prompt, plus the $130,000 / $130,001 / $149,999 / $150,000 boundaries:
 all cases pass.
 
