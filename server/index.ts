@@ -184,7 +184,7 @@ app.get('/api/export.xlsx', async (_req, res, next) => {
         'Active jobs in $150K+ tab': stats.tab2,
         'Nontechnical roles': stats.nontechnical,
         'Technical roles': stats.technical,
-        'Hybrid roles': stats.hybrid,
+        'Business-tech roles': stats.hybrid,
         'Urgently hiring (confirmed)': stats.urgent,
         'Verified Black-owned employers with openings': stats.blackOwnedEmployers,
         'Needs verification': stats.queue,
