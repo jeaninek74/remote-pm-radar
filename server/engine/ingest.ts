@@ -894,7 +894,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         `SELECT id, apply_url, bucket FROM jobs WHERE id=$1`,
         [id],
       );
-      if (!job) return;
+      // A row deduplicated or archived since it was queued is not moved back into a bucket.
+      if (!job || !['tab0', 'tab1', 'tab2', 'unsalaried'].includes(job.bucket)) return;
       const check = await checkLink(job.apply_url);
       counters.linksChecked += 1;
       if (check.ok) {
