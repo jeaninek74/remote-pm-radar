@@ -162,10 +162,11 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   // A posting outside the United States can never be applied to from California, so it is the one
   // case that is dropped rather than queued.
   if (loc.ca === 'not_us') return null;
+  // Jeanine, 7 Nov 2026: "there should be no hybrid / on-site at all" — those postings, and roles
+  // that demand routine travel, are dropped at ingestion rather than queued (RULES.md §4.1).
+  if (loc.remote === 'hybrid' || loc.remote === 'onsite' || loc.travelHeavy) return null;
   if (loc.remote !== 'remote') {
-    forced = { bucket: 'queue', reason: `Posting reads as ${loc.remote === 'hybrid' ? 'hybrid' : loc.remote === 'onsite' ? 'on-site' : 'not confirmed remote'} — ${loc.note || loc.remoteLabel}.` };
-  } else if (loc.travelHeavy) {
-    forced = { bucket: 'queue', reason: 'Requires routine travel, which is incompatible with genuine remote work.' };
+    forced = { bucket: 'queue', reason: `Work arrangement not confirmed remote — ${loc.note || loc.remoteLabel}.` };
   } else if (loc.ca === 'state_restricted') {
     forced = { bucket: 'queue', reason: `Residency restricted to ${(loc.states ?? []).join(', ') || 'another state'}; California applicants cannot be considered.` };
   }
@@ -516,7 +517,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
               black_owned, ownership_status, ownership_source, last_searched_at::text, active
          FROM employers
         WHERE active = TRUE
-          AND (ats <> 'manual' OR careers_url ILIKE '%myworkdayjobs%')
+          AND careers_url IS NOT NULL
         ORDER BY last_searched_at ASC NULLS FIRST
         ${REFRESH.employersPerRun > 0 ? 'LIMIT $1' : ''}`,
       REFRESH.employersPerRun > 0 ? [REFRESH.employersPerRun] : [],
