@@ -14,7 +14,9 @@ earn a place, and never invents a salary.
 
 1. **Searches the employer database** — every employer with a public job feed, in rotation, 200 per cycle.
 2. **Discovers new employers** — probes the discovery queue (startup, nonprofit and state registries) for a
-   Greenhouse / Ashby / Lever / SmartRecruiters / Workday board, up to 24 per cycle. No job-board feed is read:
+   Greenhouse / Ashby / Lever / SmartRecruiters / Workable board, 60 per cycle. The queue is fed by
+   `scripts/seed-discovery-queue.ts` from public registries — the Y Combinator directory (active US companies,
+   8–600 staff) and the IRS exempt-organisation master file ($25M+ income) — never from job boards:
    Himalayas, Remotive and Remote OK were removed on 6 Nov 2026 (RULES.md §2).
 3. **Applies the placement rules** (below) to every posting whose title is a project/program role.
 4. **De-duplicates** the same role across a board and a feed (employer link wins, then earliest posting).
@@ -88,11 +90,12 @@ DATABASE_URL=... npx tsx scripts/migrate.ts                            # create 
 | `PORT` | `3000` | HTTP port. |
 | `ENABLE_CRON` | `1` | Set `0` to disable scheduled refreshes. |
 | `REFRESH_CRON` | `*/30 * * * *` | Cron expression (UTC). |
-| `EMPLOYERS_PER_RUN` | `200` | Employer boards searched per cycle (sized to finish inside the 30-minute slot). |
+| `EMPLOYERS_PER_RUN` | `0` | `0` = no cap: every active board is searched every slot. A positive number restores a rotating slice. |
 | `JOB_WINDOW_DAYS` | `14` | Posting window; `7` restores the master prompt's original rule. |
 | `FEED_PAGES` | `12` | Pages of 100 read from boards that paginate (SmartRecruiters). |
 | `EMPLOYER_BUDGET_MS` | `120000` | Wall-clock budget for paging one employer's board (Workday). |
-| `DISCOVER_PER_RUN` | `24` | New employers probed for a board per cycle. |
+| `DISCOVER_PER_RUN` | `60` | Companies from the discovery queue probed for a board per cycle (4 in parallel). |
+| `DISCOVER_BUDGET_MS` | `90000` | Wall-clock budget for discovery inside one cycle. |
 | `LINK_CHECKS_PER_RUN` | `35` | Application links re-verified per cycle. |
 | `FETCH_CONCURRENCY` | `7` | Parallel board requests. |
 | `FETCH_TIMEOUT_MS` | `20000` | Per-request timeout. |

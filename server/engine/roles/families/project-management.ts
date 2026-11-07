@@ -12,6 +12,82 @@ import { BOTH, type RoleFamily } from '../types';
 const LEADS = String.raw`(?:project|program|programme|portfolio|pmo|delivery|implementation|transformation|integration|deployment|onboarding|migration|pmo operations)`;
 const RANKS = String.raw`(?:manager|management|director|lead|leader|head|officer|principal|consultant|specialist|coordinator|administrator|supervisor)`;
 
+const SEARCH_LEADS = ['project', 'program', 'programme', 'portfolio', 'pmo', 'delivery', 'implementation', 'transformation', 'integration', 'deployment', 'onboarding', 'migration'];
+const SEARCH_RANKS = ['manager', 'management', 'director', 'lead', 'coordinator', 'consultant', 'specialist', 'officer', 'principal'];
+const SEARCH_EXTRA = [
+  'technical program manager', 'technical project manager', 'senior project manager', 'senior program manager',
+  'it project manager', 'it program manager', 'program management office', 'project management office',
+  'chief of staff', 'business operations manager', 'change manager', 'change management', 'operational excellence',
+  'strategic initiatives', 'continuous improvement', 'scrum master', 'agile delivery', 'release manager',
+  'engagement manager', 'customer implementation', 'clinical program manager', 'construction project manager',
+  'capital projects', 'infrastructure program manager', 'epic project manager', 'erp project manager',
+  'workday project manager', 'salesforce project manager', 'digital transformation', 'business transformation',
+];
+
+/** The 86 nontechnical titles named in Jeanine's master prompt (§3). Every one is searched and recognised. */
+export const MASTER_PROMPT_NONTECHNICAL_TITLES = [
+  'Nontechnical Project Manager', 'Nontechnical Program Manager', 'Business Project Manager',
+  'Business Program Manager', 'Senior Business Project Manager', 'Operations Project Manager',
+  'Operations Program Manager', 'Senior Operations Project Manager', 'Senior Operations Program Manager',
+  'Strategic Project Manager', 'Strategic Program Manager', 'Strategic Initiatives Manager',
+  'Corporate Project Manager', 'Enterprise Project Manager', 'Enterprise Program Manager',
+  'Administrative Project Manager', 'Business Transformation Project Manager',
+  'Business Transformation Program Manager', 'Process Improvement Project Manager',
+  'Operational Excellence Program Manager', 'Organizational Change Project Manager',
+  'Change Management Program Manager', 'Marketing Project Manager', 'Marketing Program Manager',
+  'Creative Project Manager', 'Creative Operations Project Manager', 'Advertising Project Manager',
+  'Agency Project Manager', 'Communications Project Manager', 'Brand Project Manager',
+  'Campaign Project Manager', 'Event Project Manager', 'Event Program Manager',
+  'Healthcare Operations Project Manager', 'Healthcare Program Manager',
+  'Healthcare Administration Project Manager', 'Healthcare Transformation Project Manager',
+  'Health Insurance Program Manager', 'Human Resources Project Manager', 'Human Resources Program Manager',
+  'People Operations Program Manager', 'Workforce Transformation Project Manager',
+  'Procurement Project Manager', 'Procurement Program Manager', 'Strategic Sourcing Project Manager',
+  'Vendor Management Program Manager', 'Contract Management Program Manager', 'Compliance Project Manager',
+  'Regulatory Project Manager', 'Regulatory Program Manager', 'Government Project Manager',
+  'Government Program Manager', 'Federal Contract Project Manager', 'Government Services Program Manager',
+  'Public Sector Project Manager', 'Consulting Project Manager', 'Consulting Program Manager',
+  'Client Services Project Manager', 'Client Delivery Program Manager', 'Professional Services Project Manager',
+  'Professional Services Program Manager', 'Customer Success Program Manager',
+  'Customer Implementation Program Manager', 'Education Project Manager', 'University Program Manager',
+  'Higher Education Program Manager', 'Nonprofit Program Manager', 'Foundation Program Manager',
+  'Grants Program Manager', 'Construction Project Manager', 'Construction Program Manager',
+  'Facilities Project Manager', 'Infrastructure Program Manager', 'Manufacturing Project Manager',
+  'Manufacturing Program Manager', 'Supply Chain Project Manager', 'Logistics Program Manager',
+  'Quality Improvement Project Manager', 'Quality Assurance Program Manager', 'Portfolio Manager',
+  'PMO Manager', 'PMO Director', 'Senior Project Manager', 'Senior Program Manager',
+  'Project Director', 'Program Director',
+];
+
+/** The 46 technical titles named in Jeanine's master prompt (§4). */
+export const MASTER_PROMPT_TECHNICAL_TITLES = [
+  'Technical Project Manager', 'Technical Program Manager', 'IT Project Manager', 'IT Program Manager',
+  'Senior Technical Project Manager', 'Senior Technical Program Manager', 'Enterprise Systems Project Manager',
+  'Enterprise Systems Program Manager', 'Software Implementation Project Manager',
+  'Software Delivery Program Manager', 'SaaS Implementation Project Manager', 'SaaS Program Manager',
+  'Digital Transformation Project Manager', 'Digital Transformation Program Manager',
+  'AI Implementation Project Manager', 'AI Program Manager', 'AI Product Delivery Program Manager',
+  'Automation Project Manager', 'Workflow Automation Program Manager', 'Healthcare IT Project Manager',
+  'Healthcare IT Program Manager', 'Epic Project Manager', 'Electronic Health Record Project Manager',
+  'Workday Project Manager', 'Workday Program Manager', 'ERP Project Manager', 'ERP Program Manager',
+  'Salesforce Project Manager', 'Salesforce Program Manager', 'ServiceNow Project Manager',
+  'Infrastructure Project Manager', 'IT Infrastructure Program Manager', 'Disaster Recovery Project Manager',
+  'Business Continuity Program Manager', 'Cybersecurity Project Manager', 'Cybersecurity Program Manager',
+  'IT Transformation Project Manager', 'Systems Integration Project Manager', 'Implementation Manager',
+  'Enterprise Implementation Manager', 'Technology Delivery Manager', 'Technical Delivery Manager',
+  'PMO Manager', 'Technical Portfolio Manager', 'Program Director', 'Senior Project Manager',
+];
+
+function buildSearchTerms(): string[] {
+  const terms = new Set<string>();
+  for (const lead of SEARCH_LEADS) for (const rank of SEARCH_RANKS) terms.add(`${lead} ${rank}`);
+  for (const extra of SEARCH_EXTRA) terms.add(extra);
+  // The master prompt's own title lists are searched verbatim as well, so a board is asked for
+  // "Grants Program Manager" or "Workday Project Manager" by name, not only for the generic pairings.
+  for (const title of [...MASTER_PROMPT_NONTECHNICAL_TITLES, ...MASTER_PROMPT_TECHNICAL_TITLES]) terms.add(title.toLowerCase());
+  return [...terms];
+}
+
 export const PROJECT_MANAGEMENT: RoleFamily = {
   id: 'project-management',
   label: 'Project & Program Management',
@@ -25,23 +101,9 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
    * These mirror the title vocabulary in the brief so a search covers the same ground
    * the title matcher does, instead of only the two most obvious phrasings.
    */
-  searchTerms: [
-    'project manager',
-    'program manager',
-    'project management',
-    'program management',
-    'technical program manager',
-    'technical project manager',
-    'implementation manager',
-    'delivery manager',
-    'pmo',
-    'project coordinator',
-    'change manager',
-    'transformation manager',
-    'portfolio manager',
-    'chief of staff',
-    'business operations manager',
-  ],
+  // Every lead/rank pairing the title patterns recognise is also a search phrase, so a board
+  // is asked for each variant rather than a fixed handful (no numeric cap on searches).
+  searchTerms: buildSearchTerms(),
 
   titlePatterns: [
     // "Project Manager", "Senior Program Manager", "Technical Project Management"

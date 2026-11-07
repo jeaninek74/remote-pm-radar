@@ -1,29 +1,158 @@
+import { createInterface } from 'node:readline';
+import { Readable } from 'node:stream';
 import { q, pool } from '../server/db';
 import { fetchJson } from '../server/engine/http';
 
-async function main() {
-  const names = new Map<string, { industry: string; state: string }>();
-  for (let page = 1; page <= 80; page += 1) {
-    const d = await fetchJson<{ companies?: { name?: string; location?: string; industries?: string[] }[] }>(
-      `https://api.ycombinator.com/v0.1/companies?page=${page}&limit=100`,
-      15000,
-    );
-    const batch = d.companies ?? [];
-    if (!batch.length) break;
-    for (const c of batch) {
-      if (!c.name) continue;
-      const st = /(?:^|,\s*)([A-Z]{2})\b/.exec(c.location ?? '')?.[1] ?? 'CA';
-      names.set(c.name, { industry: c.industries?.[0] ?? 'Software', state: st });
+/**
+ * Feeds the employer discovery queue from public registries. Each refresh then probes a batch of
+ * these companies for a Greenhouse / Ashby / Lever / SmartRecruiters / Workable board and adds the
+ * ones it finds to the employers table (RULES.md §2: employers' own sites only, no job boards).
+ *
+ *   tsx scripts/seed-discovery-queue.ts              startups (YC directory, active, 8–600 staff, US)
+ *   tsx scripts/seed-discovery-queue.ts --nonprofits  + IRS Exempt Organizations master file,
+ *                                                       organisations with $25M+ annual income
+ */
+
+interface Candidate { name: string; industry: string; state: string; size: string }
+
+/** Master-prompt §8 size bands from headcount. */
+function sizeFromHeadcount(n: number): string {
+  if (n < 50) return 'Startup';
+  if (n < 250) return 'Small';
+  if (n < 1000) return 'Midsize';
+  if (n < 5000) return 'Large';
+  return 'Enterprise';
+}
+
+/** YC industry / sub-industry → the industry vocabulary of master prompt §7. */
+function ycIndustry(industry: string | undefined, sub: string | undefined): string {
+  const text = `${industry ?? ''} ${sub ?? ''}`;
+  const rules: [RegExp, string][] = [
+    [/energy|climate|carbon/i, 'Energy'], [/insurance/i, 'Insurance'], [/banking|lending|payments|credit/i, 'Banking'],
+    [/security/i, 'Cybersecurity'], [/infrastructure|devops|cloud/i, 'Cloud Services'], [/marketing|advertising/i, 'Marketing'],
+    [/human resources|recruiting|hr/i, 'Human Resources Services'], [/supply chain|logistics/i, 'Logistics'],
+    [/construction/i, 'Construction'], [/real estate|housing|proptech/i, 'Real Estate'], [/education/i, 'Education'],
+    [/biotech|drug|therapeutic|diagnostic/i, 'Biotechnology'], [/healthcare|medical|health/i, 'Healthcare'],
+    [/retail/i, 'Retail'], [/e-?commerce/i, 'E-Commerce'], [/defense|aerospace|drones/i, 'Defense'], [/government/i, 'Government'],
+    [/travel|hospitality|food/i, 'Hospitality'], [/media|entertainment|gaming|content/i, 'Entertainment'], [/legal/i, 'Professional Services'],
+    [/analytics|ai|machine learning|data/i, 'AI'], [/manufactur|robotics|hardware|industrial/i, 'Manufacturing'],
+    [/consumer/i, 'Consumer Products'], [/fintech|finance/i, 'Financial Services'], [/b2b|saas|software|productivity|engineering/i, 'Software'],
+  ];
+  for (const [re, label] of rules) if (re.test(text)) return label;
+  return industry || 'Software';
+}
+
+/** IRS NTEE major group → the industry vocabulary of master prompt §7. */
+function nteeIndustry(code: string): string {
+  const major = (code ?? '').charAt(0).toUpperCase();
+  const minor = (code ?? '').slice(0, 3).toUpperCase();
+  if (/^B[45]/.test(minor)) return 'Universities';
+  if (/^E2/.test(minor)) return 'Hospitals';
+  const map: Record<string, string> = {
+    A: 'Entertainment', B: 'Education', E: 'Healthcare', F: 'Medical Services', G: 'Medical Services', H: 'Biotechnology',
+    I: 'Professional Services', J: 'Workforce Management', L: 'Real Estate', N: 'Events', O: 'Education', T: 'Foundations',
+    U: 'Engineering', W: 'Government', Y: 'Insurance', C: 'Environmental Services', D: 'Environmental Services',
+  };
+  return map[major] ?? 'Nonprofits';
+}
+
+const US_STATE = /\b([A-Z]{2}),?\s+(?:USA|United States)\b/;
+
+async function startups(): Promise<Candidate[]> {
+  const companies = await fetchJson<{
+    name?: string; status?: string; team_size?: number | null; website?: string;
+    regions?: string[]; all_locations?: string; industry?: string; subindustry?: string;
+  }[]>('https://yc-oss.github.io/api/companies/all.json', 60_000);
+  const out: Candidate[] = [];
+  for (const c of companies) {
+    if (!c.name || c.status !== 'Active' || !c.website) continue;
+    const size = c.team_size ?? 0;
+    if (size < 8 || size > 600) continue;
+    if (!(c.regions ?? []).includes('United States of America')) continue;
+    out.push({ name: c.name, industry: ycIndustry(c.industry, c.subindustry), state: US_STATE.exec(c.all_locations ?? '')?.[1] ?? 'CA', size: sizeFromHeadcount(size) });
+  }
+  return out;
+}
+
+const MIN_NONPROFIT_INCOME = 25_000_000;
+
+/** RFC 4180 split: a quoted field may hold commas and doubled quotes. */
+function splitCsv(line: string): string[] {
+  const out: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') { field += '"'; i += 1; }
+      else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { out.push(field); field = ''; }
+    else field += ch;
+  }
+  out.push(field);
+  return out;
+}
+
+function titleCase(raw: string): string {
+  return raw.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bInc\b/, 'Inc.');
+}
+
+async function nonprofits(): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  for (const region of [1, 2, 3, 4]) {
+    const res = await fetch(`https://www.irs.gov/pub/irs-soi/eo${region}.csv`, { signal: AbortSignal.timeout(600_000) });
+    if (!res.ok || !res.body) throw new Error(`eo${region}.csv ${res.status}`);
+    const lines = createInterface({ input: Readable.fromWeb(res.body as never) });
+    let header: string[] | null = null;
+    for await (const line of lines) {
+      const cols = splitCsv(line);
+      if (!header) { header = cols; continue; }
+      const row = Object.fromEntries(header.map((h, i) => [h, cols[i] ?? '']));
+      const income = Number(row.INCOME_AMT || 0);
+      if (income < MIN_NONPROFIT_INCOME) continue;
+      if (/^X/.test(row.NTEE_CD ?? '')) continue; // religious congregations
+      if (!/^[A-Z]{2}$/.test(row.STATE ?? '')) continue;
+      out.push({ name: titleCase(row.NAME), industry: nteeIndustry(row.NTEE_CD), state: row.STATE, size: income < 50_000_000 ? 'Midsize' : income < 500_000_000 ? 'Large' : 'Enterprise' });
     }
+    console.log(`eo${region}.csv: ${out.length} candidates so far`);
   }
-  console.log('directory companies:', names.size);
+  return out;
+}
+
+async function enqueue(candidates: Candidate[]): Promise<number> {
+  const byName = new Map(candidates.map((c) => [c.name, c]));
+  const rows = [...byName.values()];
   let inserted = 0;
-  for (const [name, meta] of names) {
-    const res = await q(`INSERT INTO discovery_queue (name, industry, hq_state) VALUES ($1,$2,$3)
-                         ON CONFLICT (name) DO NOTHING RETURNING id`, [name, meta.industry, meta.state]);
-    inserted += res.length;
+  for (let i = 0; i < rows.length; i += 500) {
+    const batch = rows.slice(i, i + 500);
+    const res = await q(
+      `INSERT INTO discovery_queue (name, industry, hq_state, company_size)
+       SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+       ON CONFLICT (name) DO UPDATE SET industry = EXCLUDED.industry, company_size = EXCLUDED.company_size
+       RETURNING (xmax = 0) AS inserted`,
+      [batch.map((c) => c.name), batch.map((c) => c.industry), batch.map((c) => c.state), batch.map((c) => c.size)],
+    );
+    inserted += (res as { inserted: boolean }[]).filter((r) => r.inserted).length;
   }
-  console.log('queued', inserted);
+  // Employers already found from this queue inherit the corrected industry and size.
+  await q(`UPDATE employers e SET industry = d.industry, company_size = coalesce(d.company_size, e.company_size)
+             FROM discovery_queue d WHERE d.name = e.name AND e.discovered_via = 'Portfolio discovery'`);
+  return inserted;
+}
+
+async function main() {
+  await q(`ALTER TABLE discovery_queue ADD COLUMN IF NOT EXISTS company_size TEXT`);
+  const yc = await startups();
+  console.log(`YC directory: ${yc.length} active US startups with 8–600 staff`);
+  let queued = await enqueue(yc);
+  if (process.argv.includes('--nonprofits')) {
+    const np = await nonprofits();
+    console.log(`IRS exempt organisations with $${MIN_NONPROFIT_INCOME / 1e6}M+ income: ${np.length}`);
+    queued += await enqueue(np);
+  }
+  console.log('queued', queued);
   await pool.end();
 }
-main();
+main().catch((err) => { console.error(err); process.exit(1); });

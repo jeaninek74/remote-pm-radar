@@ -48,6 +48,8 @@ export interface BoardFetchResult {
   retryable?: boolean;
   /** Total postings on the board before title filtering. */
   totalListed: number;
+  /** True when the employer time budget ended the read early: unseen postings are not evidence of closure. */
+  truncated?: boolean;
 }
 
 export interface FeedSource {
