@@ -123,7 +123,7 @@ const JOB_COLUMNS = `
   hourly_rate, salary_source, salary_note, match_score, best_resume, match_reasons, gaps,
   urgency, urgency_evidence, black_owned_verification, ownership_source, apply_url, link_type,
   link_status, link_verified_at::text, requisition_id, posted_at::text, posted_confidence,
-  to_char(first_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_seen_at,
+  to_char(first_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS first_seen_at,
   last_verified_at::text, bucket, bucket_reason, description_excerpt, source,
   app_status, notes, interview_at::text, recruiter_notes, applied_at::text, follow_up_at::text
 `;
