@@ -40,7 +40,10 @@ const needsSsl =
  */
 export const pool = new Pool({
   connectionString,
-  max: Number(process.env.PG_POOL_MAX ?? 12),
+  // Neon rejects connection handshakes under pressure and reports it as
+  // "Authentication timed out". A larger pool makes that worse, not better: the sweep
+  // adds one connection per statement while the site keeps serving. Keep it small.
+  max: Number(process.env.PG_POOL_MAX ?? 8),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS ?? 600_000),
   connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 60_000),
   keepAlive: true,
