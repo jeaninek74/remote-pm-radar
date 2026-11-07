@@ -65,6 +65,17 @@ export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshi
 
 /* ------------------------------------------------------------- formatting */
 
+/** Human label for the refresh schedule, derived from the cron the server reports. */
+export function cronLabel(expression: string | null | undefined): string {
+  const expr = (expression ?? '').trim();
+  const everyMinutes = /^\*\/(\d+) \* \* \* \*$/.exec(expr);
+  if (everyMinutes) return `every ${everyMinutes[1]} minutes`;
+  const everyHours = /^0 \*\/(\d+) \* \* \*$/.exec(expr);
+  if (everyHours) return `every ${everyHours[1]} hours`;
+  if (/^0 \* \* \* \*$/.test(expr)) return 'every hour';
+  return expr ? `on schedule ${expr} (UTC)` : 'on a schedule';
+}
+
 export function money(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return `$${Math.round(value).toLocaleString('en-US')}`;

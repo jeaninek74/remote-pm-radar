@@ -64,10 +64,13 @@ const STATE_CODES = new Set(Object.values(STATE_NAMES));
 /** Two-letter codes that are also common words/abbreviations; require context. */
 const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO', 'LA', 'MS', 'MD', 'PA', 'VA', 'AR', 'ID', 'MT', 'NE']);
 
-const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us[- ]remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
+// Workday lists offices and the remote option side by side ("US - VA, McLean, US - Remote (Any
+// location)"); the "US - Remote" entry is a nationwide scope, not a second office. A bare
+// "Remote (Any location)" says nothing about the country and is not treated as US.
+const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
-const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work from home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
+const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
 function detectStates(text: string): string[] {

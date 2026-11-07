@@ -14,7 +14,7 @@ employers); the first production refresh added 298 roles in one pass.
 
 ### Free scheduling (no paid plan needed)
 
-`.github/workflows/refresh.yml` replaces an always-on cron at zero cost. Every four hours GitHub
+`.github/workflows/refresh.yml` replaces an always-on cron at zero cost. Every thirty minutes GitHub
 Actions wakes the sleeping Render instance, starts a refresh, waits for it to finish and prints the
 board totals in the run log. It can also be started by hand from the Actions tab. Verified working:
 run `42312495969` woke the service and completed in 1m24s.
@@ -110,7 +110,7 @@ address, deploy the container below — it takes about three minutes.
 2. In the same project, click **New → Database → PostgreSQL**.
 3. On the web service, add the variable `DATABASE_URL` and reference the Postgres service:
    `${{Postgres.DATABASE_URL}}`.
-4. Add `ENABLE_CRON=1` (scheduled refresh every four hours) and optionally `PORT=3000`.
+4. Add `ENABLE_CRON=1` (scheduled refresh every thirty minutes) and optionally `PORT=3000`.
 5. Deploy. On first boot the service creates its schema, seeds the employer registry and starts the
    scheduled refresh. The health check is `GET /api/health`.
 6. **Settings → Networking → Generate Domain** to get the public URL.

@@ -16,7 +16,7 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
           <p>
             Press <strong>Refresh jobs now</strong>. The radar then searches every employer career site in the database,
             checks each posting against all placement rules, removes duplicates, and re-verifies application links.
-            A scheduled refresh also runs every four hours on its own.
+            A scheduled refresh also runs every thirty minutes on its own.
           </p>
 
           <h3>2. Check the two salary tabs</h3>

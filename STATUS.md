@@ -6,7 +6,7 @@ Snapshot for continuity. Rules live in `RULES.md`; deployment steps in `DEPLOY.m
 
 | Item | State |
 | --- | --- |
-| App | `node dist/server.js` on port 3003, cron `0 */4 * * *` UTC, health `/api/health` |
+| App | `node dist/server.js` on port 3003, cron `*/30 * * * *` UTC, health `/api/health` |
 | Database | local Postgres (`postgres://radar:radar@127.0.0.1:5432/radar`) |
 | Verified roles | 9 (2 in $110K–$130K, 7 at $150K+) |
 | Queue / archive | 8 / 20 |

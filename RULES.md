@@ -4,7 +4,7 @@ This file is the source of truth for this project. It is read before any change 
 matching engine or the employer registry. If a chat instruction and this file disagree, the newer
 instruction wins and this file is updated in the same commit.
 
-Last updated: 6 November 2026 (no-salary roles surface in their own tab).
+Last updated: 7 November 2026 (resumes re-read; master-prompt audit; §4.1 describes what the build does).
 
 ---
 
@@ -90,7 +90,10 @@ Seven days was the original rule and produced three roles against 638 project/pr
 Hybrid roles, onsite roles, roles that require regular commuting, positions that exclude California
 residents, positions that demand residency in another state, region-locked remote roles that exclude
 California, and roles requiring routine travel (40%+ stated, or unquantified "extensive/frequent
-travel") are all rejected at ingestion.
+travel") never reach a salary tab. Non-US postings are dropped outright. Everything else that fails a
+location rule is **stored in the verification queue with the exact reason** (`ingest.ts#evaluateRaw`),
+so a misread location can be seen and corrected rather than silently discarded. Whether hybrid/on-site
+postings should instead be dropped at ingestion is an open decision for Jeanine (see §9).
 
 ## 5. Sourcing policy
 
@@ -142,8 +145,19 @@ Minnesota Rochester, Palomar Health, Kaiser Permanente, RippleNami, Smoke Guard,
 Parsons, Verengo Solar, Southern California Edison. These are her employers; they are never hardcoded
 into the application and never presented as anything else.
 
-**Credentials** — graduate education in executive leadership, PMP, Lean Six Sigma Green Belt, agile
-project management, risk management.
+**Credentials** — MBA, Executive Leadership (Liberty University); B.S., Public Administration (CSU Dominguez
+Hills); PMP; Lean Six Sigma Green Belt; Agile Project Management; Risk Management; Ethical Leadership;
+Generative AI Prompt Engineering; Generative AI for Project Managers; Python for Data Science & AI.
+
+**Platforms named on both resumes** — Workday, Salesforce, Epic, Cerner, SAP, Oracle, ServiceNow, PeopleSoft,
+Jira, Confluence, Smartsheet, SharePoint, MS Project, Primavera P6, OpenAI / Claude / ChatGPT / Gemini, Bubble,
+Airtable, AI workflow-automation platforms. Also on the resumes and reflected in the competency keywords:
+disaster recovery and business continuity, telecommunications / IVR, CMS-regulated Medicare and Medicaid
+programs, smart grid and 100 MW+ of solar / wind / fuel-cell / biogas installations, Six Sigma and Kanban,
+a $1B Epic program, a $360M procurement portfolio, and a 633,000 sq ft GSA courthouse.
+
+Both resumes were re-read on 7 November 2026 and the competency groups in
+`server/engine/roles/families/project-management.ts` updated to cover every platform and domain above.
 
 ## 7. Honesty rules
 
@@ -170,3 +184,15 @@ project management, risk management.
 | Ownership records | `server/data/ownership.ts` |
 | Simple list | `client/src/components/SimpleBoard.tsx` |
 | Full dashboard | `client/src/App.tsx` |
+
+## 9. Open decisions — master prompt vs. later instructions
+
+The master prompt (re-supplied 7 November 2026) and Jeanine's later instructions differ on four points.
+The build follows the later instruction in each case until she says otherwise:
+
+| Master prompt | Later instruction (in force) |
+| --- | --- |
+| Seven-day posting window (§11) | 14 days, 6 Nov 2026 (`JOB_WINDOW_DAYS=7` restores seven) |
+| Unspecified California eligibility goes to the verification queue (§6) | Kept on the site with a `CA not stated` flag (§2) |
+| No published salary goes to the review queue (§5) | Shown live in the `Pay not published` tab (§3) |
+| Hybrid / on-site postings are excluded (§6) | Stored in the verification queue with the reason, never tabbed (§4.1) |
