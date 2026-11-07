@@ -764,7 +764,9 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
           if (outcome.bucket === 'tab2') counters.addedTab2 += 1;
           if (outcome.bucket === 'unsalaried') counters.queued += 0;
           if (outcome.bucket === 'queue') counters.queued += 1;
-          if ((outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2') && linkCandidates.length < REFRESH.linkChecksPerRun) {
+          // Every new live-tab posting gets its application link verified — no count cap; the
+          // verification stage is bounded by time only.
+          if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2' || outcome.bucket === 'unsalaried') {
             linkCandidates.push(outcome.id);
           }
         }
@@ -825,12 +827,14 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     counters.archived += await archiveByAge();
 
     await progress(`Verifying ${linkCandidates.length} application links`);
-    for (const id of linkCandidates) {
+    const linkDeadline = Date.now() + REFRESH.linkBudgetMs;
+    await mapLimit(linkCandidates, 8, async (id) => {
+      if (Date.now() > linkDeadline) return;
       const job = await one<{ id: number; apply_url: string; bucket: string }>(
         `SELECT id, apply_url, bucket FROM jobs WHERE id=$1`,
         [id],
       );
-      if (!job) continue;
+      if (!job) return;
       const check = await checkLink(job.apply_url);
       counters.linksChecked += 1;
       if (check.ok) {
@@ -849,7 +853,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
           [job.id, check.error ?? `HTTP ${check.status}`],
         );
       }
-    }
+    });
 
     await progress('Finalising');
     await q(

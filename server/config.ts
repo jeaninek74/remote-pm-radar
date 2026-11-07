@@ -78,7 +78,8 @@ export const REFRESH = {
   /** Budget of the standalone discovery pass that runs between sweeps (ends before the next slot). */
   discoverPassBudgetMs: Number(process.env.DISCOVER_PASS_BUDGET_MS ?? 11 * 60_000),
   /** How many brand-new tab listings get a live link check per cycle. */
-  linkChecksPerRun: Number(process.env.LINK_CHECKS_PER_RUN ?? 35),
+  /** Time budget for verifying new application links (every new live posting is checked; no count cap). */
+  linkBudgetMs: Number(process.env.LINK_BUDGET_MS ?? 4 * 60_000),
 };
 
 export const USER_AGENT =
