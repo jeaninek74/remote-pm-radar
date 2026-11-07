@@ -39,7 +39,13 @@ export const RULES = {
 
 export const REFRESH = {
   /** Employers touched per cycle (least-recently-searched first). */
-  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 600),
+  /**
+   * Employers swept per run. The schedule fires every thirty minutes, so a run has to
+   * finish inside that slot or the next tick is skipped. Employers are ordered by
+   * last_searched_at (oldest first) and stamped when read, so a smaller batch loses
+   * nothing: the next tick picks up exactly where this one stopped.
+   */
+  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 200),
   /**
    * Feed pages fetched per cycle. Boards list different postings on each page, so a
    * shallow read silently drops most of an employer's openings.
