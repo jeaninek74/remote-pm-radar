@@ -170,11 +170,16 @@ async function nonprofits(limit: number): Promise<Found[]> {
   const perState = Math.max(4, Math.ceil(limit / states.length));
   const orgs: NpOrg[] = [];
   for (const state of states) {
-    for (let page = 0; page < 3 && orgs.length < limit + orgs.filter((o) => o.state === state).length; page += 1) {
+    // The search endpoint returns name, city, state and NTEE code but no income figure,
+    // so revenue cannot be used to filter here; page through and take what is listed.
+    let taken = 0;
+    for (let page = 0; page < 4 && taken < perState && orgs.length < limit; page += 1) {
       const data = (await json(`https://projects.propublica.org/nonprofits/api/v2/search.json?state%5Bid%5D=${state}&page=${page}`)) as { organizations?: NpOrg[] } | null;
-      const rows = (data?.organizations ?? []).filter((o) => (o.income_amount ?? 0) > 2_000_000);
-      orgs.push(...rows.slice(0, perState));
-      if ((data?.organizations ?? []).length < 25) break;
+      const rows = data?.organizations ?? [];
+      if (!rows.length) break;
+      const slice = rows.slice(0, perState - taken);
+      orgs.push(...slice);
+      taken += slice.length;
     }
   }
   const unique = new Map(orgs.map((o) => [o.name, o]));
@@ -184,8 +189,25 @@ async function nonprofits(limit: number): Promise<Found[]> {
   const hits = await pool(picks, CONCURRENCY, async (org) => {
     done += 1;
     if (done % 100 === 0) console.log(`[nonprofits] ${done}/${picks.length}`);
-    const base = org.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const slugs = [...new Set([base.replace(/-/g, ''), base])].filter((s) => s.length >= 4 && s.length <= 40).slice(0, 2);
+    // Legal names carry suffixes that boards never use: "Khan Academy Inc" is
+    // `khanacademy`, and "The Trevor Project" is `thetrevorproject`. Deriving a slug
+    // from the raw legal name finds almost nothing, so try the plausible brand forms.
+    const cleaned = org.name
+      .toLowerCase()
+      .replace(/^the\s+/, '')
+      .replace(/[,\.]/g, ' ')
+      .replace(/\b(inc|incorporated|foundation|associates|association|society|organization|org|usa|u s a|america|american|international|national|of|the)\b/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    const candidates = [
+      words.join(''),
+      words.slice(0, 2).join(''),
+      words.slice(0, 3).join(''),
+      words[0] ?? '',
+      org.name.toLowerCase().replace(/[^a-z0-9]+/g, ''),
+    ];
+    const slugs = [...new Set(candidates)].filter((s) => s.length >= 5 && s.length <= 32).slice(0, 4);
     for (const slug of slugs) {
       for (const ats of Object.keys(ENDPOINT) as Vendor[]) {
         const data = await json(ENDPOINT[ats](slug));
@@ -217,7 +239,9 @@ async function nonprofits(limit: number): Promise<Found[]> {
 async function main(): Promise<void> {
   const startupLimit = Number(process.argv[2] ?? 1400);
   const nonprofitLimit = Number(process.argv[3] ?? 1600);
-  const [a, b] = await Promise.all([startups(startupLimit), nonprofits(nonprofitLimit)]);
+  const only = process.argv[4] ?? 'both';
+  const a = only === 'np' ? [] : await startups(startupLimit);
+  const b = only === 'st' ? [] : await nonprofits(nonprofitLimit);
   const seen = new Set<string>();
   const rows = [...a, ...b].filter((r) => {
     const key = `${r.ats}:${r.slug}`;
