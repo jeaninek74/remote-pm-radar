@@ -3,8 +3,8 @@ import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
 import { OWNERSHIP_RECORDS } from '../data/ownership';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
+import { TRACKED_STATE_EMPLOYERS } from '../data/state-employers';
 import { fetchBoard } from './sources';
-import { discoverCompanies } from './discover';
 import { evaluateLocation } from './location';
 import { classifyCategory } from './category';
 import { classifySalary } from './salary';
@@ -46,6 +46,25 @@ export async function seedEmployers(): Promise<number> {
        RETURNING id`,
       [manual.name, slugify(manual.name), manual.industry, manual.size, manual.hq, manual.careersUrl,
        'Careers page tracked \u2014 postings sit behind Workday/iCIMS; open the link to search this employer'],
+    );
+    inserted += res.length;
+  }
+  // States where no public board could be resolved: tracked with their own careers link so
+  // every state is represented. Skipped when the employer is already in the registry under
+  // a different ATS, so nothing is listed twice.
+  for (const tracked of TRACKED_STATE_EMPLOYERS) {
+    const res = await q<{ id: number }>(
+      `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active, last_status)
+       SELECT $1,'manual',$2,$3,$4,$5,$6,'State coverage sweep',FALSE,$7
+        WHERE NOT EXISTS (
+          SELECT 1 FROM employers
+           WHERE lower(regexp_replace(name, '[^a-zA-Z0-9]', '', 'g'))
+               = lower(regexp_replace($1, '[^a-zA-Z0-9]', '', 'g'))
+        )
+       ON CONFLICT (ats, slug) DO NOTHING
+       RETURNING id`,
+      [tracked.name, slugify(tracked.name), tracked.industry, tracked.size, tracked.state, tracked.careersUrl,
+       'Careers page tracked — no public job feed; open the link to search this employer'],
     );
     inserted += res.length;
   }
@@ -530,11 +549,6 @@ async function executeRun(runId: number): Promise<number> {
     // each company's own applicant-tracking system.
     await progress('Discovering new employers');
     try {
-      // Aggregators know who is hiring even when their board is not readable, so they are used
-      // only to harvest employer names. The prober below then checks whether that employer
-      // publishes a board we can read, which keeps every job link first-party.
-      const harvested = await discoverCompanies();
-      if (harvested) await progress(`Queued ${harvested} newly discovered employers`);
       const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null }>(
         `SELECT id, name, industry, hq_state FROM discovery_queue
           WHERE status='pending' AND tries < 3

@@ -666,6 +666,42 @@ const RAW: Row[] = [
   ['2U', 'greenhouse', '2u', 'Education', 'Large', 'MD'],
   ['Southwest Airlines', 'smartrecruiters', 'southwest', 'Transportation', 'Enterprise', 'TX'],
 
+
+  // ------------------------------- state coverage (verified employer boards, all 50 states)
+  // Resolved by scripts/cover-states.ts from each employer's own careers endpoint.
+  ['Micron Technology', 'workday', 'micron/External', 'Manufacturing', 'Enterprise', 'ID'],
+  ['Workiva', 'workday', 'workiva/careers', 'Software', 'Large', 'IA'],
+  ['Hy-Vee', 'workday', 'hyvee/HyVeeCareers', 'Retail', 'Enterprise', 'IA'],
+  ['First Interstate BancSystem', 'workday', 'fib/FIBCareers', 'Financial Services', 'Large', 'MT'],
+  ['ONEOK', 'workday', 'oneok/ONEOK', 'Energy', 'Enterprise', 'OK'],
+  ['Sonoco Products', 'workday', 'sonoco/CorporateCareers', 'Manufacturing', 'Enterprise', 'SC'],
+  ['Rockwell Automation', 'workday', 'rockwellautomation/External_Rockwell_Automation', 'Manufacturing', 'Enterprise', 'WI'],
+  ['Kohl’s', 'workday', 'kohls/kohlscareers', 'Retail', 'Enterprise', 'WI'],
+  ['Xcel Energy', 'workday', 'xcelenergy/External', 'Utilities', 'Enterprise', 'MN'],
+  ['Ochsner Health', 'workday', 'ochsner/Ochsner', 'Healthcare', 'Large', 'LA'],
+  ['Stanford Health Care', 'workday', 'stanfordmedicine/SHC_External_Career_Site', 'Healthcare', 'Large', 'CA'],
+  ['Geisinger', 'workday', 'geisinger/GeisingerExternal', 'Healthcare', 'Large', 'PA'],
+  ['Highmark Health', 'workday', 'highmarkhealth/highmark', 'Health Insurance', 'Enterprise', 'PA'],
+  ['Elevance Health', 'workday', 'elevancehealth/ANT', 'Health Insurance', 'Enterprise', 'IN'],
+  ['Guidehouse', 'workday', 'guidehouse/External', 'Consulting', 'Large', 'VA'],
+  ['Booz Allen Hamilton', 'workday', 'bah/BAH_Jobs', 'Government Contracting', 'Enterprise', 'VA'],
+  ['Accenture', 'workday', 'accenture/AccentureCareers', 'Consulting', 'Enterprise', 'IL'],
+  ['Protiviti', 'workday', 'roberthalf/ProtivitiNA', 'Consulting', 'Large', 'CA'],
+  ['Huron Consulting Group', 'workday', 'huron/huroncareers', 'Consulting', 'Large', 'IL'],
+  ['Ankura', 'workday', 'ankura/Ankura', 'Consulting', 'Large', 'DC'],
+  ['Public Consulting Group', 'workday', 'pcg/PCG_External_Careers', 'Consulting', 'Large', 'MA'],
+  ['RAND Corporation', 'workday', 'rand/External_Career_Site', 'Consulting', 'Large', 'CA'],
+  ['Capital One', 'workday', 'capitalone/Capital_One', 'Financial Services', 'Enterprise', 'VA'],
+  ['Bank of America', 'workday', 'ghr/lateral-us', 'Financial Services', 'Enterprise', 'NC'],
+  ['Citigroup', 'workday', 'citi/2', 'Financial Services', 'Enterprise', 'NY'],
+  ['Mastercard', 'workday', 'mastercard/CorporateCareers', 'Financial Services', 'Enterprise', 'NY'],
+  ['State Street', 'workday', 'statestreet/Global', 'Financial Services', 'Enterprise', 'MA'],
+  ['Northern Trust', 'workday', 'ntrs/northerntrust', 'Financial Services', 'Enterprise', 'IL'],
+  ['Nationwide', 'workday', 'nationwide/Nationwide_Career', 'Insurance', 'Enterprise', 'OH'],
+  ['Target', 'workday', 'target/targetcareers', 'Retail', 'Enterprise', 'MN'],
+  ['The Coca-Cola Company', 'workday', 'coke/coca-cola-careers', 'Consumer Products', 'Enterprise', 'GA'],
+  ['General Mills', 'workday', 'genmills/GMI_External_Careers', 'Consumer Products', 'Enterprise', 'MN'],
+
 ];
 
 /**

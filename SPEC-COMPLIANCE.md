@@ -76,8 +76,7 @@ photographs or demographics, as the brief requires. The limiting factor is that 
 Black-owned firms are small and publish no machine-readable board, so they are tracked with a
 direct careers link rather than silently dropped.
 
-**4 — Aggregator discovery (§10).** The brief allows job boards for *discovery* as long as the
-application link is the employer's own. Today discovery is employer-ATS only, which is why
-coverage is narrower than a board like LinkedIn or Indeed would suggest. Adding aggregator
-feeds (Remotive, Jobicy, Himalayas) as a discovery layer, with everything they surface landing
-in the verification queue until an employer link is confirmed, is the next build step.
+**4 — Aggregator discovery (§10).** An aggregator discovery layer was built and then removed on
+instruction: **no job boards and no job leads at all**. Every posting must come from the
+employer's own listing. Discovery therefore works state by state — see
+`server/data/state-employers.ts` — and the engine never reads a third-party feed.

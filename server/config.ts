@@ -49,7 +49,7 @@ export const REFRESH = {
   /** Cron cadence: every 4 hours, on the hour (UTC). */
   cron: process.env.REFRESH_CRON ?? '0 */4 * * *',
   /** Max new employers discovered (ATS slug probing) per cycle. */
-  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 40),
+  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 24),
   /** How many brand-new tab listings get a live link check per cycle. */
   linkChecksPerRun: Number(process.env.LINK_CHECKS_PER_RUN ?? 35),
 };
