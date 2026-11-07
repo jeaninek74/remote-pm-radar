@@ -16,10 +16,26 @@ import type { RoleFamily } from './roles/types';
 
 const MAX_TITLE_LENGTH = 160;
 
-/** True when the title names a role inside `family`. */
-export function isRoleTitle(rawTitle: string, family: RoleFamily = ACTIVE_ROLE_FAMILY): boolean {
+/**
+ * Master prompt §9: at Black-owned employers the search also covers "Operations Managers with
+ * project responsibilities" and PMO leaders. The title alone admits the posting to evaluation;
+ * `evaluateRaw` still requires the description to describe project or program work.
+ */
+export const OWNERSHIP_WATCH_TITLE = /\b(?:operations|business operations)\s+(?:manager|director|lead|leader)\b|\bchief of staff\b/i;
+
+export function isOwnershipWatchTitle(rawTitle: string, employer?: { black_owned?: boolean | null } | null): boolean {
+  return employer?.black_owned === true && OWNERSHIP_WATCH_TITLE.test(rawTitle ?? '');
+}
+
+/** True when the title names a role inside `family` (or a watched role at a Black-owned employer). */
+export function isRoleTitle(
+  rawTitle: string,
+  family: RoleFamily = ACTIVE_ROLE_FAMILY,
+  employer?: { black_owned?: boolean | null } | null,
+): boolean {
   const title = (rawTitle ?? '').trim();
   if (!title || title.length > MAX_TITLE_LENGTH) return false;
+  if (isOwnershipWatchTitle(title, employer)) return true;
   if (!family.titlePatterns.some((re) => re.test(title))) return false;
 
   // A disqualified adjacent title only passes when it also names the target role.

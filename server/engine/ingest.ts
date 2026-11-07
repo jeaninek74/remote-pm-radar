@@ -10,7 +10,7 @@ import { classifyCategory } from './category';
 import { classifySalary } from './salary';
 import { scoreJob } from './match';
 import { detectUrgency } from './urgency';
-import { isRoleTitle } from './titles';
+import { isOwnershipWatchTitle, isRoleTitle } from './titles';
 import { ACTIVE_ROLE_FAMILY } from './roles/active';
 import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
@@ -137,6 +137,12 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   const age = daysBetween(postedAt);
 
   if (age !== null && age > RULES.archiveDays) return null;
+
+  // A watched title at a Black-owned employer (master prompt §9) qualifies only when the posting
+  // actually describes project or program responsibilities; the title alone is not evidence.
+  if (!isRoleTitle(raw.title) && isOwnershipWatchTitle(raw.title, employer)) {
+    if (!/\b(?:project|program|programme|pmo|portfolio)\b/i.test(description)) return null;
+  }
 
   const loc = evaluateLocation({
     locations: raw.locations,
