@@ -341,6 +341,14 @@ async function probeAts(name: string): Promise<{ ats: Ats; slug: string } | null
       const lv = await fetchJson<unknown[]>(`https://api.lever.co/v0/postings/${slug}?mode=json`, 12_000);
       if (Array.isArray(lv) && lv.length) return { ats: 'lever', slug };
     } catch { /* not this one */ }
+    try {
+      const sr = await fetchJson<{ content?: unknown[] }>(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=1`, 12_000);
+      if (Array.isArray(sr.content) && sr.content.length) return { ats: 'smartrecruiters', slug };
+    } catch { /* not this one */ }
+    try {
+      const wk = await fetchJson<{ jobs?: unknown[] }>(`https://apply.workable.com/api/v1/widget/accounts/${slug}`, 12_000);
+      if (Array.isArray(wk.jobs)) return { ats: 'workable', slug };
+    } catch { /* not this one */ }
   }
   return null;
 }
@@ -623,7 +631,11 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
           LIMIT $1`,
         [REFRESH.discoverPerRun ?? 12],
       );
-      for (const row of pending) {
+      // Probes run four at a time inside a fixed budget so a batch of misses (five ATS
+      // lookups each, up to twelve seconds apiece) cannot eat the half-hour slot.
+      const discoveryDeadline = Date.now() + REFRESH.discoverBudgetMs;
+      await mapLimit(pending, 4, async (row) => {
+        if (Date.now() > discoveryDeadline) return;
         const found = await probeAts(row.name);
         if (found) {
           const inserted = await q<{ id: number }>(
@@ -641,7 +653,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         } else {
           await q(`UPDATE discovery_queue SET tries=tries+1, checked_at=now() WHERE id=$1`, [row.id]);
         }
-      }
+      });
       if (pending.length) await progress(`Probed ${pending.length} new employers`);
     } catch (err) {
       counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });

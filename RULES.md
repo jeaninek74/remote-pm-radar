@@ -185,6 +185,15 @@ Both resumes were re-read on 7 November 2026 and the competency groups in
 | Simple list | `client/src/components/SimpleBoard.tsx` |
 | Full dashboard | `client/src/App.tsx` |
 
+## 8a. Sweep size and employer growth (7 November 2026)
+
+Jeanine: "I need this to run and refresh quickly to capture jobs as soon as they post" and "it should
+be triple — a 560-employer sweep nationwide". So: every active board is searched every 30-minute slot
+(`EMPLOYERS_PER_RUN` is set above the registry size, not a rotating 200), and the discovery queue is fed
+from public company registries (YC directory, IRS exempt-organisation file) and probed 60 companies per
+cycle, five ATS vendors each, until the registry is roughly three times its 557 active boards. Companies
+whose careers page has no public ATS stay listed as `manual` and are not searched.
+
 ## 9. Open decisions — master prompt vs. later instructions
 
 The master prompt (re-supplied 7 November 2026) and Jeanine's later instructions differ on four points.

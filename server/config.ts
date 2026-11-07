@@ -45,7 +45,9 @@ export const REFRESH = {
    * last_searched_at (oldest first) and stamped when read, so a smaller batch loses
    * nothing: the next tick picks up exactly where this one stopped.
    */
-  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 200),
+  // Every active board is searched every slot: Jeanine wants a posting captured on the first
+  // sweep after it appears, so the sweep size is the whole registry, not a rotating slice.
+  employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 1000),
   /**
    * Pages of 100 read from boards that paginate (SmartRecruiters). Each page is a different
    * slice of the board, so a shallow read silently drops most of an employer's openings.
@@ -65,7 +67,8 @@ export const REFRESH = {
   /** Cron cadence (UTC). Every thirty minutes by default. */
   cron: process.env.REFRESH_CRON ?? '*/30 * * * *',
   /** Max new employers discovered (ATS slug probing) per cycle. */
-  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 24),
+  discoverPerRun: Number(process.env.DISCOVER_PER_RUN ?? 60),
+  discoverBudgetMs: Number(process.env.DISCOVER_BUDGET_MS ?? 90_000),
   /** How many brand-new tab listings get a live link check per cycle. */
   linkChecksPerRun: Number(process.env.LINK_CHECKS_PER_RUN ?? 35),
 };
