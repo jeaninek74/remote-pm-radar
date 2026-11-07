@@ -1,5 +1,5 @@
 import type { Job } from '../types';
-import { uniqueValues } from '../lib';
+import { categoryLabel, uniqueValues } from '../lib';
 
 export interface FilterState {
   q: string;
@@ -78,7 +78,7 @@ export function Filters({ value, onChange, jobs, total, matched, windowDays }: P
               className={`chip${value.category === category ? ' active' : ''}`}
               onClick={() => set('category', category)}
             >
-              {category === 'All' ? 'All categories' : category}
+              {category === 'All' ? 'All categories' : categoryLabel(category)}
             </button>
           ))}
         </div>

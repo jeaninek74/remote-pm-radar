@@ -15,7 +15,7 @@ const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'all', label: 'All roles' },
   { key: 'Nontechnical', label: 'Nontechnical' },
   { key: 'Technical', label: 'Technical' },
-  { key: 'Hybrid', label: 'Hybrid' },
+  { key: 'Hybrid', label: 'Business-tech' },
 ];
 
 /** Roles held back only because the employer published no base salary. */

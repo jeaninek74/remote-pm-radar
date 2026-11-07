@@ -29,7 +29,7 @@ export function KpiBand({ stats, nextRefresh, cronEnabled, cronExpression }: Pro
         <Kpi label="New today" value={stats.newToday} sub={`${stats.new24h} in last 24 hours`} />
         <Kpi label="Nontechnical" value={stats.nontechnical} sub="business & operations PM" />
         <Kpi label="Technical" value={stats.technical} sub="IT / platform / systems PM" />
-        <Kpi label="Hybrid business-tech" value={stats.hybrid} sub="cross-functional delivery" />
+        <Kpi label="Business-tech" value={stats.hybrid} sub="cross-functional delivery" />
         <Kpi label="Urgently hiring" value={stats.urgent} sub="confirmed in the posting" />
         <Kpi label="Verified Black-owned" value={stats.blackOwnedEmployers}
           sub={`${stats.blackOwnedJobs} role${stats.blackOwnedJobs === 1 ? '' : 's'} open`} />
