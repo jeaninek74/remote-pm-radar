@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../types';
 import { ageLabel, caBadge, categoryLabel, dateLabel, salaryLabel, salarySubLabel } from '../lib';
 
-type BoardTab = 'tab1' | 'tab2' | 'nopay';
+type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay';
 type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
 
 const TABS: { key: BoardTab; name: string; range: string }[] = [
-  { key: 'tab1', name: 'Tab 1', range: '$110K–$130K' },
-  { key: 'tab2', name: 'Tab 2', range: '$150K+' },
+  { key: 'tab0', name: 'Tab 1', range: '$90K–$110K' },
+  { key: 'tab1', name: 'Tab 2', range: '$110K–$130K' },
+  { key: 'tab2', name: 'Tab 3', range: '$150K+' },
   { key: 'nopay', name: 'Pay not published', range: 'remote, CA-eligible, no salary stated' },
 ];
 
@@ -29,7 +30,7 @@ function isPayOnlyBlocker(job: Job): boolean {
 interface Props {
   profile?: {
     boardName: string;
-    bands: { tab1: { label: string }; tab2: { label: string } };
+    bands: { tab0: { label: string }; tab1: { label: string }; tab2: { label: string } };
   };
   jobs: Job[];
   refreshing: boolean;
@@ -53,13 +54,14 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const [category, setCategory] = useState<Category>('all');
   const [q, setQ] = useState('');
 
+  const tab0 = useMemo(() => jobs.filter((job) => job.bucket === 'tab0'), [jobs]);
   const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
   const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
   const nopay = useMemo(
     () => jobs.filter((job) => job.bucket === 'unsalaried' || (job.bucket === 'queue' && isPayOnlyBlocker(job))),
     [jobs],
   );
-  const active = tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;
+  const active = tab === 'tab0' ? tab0 : tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;
 
   const [urgentOnly, setUrgentOnly] = useState(false);
   /**
@@ -68,8 +70,8 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
    * quiet. Urgency only counts when the posting itself says so.
    */
   const urgent = useMemo(
-    () => [...tab1, ...tab2, ...nopay].filter((job) => job.urgency === 'High'),
-    [tab1, tab2, nopay],
+    () => [...tab0, ...tab1, ...tab2, ...nopay].filter((job) => job.urgency === 'High'),
+    [tab0, tab1, tab2, nopay],
   );
 
   const counts = useMemo(() => ({
@@ -111,7 +113,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const current = TABS.find((item) => item.key === tab)!;
 
   const tabCount = (key: BoardTab): number =>
-    key === 'tab1' ? tab1.length : key === 'tab2' ? tab2.length : nopay.length;
+    key === 'tab0' ? tab0.length : key === 'tab1' ? tab1.length : key === 'tab2' ? tab2.length : nopay.length;
 
   return (
     <div className="simple-shell">
@@ -121,7 +123,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
             {profile ? splitTitle(profile.boardName) : <>Remote PM <span>Radar</span></>}
           </h1>
           <p className="simple-sub">
-            {tab1.length + tab2.length} salary-verified roles · {nopay.length} more where pay is not published
+            {tab0.length + tab1.length + tab2.length} salary-verified roles · {nopay.length} more where pay is not published
             {lastRefresh ? ` · updated ${lastRefresh}` : ''}
           </p>
         </div>
@@ -147,7 +149,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
             onClick={() => { setTab(item.key); setCategory('all'); setQ(''); }}
           >
             <span className="tab-name">{item.name}</span>
-            <span className="tab-range">{item.key === 'tab1' ? profile?.bands.tab1.label ?? item.range : item.key === 'tab2' ? profile?.bands.tab2.label ?? item.range : item.range}</span>
+            <span className="tab-range">{item.key === 'tab0' ? profile?.bands.tab0.label ?? item.range : item.key === 'tab1' ? profile?.bands.tab1.label ?? item.range : item.key === 'tab2' ? profile?.bands.tab2.label ?? item.range : item.range}</span>
             <span className="tab-count">{tabCount(item.key)}</span>
           </button>
         ))}
@@ -168,7 +170,9 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
       </div>
 
       <p className="tab-note">
-        {tab === 'tab1'
+        {tab === 'tab0'
+          ? 'Roles whose published starting salary is between $90,000 and $110,000.'
+          : tab === 'tab1'
           ? 'Roles whose published starting salary is between $110,000 and $130,000.'
           : tab === 'tab2'
             ? 'Roles whose published starting salary is $150,000 or more — no upper cap.'

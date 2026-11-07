@@ -25,7 +25,7 @@ export function KpiBand({ stats, nextRefresh, cronEnabled, cronExpression }: Pro
     <section className="kpi-band" aria-label="Radar totals">
       <div className="kpi-grid">
         <Kpi label="Verified active jobs" value={stats.activeJobs} accent
-          sub={`${stats.tab1} in $110–130K · ${stats.tab2} at $150K+`} />
+          sub={`${stats.tab0} in $90–110K · ${stats.tab1} in $110–130K · ${stats.tab2} at $150K+`} />
         <Kpi label="New today" value={stats.newToday} sub={`${stats.new24h} in last 24 hours`} />
         <Kpi label="Nontechnical" value={stats.nontechnical} sub="business & operations PM" />
         <Kpi label="Technical" value={stats.technical} sub="IT / platform / systems PM" />

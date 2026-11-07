@@ -23,8 +23,8 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
           <p>
             A role only reaches a tab when it is <em>fully remote</em>, <em>California-eligible</em>, posted in the
             <em> last {windowDays} days</em>, has a <em>verified direct employer application link</em>, and publishes a
-            <em> base salary whose minimum</em> falls in the band: $110,000–$130,000 for the first tab, $150,000+ for
-            the second. Nothing is estimated or annualised into a tab.
+            <em> base salary whose minimum</em> falls in the band: $90,000–$110,000 for the first tab, $110,000–$130,000 for the second,
+            $150,000+ for the third. Nothing is estimated or annualised into a tab.
           </p>
           <p>
             California eligibility is flagged, not assumed. A posting that names California, or is US-wide with no

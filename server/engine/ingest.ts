@@ -614,11 +614,11 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         const outcome = await upsertJob(ev);
         if (outcome.inserted) {
           counters.newJobs += 1;
-          if (outcome.bucket === 'tab1') counters.addedTab1 += 1;
+          if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1') counters.addedTab1 += 1;
           if (outcome.bucket === 'tab2') counters.addedTab2 += 1;
           if (outcome.bucket === 'unsalaried') counters.queued += 0;
           if (outcome.bucket === 'queue') counters.queued += 1;
-          if ((outcome.bucket === 'tab1' || outcome.bucket === 'tab2') && linkCandidates.length < REFRESH.linkChecksPerRun) {
+          if ((outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2') && linkCandidates.length < REFRESH.linkChecksPerRun) {
             linkCandidates.push(outcome.id);
           }
         }
@@ -634,7 +634,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
                   bucket_reason='No longer listed on the employer''s job board (closed or filled).',
                   updated_at=now()
             WHERE employer_id = $1
-              AND bucket IN ('tab1','tab2')
+              AND bucket IN ('tab0','tab1','tab2')
               AND last_seen_at < now() - INTERVAL '10 minutes'
             RETURNING id`,
           [employer.id],
@@ -791,7 +791,7 @@ async function dedupeJobs(): Promise<number> {
   }>(
     `SELECT id, company, title, link_type, posted_at::text, bucket
        FROM jobs
-      WHERE bucket IN ('tab1','tab2','queue')
+      WHERE bucket IN ('tab0','tab1','tab2','queue')
       ORDER BY (link_type = 'employer') DESC, posted_at ASC NULLS LAST, id ASC`,
   );
   const winners = new Map<string, { id: number; company: string; title: string }>();
@@ -827,7 +827,7 @@ async function flagMultiRoleUrgency(): Promise<void> {
   const rows = await q<{ company: string; open_roles: string }>(
     `SELECT company, count(*)::text AS open_roles
        FROM jobs
-      WHERE bucket IN ('tab1','tab2')
+      WHERE bucket IN ('tab0','tab1','tab2')
       GROUP BY company
      HAVING count(*) >= 2`,
   );
@@ -836,7 +836,7 @@ async function flagMultiRoleUrgency(): Promise<void> {
       `UPDATE jobs
           SET urgency='Medium',
               urgency_evidence=COALESCE(urgency_evidence, $2)
-        WHERE company=$1 AND bucket IN ('tab1','tab2') AND urgency='Low'`,
+        WHERE company=$1 AND bucket IN ('tab0','tab1','tab2') AND urgency='Low'`,
       [row.company, `Employer is recruiting ${row.open_roles} project/program roles at the same time (inferred, not stated in the posting).`],
     );
   }
@@ -849,7 +849,7 @@ async function archiveByAge(): Promise<number> {
             bucket_reason='Exceeded the ' || $1 || '-day posting window (posted ' ||
               to_char(posted_at,'Mon DD') || ').',
             updated_at=now()
-      WHERE bucket IN ('tab1','tab2')
+      WHERE bucket IN ('tab0','tab1','tab2')
         AND posted_at IS NOT NULL
         AND posted_at < (CURRENT_DATE - ($1::int - 1))
       RETURNING id`,

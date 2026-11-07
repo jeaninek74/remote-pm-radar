@@ -47,6 +47,7 @@ const EXTRA_HEADERS = [
 
 function bucketLabel(bucket: string): string {
   switch (bucket) {
+    case 'tab0': return 'Active — $90K–$110K';
     case 'tab1': return 'Active — $110K–$130K';
     case 'tab2': return 'Active — $150K+';
     case 'queue': return 'Needs verification';
@@ -162,11 +163,13 @@ export async function buildWorkbook(input: {
   workbook.creator = PROFILE.boardName;
   workbook.created = new Date();
 
+  const tab0 = input.jobs.filter((j) => j.bucket === 'tab0');
   const tab1 = input.jobs.filter((j) => j.bucket === 'tab1');
   const tab2 = input.jobs.filter((j) => j.bucket === 'tab2');
   const queue = input.jobs.filter((j) => j.bucket === 'queue');
   const archived = input.jobs.filter((j) => j.bucket === 'archived');
 
+  addJobSheet(workbook, { title: RULES.tab0Label, jobs: tab0, tabColor: 'FF7C8B3A' });
   addJobSheet(workbook, { title: RULES.tab1Label, jobs: tab1, tabColor: 'FFB4552A' });
   addJobSheet(workbook, { title: RULES.tab2Label, jobs: tab2, tabColor: 'FF0F1720' });
   addJobSheet(workbook, { title: 'Needs Verification', jobs: queue, tabColor: 'FF9A8C68' });
