@@ -239,7 +239,7 @@ export default function App() {
           <h3>The verification queue is clear</h3>
           <p>
             Nothing is waiting on a rule check. Roles land here when a salary is missing, California eligibility is
-            unclear, only a last-updated date exists, or the only link found was a job board.
+            unclear, only a last-updated date exists, or the link could not be confirmed as the employer’s own.
           </p>
         </div>
       );
@@ -301,7 +301,7 @@ export default function App() {
               </div>
             </div>
             <p className="masthead-sub">
-              Verified against employer job boards every four hours. Two salary bands, one verification queue,
+              Verified against employer career sites every four hours. Two salary bands, one verification queue,
               and every field traceable to a source — no estimated salaries, no hybrid roles wearing a remote badge.
             </p>
           </div>
@@ -387,7 +387,7 @@ export default function App() {
       <footer className="footer">
         <div>
           Sources: employer career sites only — Greenhouse, Lever, Ashby, Workable, SmartRecruiters and Recruitee
-          boards, swept across all 50 states. No aggregator or job-board listings; every role links to the employer's
+          boards, swept across all 50 states. Every role links to the employer's own
           own posting. Every placement decision is recorded in Refresh history.
         </div>
         <div>

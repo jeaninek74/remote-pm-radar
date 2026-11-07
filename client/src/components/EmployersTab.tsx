@@ -24,7 +24,7 @@ export function EmployersTab({ employers }: { employers: Employer[] }) {
       total: employers.length,
       searched: employers.filter((employer) => employer.lastSearchedAt).length,
       black: employers.filter((employer) => employer.blackOwned).length,
-      discovered: employers.filter((employer) => employer.discoveredVia === 'Job-board discovery').length,
+      discovered: employers.filter((employer) => employer.discoveredVia === 'Directory discovery').length,
       tiers: new Set(employers.map((employer) => employer.ats)),
     };
   }, [employers]);

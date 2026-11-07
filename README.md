@@ -4,7 +4,7 @@ A self-hosted job radar for Jeanine Kendricks: fully remote **Project / Program 
 California-eligible, posted in the last 14 days, with a published base salary that clears either
 **$110,000–$130,000** or **$150,000+**.
 
-It is not a scraper of job boards and it never ingests aggregator feeds. It reads employer applicant-tracking
+It never ingests third-party feeds. It reads employer applicant-tracking
 systems (Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters) directly, applies a fixed rule set, records why every job did or did not
 earn a place, and never invents a salary.
 
@@ -34,7 +34,7 @@ A job reaches a salary tab only if **all** of these hold:
 | Posting age | Original posting date within **14 days** (extended from 7 on 6 Nov 2026; `JOB_WINDOW_DAYS=7` restores the original rule). A last-updated timestamp is **not** accepted as a posting date. |
 | California | US-wide remote, CA-named, or a state list including CA. An unstated state is **kept and shown** ("CA not stated") rather than excluded. Only explicit exclusions and non-US postings are rejected. |
 | Salary | Base salary published on the employer's posting. Minimum must land in $110,000–$130,000 (Tab 1) or ≥ $150,000 (Tab 2). $130,001–$149,999 matches neither tab. OTE/total-comp-only postings are queued, not placed. Hourly contract roles are queued with an annualised equivalent, never treated as a salary. |
-| Link | The application link must be the employer's own ATS posting. Job-board-only links are queued until an employer link is found. |
+| Link | The application link must be the employer's own posting. A link that cannot be confirmed as the employer's own is queued, never shown as a role. |
 
 Everything that fails one of the *soft* rules lands in **Needs verification** with the reason attached, so a
 human can still act on it. Jobs that are plainly out of scope (not remote, non-US, state-restricted) are not stored.

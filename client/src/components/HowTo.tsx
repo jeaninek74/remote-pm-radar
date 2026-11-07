@@ -14,7 +14,7 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
         <div className="modal-body">
           <h3>1. Refresh before you browse</h3>
           <p>
-            Press <strong>Refresh jobs now</strong>. The radar then searches every employer job board in the database,
+            Press <strong>Refresh jobs now</strong>. The radar then searches every employer career site in the database,
             checks each posting against all placement rules, removes duplicates, and re-verifies application links.
             A scheduled refresh also runs every four hours on its own.
           </p>
@@ -51,7 +51,7 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
           <h3>5. Apply through the employer link</h3>
           <p>
             Use <strong>Open employer application</strong> in the drawer. Every tabbed role links to the employer's own
-            applicant-tracking system, not a job board. The link was checked during the last refresh; the date and HTTP
+            applicant-tracking system. The link was checked during the last refresh; the date and HTTP
             result sit in the verification facts.
           </p>
 
@@ -64,7 +64,7 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
           <h3>7. Work the verification queue weekly</h3>
           <p>
             The queue holds roles that look promising but fail a hard rule — no published salary, only a last-updated
-            date, a minimum in the $130,000–$149,999 gap, or a job-board-only link. Each row explains its own blocker.
+            date, or a link that is not the employer’s own. Each row explains its own blocker.
             Clear or ignore them; they never pollute the salary tabs.
           </p>
 
