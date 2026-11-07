@@ -16,12 +16,18 @@ concurrency:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Start a discovery pass
         run: |
-          code=$(curl -s -o /tmp/out -m 60 -w '%{http_code}' -X POST https://remote-pm-radar.onrender.com/api/discover \
-            -H 'Content-Type: application/json' -d '{}')
-          echo "HTTP $code"; cat /tmp/out; echo
-          # 409 means a sweep still holds the lock; the next gap picks it up.
-          [ "$code" = "202" ] || [ "$code" = "409" ]
+          # A sweep usually runs ~15 minutes from :00/:30, so the first attempts may meet a 409
+          # (lock held). Retry each minute until the pass starts or the gap is nearly over.
+          for attempt in $(seq 1 12); do
+            code=$(curl -s -o /tmp/out -m 60 -w '%{http_code}' -X POST https://remote-pm-radar.onrender.com/api/discover \
+              -H 'Content-Type: application/json' -d '{}' || true)
+            echo "attempt $attempt -> HTTP $code: $(cat /tmp/out)"
+            if [ "$code" = "202" ]; then exit 0; fi
+            sleep 60
+          done
+          echo "no gap found this half hour; the next trigger tries again"
+          exit 0
