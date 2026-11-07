@@ -904,12 +904,46 @@ const WORKDAY_SEEDS: SeedEmployer[] = WORKDAY_EMPLOYERS.map((employer) => ({
   careersUrl: workdayCareersUrl(employer),
 }));
 
+const PORTAL_FEED_SEEDS: SeedEmployer[] = [
+  {
+    name: 'AutoZone',
+    ats: 'oracle',
+    slug: 'egud.fa.us2.oraclecloud.com/CX_1',
+    industry: 'Retail',
+    size: 'Enterprise',
+    hq: 'TN',
+    roleFamilies: familiesForIndustry('Retail'),
+    careersUrl: 'https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions?mode=location',
+  },
+  {
+    name: 'International Paper',
+    ats: 'oracle',
+    slug: 'iazbqy.fa.ocs.oraclecloud.com/CX_1',
+    industry: 'Manufacturing',
+    size: 'Enterprise',
+    hq: 'TN',
+    roleFamilies: familiesForIndustry('Manufacturing'),
+    careersUrl: 'https://iazbqy.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions?mode=location',
+  },
+  {
+    name: 'Bristol Bay Native Corporation',
+    ats: 'dayforce',
+    slug: 'https://us241.dayforcehcm.com/api/brs/V1/JobFeeds?includeActivePostingOnly=true',
+    industry: 'Government Contracting',
+    size: 'Midsize',
+    hq: 'AK',
+    roleFamilies: familiesForIndustry('Government Contracting'),
+    careersUrl: 'https://us241.dayforcehcm.com/CandidatePortal/en-US/brs/Site/BBNCALLJOBSROLLUP',
+  },
+];
+
 export const SEED_EMPLOYERS: SeedEmployer[] = [
   ...RAW.map(([name, ats, slug, industry, size, hq, explicitFamilies]) => ({
     name, ats, slug, industry, size, hq,
     roleFamilies: explicitFamilies?.length ? explicitFamilies : familiesForIndustry(industry),
   })),
   ...WORKDAY_SEEDS,
+  ...PORTAL_FEED_SEEDS,
 ];
 
 /**

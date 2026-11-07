@@ -430,10 +430,243 @@ async function smartrecruiters(employer: EmployerRow, known?: Set<string>): Prom
   return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
+interface OraclePosting {
+  Id?: string | number;
+  Title?: string;
+  PostedDate?: string;
+  PrimaryLocation?: string;
+  WorkplaceType?: string;
+  WorkplaceTypeCode?: string;
+  ShortDescriptionStr?: string;
+  ExternalResponsibilitiesStr?: string;
+  ExternalQualificationsStr?: string;
+}
+
+interface OracleSearch {
+  TotalJobsCount?: number;
+  requisitionList?: OraclePosting[];
+}
+
+async function oracle(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const slash = employer.slug.lastIndexOf('/');
+  const host = employer.slug.slice(0, slash);
+  const site = employer.slug.slice(slash + 1);
+  if (slash < 1 || !/^[a-z0-9.-]+\.oraclecloud\.com$/i.test(host) || !/^[a-z0-9_-]+$/i.test(site)) {
+    return { jobs: [], ok: false, error: 'Oracle slug must be <host>/<siteNumber>', totalListed: 0 };
+  }
+
+  const source = `oracle:${employer.slug}`;
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const pageSize = 200;
+  let totalListed = 0;
+  let truncated = false;
+  const jobs: RawJob[] = [];
+  const seen = new Set<string>();
+
+  const fetchPage = async (keyword: string | null, offset: number): Promise<OracleSearch | null> => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    const url = new URL(`https://${host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions`);
+    url.searchParams.set('onlyData', 'true');
+    url.searchParams.set('expand', 'requisitionList');
+    url.searchParams.set(
+      'finder',
+      `findReqs;siteNumber=${site}${keyword ? `,keyword=${keyword}` : ''},limit=${pageSize},offset=${offset}`,
+    );
+    let data: { items?: OracleSearch[] };
+    try {
+      data = await fetchJson<{ items?: OracleSearch[] }>(
+        url.toString(),
+        Math.min(REFRESH.timeoutMs, remaining),
+      );
+    } catch (err) {
+      if (Date.now() >= deadline && (err as Error).name === 'AbortError') return null;
+      throw err;
+    }
+    const search = data.items?.[0];
+    if (!search || typeof search.TotalJobsCount !== 'number' || !Array.isArray(search.requisitionList)) {
+      throw new Error('Oracle response did not include a requisition list and numeric total');
+    }
+    return search;
+  };
+
+  const appendRolePostings = (page: OraclePosting[]) => {
+    for (const posting of page) {
+      if (posting.Id == null || !posting.Title || !isRoleTitle(posting.Title, undefined, employer)) continue;
+      const externalId = String(posting.Id);
+      if (seen.has(externalId)) continue;
+      seen.add(externalId);
+      const detailsUrl = `https://${host}/hcmUI/CandidateExperience/en/sites/${encodeURIComponent(site)}/requisitions/${encodeURIComponent(externalId)}`;
+      if (known?.has(`${source}:${externalId}`)) {
+        jobs.push(unchangedJob(source, 'oracle', externalId, employer.name, posting.Title, detailsUrl));
+        continue;
+      }
+      const workplaceType = posting.WorkplaceType || posting.WorkplaceTypeCode || null;
+      const description = [
+        posting.ShortDescriptionStr,
+        posting.ExternalResponsibilitiesStr,
+        posting.ExternalQualificationsStr,
+      ].filter((part): part is string => Boolean(part?.trim())).join('\n\n');
+      jobs.push({
+        source,
+        ats: 'oracle',
+        board: employer.slug,
+        externalId,
+        company: employer.name,
+        title: posting.Title,
+        locations: posting.PrimaryLocation ? [posting.PrimaryLocation] : [],
+        workplaceType,
+        isRemote: workplaceType ? /remote/i.test(workplaceType) : null,
+        descriptionText: description || null,
+        applyUrl: detailsUrl,
+        linkType: 'employer',
+        postedAt: isoDate(posting.PostedDate),
+        postedConfidence: posting.PostedDate ? 'confirmed' : 'unknown',
+        industry: employer.industry,
+        companySize: employer.company_size,
+        hqState: employer.hq_state,
+      });
+    }
+  };
+
+  try {
+    const firstPage = await fetchPage(null, 0);
+    if (!firstPage) {
+      truncated = true;
+      console.warn(`[oracle] ${employer.slug}: time budget reached before first page`);
+    } else {
+      totalListed = firstPage.TotalJobsCount!;
+      appendRolePostings(firstPage.requisitionList!);
+      if (totalListed > 10_000) {
+        if (!firstPage.requisitionList!.length) {
+          truncated = true;
+          console.warn(`[oracle] ${employer.slug}: API returned an empty first page of ${totalListed}`);
+        }
+        terms: for (const keyword of rotatedSearchTerms(employer.slug)) {
+          let offset = 0;
+          for (;;) {
+            const search = await fetchPage(keyword, offset);
+            if (!search) {
+              truncated = true;
+              console.warn(`[oracle] ${employer.slug}: role search reached the per-employer time budget`);
+              break terms;
+            }
+            const page = search.requisitionList!;
+            if (!page.length && offset < search.TotalJobsCount!) {
+              truncated = true;
+              console.warn(`[oracle] ${employer.slug}: keyword "${keyword}" returned an empty page at ${offset} of ${search.TotalJobsCount}`);
+              break;
+            }
+            appendRolePostings(page);
+            offset += page.length;
+            if (!page.length || offset >= search.TotalJobsCount!) break;
+          }
+        }
+      } else {
+        let offset = firstPage.requisitionList!.length;
+        while (offset < totalListed) {
+          const search = await fetchPage(null, offset);
+          if (!search) {
+            truncated = true;
+            console.warn(`[oracle] ${employer.slug}: list pagination reached the per-employer time budget`);
+            break;
+          }
+          totalListed = Math.max(totalListed, search.TotalJobsCount!);
+          const page = search.requisitionList!;
+          if (!page.length) {
+            truncated = true;
+            console.warn(`[oracle] ${employer.slug}: API returned an empty page at ${offset} of ${totalListed}`);
+            break;
+          }
+          appendRolePostings(page);
+          offset += page.length;
+        }
+      }
+    }
+  } catch (err) {
+    return {
+      jobs,
+      ok: false,
+      error: (err as Error).message.slice(0, 200),
+      retryable: isRetryableBoardError(err),
+      totalListed,
+    };
+  }
+
+  return { jobs, ok: true, totalListed, truncated };
+}
+
+interface DayforcePosting {
+  Title?: string;
+  Description?: string;
+  JobDetailsUrl?: string;
+  ApplyUrl?: string;
+  DatePosted?: string;
+  ReferenceNumber?: string | number;
+  IsVirtualLocation?: boolean;
+}
+
+async function dayforce(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const source = `dayforce:${employer.slug}`;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    return { jobs: [], ok: false, error: 'Dayforce time budget exceeded', retryable: true, totalListed: 0 };
+  }
+  const data = await fetchJson<DayforcePosting[]>(employer.slug, Math.min(REFRESH.timeoutMs, remaining));
+  if (!Array.isArray(data)) {
+    return { jobs: [], ok: false, error: 'Dayforce feed did not return a posting list', totalListed: 0 };
+  }
+
+  let truncated = false;
+  const jobs: RawJob[] = [];
+  const seen = new Set<string>();
+  for (const posting of data) {
+    if (Date.now() > deadline) {
+      truncated = true;
+      break;
+    }
+    if (!posting.Title || !isRoleTitle(posting.Title, undefined, employer)) continue;
+    const externalId = posting.ReferenceNumber != null
+      ? String(posting.ReferenceNumber)
+      : posting.JobDetailsUrl ?? '';
+    const applyUrl = posting.ApplyUrl || posting.JobDetailsUrl;
+    if (!externalId || !applyUrl) continue;
+    if (seen.has(externalId)) continue;
+    seen.add(externalId);
+    if (known?.has(`${source}:${externalId}`)) {
+      jobs.push(unchangedJob(source, 'dayforce', externalId, employer.name, posting.Title, applyUrl));
+      continue;
+    }
+    jobs.push({
+      source,
+      ats: 'dayforce',
+      board: employer.slug,
+      externalId,
+      company: employer.name,
+      title: posting.Title,
+      locations: [],
+      workplaceType: posting.IsVirtualLocation === true ? 'remote' : null,
+      isRemote: typeof posting.IsVirtualLocation === 'boolean' ? posting.IsVirtualLocation : null,
+      descriptionText: posting.Description ?? null,
+      applyUrl,
+      linkType: 'employer',
+      postedAt: isoDate(posting.DatePosted),
+      postedConfidence: posting.DatePosted ? 'confirmed' : 'unknown',
+      industry: employer.industry,
+      companySize: employer.company_size,
+      hqState: employer.hq_state,
+    });
+  }
+  return { jobs, ok: true, totalListed: data.length, truncated };
+}
+
 const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
   // Workday coordinates live in careers_url, so the adapter ignores the slug.
   workday: fetchWorkday,
+  oracle,
+  dayforce,
 };
 
 

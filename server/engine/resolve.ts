@@ -12,6 +12,27 @@ const ATS_PATTERNS: { ats: Exclude<Ats, 'workday' | 'recruitee'>; re: RegExp }[]
   { ats: 'smartrecruiters', re: /(?:jobs|careers)\.smartrecruiters\.com\/([a-z0-9-]+)/i },
 ];
 
+function oracleCoordinates(source: string): { host: string; site: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  const urls = normalized.matchAll(/(?:https?:)?\/\/([a-z0-9.-]+\.oraclecloud\.com)([^"'<>\\\s]*)/gi);
+  for (const match of urls) {
+    const host = match[1].toLowerCase();
+    const pathAndQuery = match[2] ?? '';
+    const pathSite = /\/sites\/([^/?#]+)/i.exec(pathAndQuery)?.[1];
+    const finder = /[?&]finder=([^&#]+)/i.exec(pathAndQuery)?.[1] ?? '';
+    let decodedFinder = finder;
+    try {
+      decodedFinder = decodeURIComponent(finder);
+    } catch {
+      decodedFinder = finder;
+    }
+    const finderSite = /siteNumber=([^,;&]+)/i.exec(decodedFinder)?.[1];
+    const site = pathSite ?? finderSite;
+    if (site) return { host, site };
+  }
+  return null;
+}
+
 const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
   { platform: 'iCIMS', re: /icims\.com/i },
   { platform: 'Phenom', re: /phenompeople|phenom/i },
@@ -76,6 +97,8 @@ export function detect(html: string, finalUrl: string): BoardDetection {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
     if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
   }
+  const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
+  if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
   const source = `${finalUrl}\n${html}`;
   for (const signature of UNREADABLE_PLATFORMS) {
     if (signature.re.test(source)) return { kind: 'unreadable', platform: signature.platform };
@@ -177,6 +200,27 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
       const data = await fetchJson<{ jobs?: unknown[] }>(`https://api.ashbyhq.com/posting-api/job-board/${candidate.slug}`, deadline);
       if (!Array.isArray(data.jobs) || !data.jobs.length) return { kind: 'unknown', reason: 'Ashby board has no jobs' };
       return { kind: 'board', ats: candidate.ats, slug: candidate.slug, careersUrl: `https://jobs.ashbyhq.com/${candidate.slug}`, total: data.jobs.length };
+    }
+
+    if (candidate.ats === 'oracle') {
+      const slash = candidate.slug.lastIndexOf('/');
+      const host = candidate.slug.slice(0, slash);
+      const site = candidate.slug.slice(slash + 1);
+      const data = await fetchJson<{ items?: { TotalJobsCount?: unknown }[] }>(
+        `https://${host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList&finder=findReqs;siteNumber=${encodeURIComponent(site)},limit=1,offset=0`,
+        deadline,
+      );
+      const total = data.items?.[0]?.TotalJobsCount;
+      if (typeof total !== 'number' || !Number.isFinite(total)) {
+        return { kind: 'unknown', reason: 'Oracle response had no numeric TotalJobsCount' };
+      }
+      return {
+        kind: 'board',
+        ats: 'oracle',
+        slug: candidate.slug,
+        careersUrl: `https://${host}/hcmUI/CandidateExperience/en/sites/${encodeURIComponent(site)}/requisitions?mode=location`,
+        total,
+      };
     }
   } catch (error) {
     return { kind: 'unknown', reason: `${candidate.ats} validation failed: ${(error as Error).message.slice(0, 120)}` };
