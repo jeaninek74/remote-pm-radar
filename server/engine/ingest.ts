@@ -414,13 +414,23 @@ async function currentRunningRun(): Promise<number | null> {
  */
 export async function runRefresh(trigger: string): Promise<number> {
   await migrate();
-  const release = await acquireRefreshLock();
-  if (!release) {
+  const lock = await acquireRefreshLock();
+  if (!lock) {
     const existing = await currentRunningRun();
     if (existing) return existing;
     throw new Error('A refresh is already running in another process');
   }
-  return executeRun(await createRunRow(trigger), release);
+  return executeRun(await claimRun(trigger, lock), lock);
+}
+
+/** Creates the run row; if that fails the lock is given back rather than held until exit. */
+async function claimRun(trigger: string, lock: RefreshLock): Promise<number> {
+  try {
+    return await createRunRow(trigger);
+  } catch (err) {
+    await lock.release();
+    throw err;
+  }
 }
 
 /**
@@ -429,13 +439,13 @@ export async function runRefresh(trigger: string): Promise<number> {
  */
 export async function startRefresh(trigger: string): Promise<{ runId: number; alreadyRunning: boolean }> {
   await migrate();
-  const release = await acquireRefreshLock();
-  if (!release) {
+  const lock = await acquireRefreshLock();
+  if (!lock) {
     const existing = await currentRunningRun();
     return { runId: existing ?? 0, alreadyRunning: true };
   }
-  const runId = await createRunRow(trigger);
-  void executeRun(runId, release).catch((err) => console.error('[refresh] run failed', err));
+  const runId = await claimRun(trigger, lock);
+  void executeRun(runId, lock).catch((err) => console.error('[refresh] run failed', err));
   return { runId, alreadyRunning: false };
 }
 
