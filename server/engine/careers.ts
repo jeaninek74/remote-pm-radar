@@ -99,23 +99,99 @@ function absolute(href: string, base: string): string | null {
 const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
+const NON_POSTING_PATH = /\/(?:news|blogs?|articles?|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?)\//i;
+const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
 
-function looksLikePostingPage(url: string, text: string): boolean {
-  if (!POSTING_ID.test(url)) return false;
+export function looksLikePostingPage(url: string, text: string): boolean {
+  if (!POSTING_ID.test(url) || NON_POSTING_PATH.test(url) || NON_POSTING_FILE.test(url)) return false;
   const title = (text ?? '').trim();
   return !!title && ROLE_NOUN.test(title) && !CATEGORY_TITLE.test(title);
 }
 
-function pageLinks(html: string, base: string): { url: string; text: string }[] {
+function pageLinks(html: string, base: string, includeAnyJobPage = false): { url: string; text: string }[] {
   const out: { url: string; text: string }[] = [];
   for (const m of html.matchAll(ANCHOR)) {
     const url = absolute(m[1], base);
     if (!url) continue;
     const text = stripHtml(m[2]).trim();
     if (text && isRoleTitle(text)) out.push({ url, text });
+    else if (includeAnyJobPage && (JOB_URL.test(url) || POSTING_ID.test(url))) out.push({ url, text });
     else if (JOB_URL.test(url) && slugLooksLikeRole(url)) out.push({ url, text });
   }
   return out;
+}
+
+export function candidatePostingLinks(html: string, base: string): { url: string; text: string }[] {
+  return pageLinks(html, base, true);
+}
+
+export interface CareersPageProbe {
+  postings: number;
+  matching: number;
+  examplePostingUrl?: string;
+  truncated: boolean;
+}
+
+function sameCareerSite(hostname: string, pageHost: string): boolean {
+  const normalize = (host: string) => host.toLowerCase().replace(/^www\./, '');
+  const host = normalize(hostname);
+  const page = normalize(pageHost);
+  return host === page || host.endsWith(`.${page}`) || page.endsWith(`.${host}`);
+}
+
+function titleFromUrl(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '').replace(/[-_]+/g, ' ');
+  } catch {
+    return '';
+  }
+}
+
+export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
+  const result: CareersPageProbe = { postings: 0, matching: 0, truncated: false };
+  if (Date.now() >= deadline) return { ...result, truncated: true };
+  let pageHtml: string;
+  try {
+    pageHtml = await fetchText(url, Math.min(20_000, deadline - Date.now()));
+  } catch {
+    return result;
+  }
+  const pageUrl = new URL(url);
+  const candidates = new Map<string, { text: string }>();
+  for (const link of candidatePostingLinks(pageHtml, url)) {
+    let candidate: URL;
+    try {
+      candidate = new URL(link.url);
+    } catch {
+      continue;
+    }
+    if (!sameCareerSite(candidate.hostname, pageUrl.hostname)) continue;
+    candidate.hash = '';
+    if (!candidates.has(candidate.toString())) candidates.set(candidate.toString(), { text: link.text });
+  }
+
+  const seen = new Set<string>();
+  for (const [candidateUrl, candidate] of candidates) {
+    if (Date.now() >= deadline) { result.truncated = true; break; }
+    const key = candidateUrl.replace(/\/$/, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (NON_POSTING_FILE.test(candidateUrl)) continue;
+    let html = '';
+    try {
+      html = await fetchText(candidateUrl, Math.min(20_000, deadline - Date.now()));
+    } catch {
+      continue;
+    }
+    const posting = jobPostingFrom(html);
+    const urlTitle = titleFromUrl(candidateUrl);
+    if (!posting && !looksLikePostingPage(candidateUrl, candidate.text || urlTitle)) continue;
+    const title = (posting?.title ?? candidate.text ?? urlTitle).trim();
+    result.postings += 1;
+    if (title && isRoleTitle(title)) result.matching += 1;
+    result.examplePostingUrl ??= candidateUrl;
+  }
+  return result;
 }
 
 export async function fetchCareersPage(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {

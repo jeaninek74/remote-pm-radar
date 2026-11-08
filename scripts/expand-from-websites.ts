@@ -1,5 +1,6 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
+import { inspectCareersPage } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
 
 interface WebsiteEmployer {
@@ -11,7 +12,9 @@ interface WebsiteEmployer {
   source: string;
 }
 
-type ExpansionResult = BoardResolution | { kind: 'skipped'; reason: string };
+type ExpansionResult = BoardResolution
+  | { kind: 'careers'; careersUrl: string; postings: number; matching: number; examplePostingUrl?: string; truncated?: boolean }
+  | { kind: 'skipped'; reason: string };
 
 interface ExpansionRecord {
   name: string;
@@ -68,6 +71,23 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
 }
 
+function canonicalCareersUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol === 'http:') url.protocol = 'https:';
+  url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
+  return url.toString();
+}
+
+function normalizedCareersUrl(value: string): string {
+  const url = new URL(canonicalCareersUrl(value));
+  return `${url.host.toLowerCase()}${url.pathname.toLowerCase()}`;
+}
+
+function careersSlug(value: string): string {
+  const url = new URL(canonicalCareersUrl(value));
+  return `${url.host.toLowerCase()}${url.pathname === '/' ? '' : url.pathname}`;
+}
+
 function normalizeWebsite(website: string): string {
   const value = website.trim();
   const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`;
@@ -103,6 +123,12 @@ function sameSiteOrAts(url: URL, homepage: URL): boolean {
   return sameSite(url, homepage) || isAtsHost(url.hostname);
 }
 
+function excludedCareerLink(href: string, text = ''): boolean {
+  const value = `${href}\n${text}`;
+  return (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
+    && !STAFF_CAREERS_LINK.test(value);
+}
+
 async function careersLinks(pageUrl: string, deadline: number): Promise<string[]> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) return [];
@@ -126,17 +152,12 @@ async function careersLinks(pageUrl: string, deadline: number): Promise<string[]
       try {
         const target = new URL(href, base);
         if ((target.protocol === 'https:' || target.protocol === 'http:') && sameSiteOrAts(target, base)) {
-          if (
-            (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
-            && !isAtsHost(target.hostname)
-            && !STAFF_CAREERS_LINK.test(`${href}\n${text}`)
-          ) continue;
+          if (excludedCareerLink(href, text) && !isAtsHost(target.hostname)) continue;
           if (target.protocol === 'http:') target.protocol = 'https:';
           const url = target.toString();
           if (seen.has(url)) continue;
           seen.add(url);
-          const studentOnly = (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
-            && !STAFF_CAREERS_LINK.test(`${href}\n${text}`);
+          const studentOnly = excludedCareerLink(href, text);
           const priority = studentOnly
             ? 3
             : isAtsHost(target.hostname)
@@ -156,7 +177,7 @@ async function careersLinks(pageUrl: string, deadline: number): Promise<string[]
   }
 }
 
-async function resolveWebsite(name: string, website: string, deadline: number): Promise<BoardResolution> {
+async function resolveWebsite(name: string, website: string, deadline: number): Promise<ExpansionResult> {
   let homepage: string;
   try {
     homepage = normalizeWebsite(website);
@@ -170,6 +191,8 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
   let homepageUnknown: UnknownResolution | null = null;
   let firstFallbackUnknown: UnknownResolution | null = null;
   let first404: UnknownResolution | null = null;
+  const homepageUrl = new URL(homepage);
+  const careerPages = new Set<string>();
   const triedUrls = new Set<string>();
   const tryUrl = async (
     url: string,
@@ -188,6 +211,16 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
     if (result.kind === 'board') {
       return result;
     }
+    if (
+      result.kind === 'unknown'
+      && /\bHTTP\s+200\b/i.test(result.reason)
+      && sameSite(new URL(normalizedUrl), homepageUrl)
+      && !isAtsHost(new URL(normalizedUrl).hostname)
+      && !excludedCareerLink(normalizedUrl)
+      && (source !== 'homepage' || CAREERS_LINK.test(new URL(normalizedUrl).pathname))
+    ) {
+      careerPages.add(canonicalCareersUrl(normalizedUrl));
+    }
     if (result.kind === 'unreadable') unreadable ??= result;
     else if (/\bHTTP\s+404\b/i.test(result.reason)) first404 ??= result;
     else if (source === 'homepage') homepageUnknown ??= result;
@@ -199,7 +232,6 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
   const homepageResult = await tryUrl(homepage, 'homepage');
   if (homepageResult) return homepageResult;
 
-  const homepageUrl = new URL(homepage);
   const hopPages: string[] = [];
   for (const careersLink of await careersLinks(homepage, deadline)) {
     if (Date.now() >= deadline) break;
@@ -226,6 +258,23 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
   for (const path of ['/careers', '/jobs', '/employment']) {
     const result = await tryUrl(new URL(path, origin).toString(), 'fallback');
     if (result) return result;
+  }
+
+  if (!unreadable) {
+    for (const careersUrl of careerPages) {
+      if (Date.now() >= deadline) break;
+      const probe = await inspectCareersPage(careersUrl, deadline);
+      if (probe.postings > 0) {
+        return {
+          kind: 'careers',
+          careersUrl,
+          postings: probe.postings,
+          matching: probe.matching,
+          examplePostingUrl: probe.examplePostingUrl,
+          truncated: probe.truncated,
+        };
+      }
+    }
   }
 
   return unreadable
@@ -277,6 +326,19 @@ async function readExistingNames(pool: Pool, normalizedNames: string[]): Promise
   return new Set(rows.rows.map((row) => row.normalized_name));
 }
 
+async function readExistingCareersUrls(pool: Pool): Promise<Set<string>> {
+  const rows = await pool.query<{ careers_url: string }>(
+    'SELECT careers_url FROM employers WHERE careers_url IS NOT NULL',
+  );
+  const urls = new Set<string>();
+  for (const row of rows.rows) {
+    try {
+      urls.add(normalizedCareersUrl(row.careers_url));
+    } catch { /* ignore malformed stored URLs */ }
+  }
+  return urls;
+}
+
 async function readInputs(paths: string[]): Promise<WebsiteEmployer[]> {
   const entries: WebsiteEmployer[] = [];
   for (const path of paths) {
@@ -310,6 +372,7 @@ function parseArgs(args: string[]): {
   dryRun: boolean;
   retryPlatform: string | null;
   retryFrom: string[];
+  smallestStates: number | null;
   outputFile: string | null;
 } {
   const files: string[] = [];
@@ -318,6 +381,7 @@ function parseArgs(args: string[]): {
   let dryRun = false;
   let retryPlatform: string | null = null;
   const retryFrom: string[] = [];
+  let smallestStates: number | null = null;
   let outputFile: string | null = null;
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === '--write') {
@@ -344,6 +408,11 @@ function parseArgs(args: string[]): {
       if (!Number.isInteger(value) || value < 1) throw new Error('--limit requires a positive integer');
       limit = value;
       index += 1;
+    } else if (args[index] === '--smallest-states') {
+      const value = Number(args[index + 1]);
+      if (!Number.isInteger(value) || value < 1) throw new Error('--smallest-states requires a positive integer');
+      smallestStates = value;
+      index += 1;
     } else if (args[index].startsWith('--')) {
       throw new Error(`unknown option: ${args[index]}`);
     } else {
@@ -352,9 +421,9 @@ function parseArgs(args: string[]): {
   }
   if (dryRun && write) throw new Error('--dry-run cannot be combined with --write');
   if (!files.length) {
-    throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--retry-platform NAME] [--retry-from results.jsonl] [...] [--dry-run] [--output PATH] [--write]');
+    throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--smallest-states N] [--retry-platform NAME] [--retry-from results.jsonl] [...] [--dry-run] [--output PATH] [--write]');
   }
-  return { files, limit, write, dryRun, retryPlatform, retryFrom, outputFile };
+  return { files, limit, write, dryRun, retryPlatform, retryFrom, smallestStates, outputFile };
 }
 
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -368,6 +437,35 @@ async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promi
   }));
 }
 
+function sampleSmallestStates(entries: WebsiteEmployer[], stateCount: number, limit: number): WebsiteEmployer[] {
+  const byState = new Map<string, WebsiteEmployer[]>();
+  for (const entry of entries) {
+    const bucket = byState.get(entry.state) ?? [];
+    bucket.push(entry);
+    byState.set(entry.state, bucket);
+  }
+  const states = [...byState]
+    .sort(([stateA, rowsA], [stateB, rowsB]) => rowsA.length - rowsB.length || stateA.localeCompare(stateB))
+    .slice(0, stateCount)
+    .map(([state]) => state);
+  const offsets = new Map(states.map((state) => [state, 0]));
+  const selected: WebsiteEmployer[] = [];
+  while (selected.length < limit) {
+    let added = false;
+    for (const state of states) {
+      const offset = offsets.get(state) ?? 0;
+      const entry = byState.get(state)?.[offset];
+      if (!entry) continue;
+      selected.push(entry);
+      offsets.set(state, offset + 1);
+      added = true;
+      if (selected.length >= limit) break;
+    }
+    if (!added) break;
+  }
+  return selected;
+}
+
 function printSummary(entries: WebsiteEmployer[], records: Map<string, ExpansionRecord>, outputFile: string): void {
   const selected = entries.map((entry) => records.get(entry.name)).filter((row): row is ExpansionRecord => Boolean(row));
   const kinds = new Map<string, number>();
@@ -379,6 +477,8 @@ function printSummary(entries: WebsiteEmployer[], records: Map<string, Expansion
       ? row.result.ats
       : row.result.kind === 'unreadable'
         ? row.result.platform
+        : row.result.kind === 'careers'
+          ? 'manual'
         : row.result.kind === 'skipped'
           ? 'employer already exists'
           : null;
@@ -393,6 +493,25 @@ function printSummary(entries: WebsiteEmployer[], records: Map<string, Expansion
   for (const row of hits) {
     if (row.result.kind === 'board') console.log(`  ${row.name} | ${row.result.ats} | ${row.result.careersUrl}`);
   }
+  const careerHits = selected.filter((row): row is ExpansionRecord & { result: Extract<ExpansionResult, { kind: 'careers' }> } =>
+    row.result.kind === 'careers');
+  console.log(`[expand] careers fallback: sites=${careerHits.length} postings=${careerHits.reduce((sum, row) => sum + row.result.postings, 0)} matching=${careerHits.reduce((sum, row) => sum + row.result.matching, 0)}`);
+  const byState = new Map<string, { sites: number; postings: number; matching: number }>();
+  for (const row of careerHits) {
+    const counts = byState.get(row.state) ?? { sites: 0, postings: 0, matching: 0 };
+    counts.sites += 1;
+    counts.postings += row.result.postings;
+    counts.matching += row.result.matching;
+    byState.set(row.state, counts);
+  }
+  for (const [state, counts] of [...byState].sort(([a], [b]) => a.localeCompare(b))) {
+    console.log(`[expand] careers state ${state}: sites=${counts.sites} postings=${counts.postings} matching=${counts.matching}`);
+  }
+  console.log('[expand] sample careers fallback hits:');
+  if (!careerHits.length) console.log('  (none)');
+  for (const row of careerHits.slice(0, 10)) {
+    console.log(`  ${row.name} | ${row.result.careersUrl} | ${row.result.examplePostingUrl ?? '(posting URL unavailable)'}`);
+  }
   console.log(`[expand] results: ${outputFile}`);
 }
 
@@ -403,18 +522,19 @@ async function main(): Promise<void> {
       ? `/home/ubuntu/expansion-results-${options.retryPlatform.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-retry${options.write ? '' : '-dry-run'}.jsonl`
       : options.dryRun ? DRY_RUN_OUTPUT_FILE : OUTPUT_FILE);
   const entries = await readInputs(options.files);
-  const retryNames = options.retryPlatform
-    ? new Set(
-      (await Promise.all((options.retryFrom.length ? options.retryFrom : [OUTPUT_FILE]).map(loadOutput))).flat()
-        .filter((record) =>
-          record.result.kind === 'unreadable'
-          && record.result.platform.toLowerCase() === options.retryPlatform!.toLowerCase(),
-        )
-        .map((record) => normalizeName(record.name)),
-    )
+  const retryFiles = options.retryFrom.length ? options.retryFrom : options.retryPlatform ? [OUTPUT_FILE] : [];
+  const retryRecords = retryFiles.length ? (await Promise.all(retryFiles.map(loadOutput))).flat() : null;
+  const retryNames = retryRecords
+    ? new Set(retryRecords
+      .filter((record) => options.retryPlatform
+        ? record.result.kind === 'unreadable' && record.result.platform.toLowerCase() === options.retryPlatform.toLowerCase()
+        : record.result.kind === 'unknown')
+      .map((record) => normalizeName(record.name)))
     : null;
   const eligible = retryNames ? entries.filter((entry) => retryNames.has(normalizeName(entry.name))) : entries;
-  const selected = options.limit == null ? eligible : eligible.slice(0, options.limit);
+  const selected = options.smallestStates === null
+    ? options.limit == null ? eligible : eligible.slice(0, options.limit)
+    : sampleSmallestStates(eligible, options.smallestStates, options.limit ?? eligible.length);
   const oldRecords = await loadOutput(outputFile);
   const records = new Map(oldRecords.map((record) => [record.name, record]));
   const alreadyWritten = new Set([...records.keys()].map(normalizeName));
@@ -436,6 +556,8 @@ async function main(): Promise<void> {
 
   try {
     const existingNames = await readExistingNames(pool, normalizedNames);
+    const existingCareersUrls = options.write && !options.dryRun ? await readExistingCareersUrls(pool) : new Set<string>();
+    const claimedCareersUrls = new Set<string>();
     const claimedNames = new Set<string>();
     await mapLimit(toProcess, 12, async (entry) => {
       const normalized = normalizeName(entry.name);
@@ -463,6 +585,28 @@ async function main(): Promise<void> {
               `Website board resolution (${entry.source})`,
             ],
           );
+        } else if (options.write && !options.dryRun && result.kind === 'careers') {
+          const careersUrlKey = normalizedCareersUrl(result.careersUrl);
+          if (existingCareersUrls.has(careersUrlKey) || claimedCareersUrls.has(careersUrlKey)) {
+            result = { kind: 'skipped', reason: 'careers URL already exists' };
+          } else {
+            claimedCareersUrls.add(careersUrlKey);
+            await pool.query(
+              `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+               VALUES ($1,'manual',$2,$3,$4,$5,$6,$7,TRUE)
+               ON CONFLICT (ats, slug) DO NOTHING`,
+              [
+                entry.name,
+                careersSlug(result.careersUrl),
+                entry.industry,
+                entry.size,
+                entry.state,
+                result.careersUrl,
+                `Website careers-page fallback (${entry.source})`,
+              ],
+            );
+            existingCareersUrls.add(careersUrlKey);
+          }
         }
       }
       const record = { name: entry.name, state: entry.state, source: entry.source, result };
