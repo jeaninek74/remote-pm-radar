@@ -9,6 +9,7 @@ import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
 import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
+import { parsePhenomConfig, parsePhenomResponse } from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -819,6 +820,21 @@ async function directReaderGet(url: string, deadline: number, headers: Record<st
   return response;
 }
 
+async function directReaderPost(url: string, deadline: number, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+  if (!await directReaderPause(deadline)) throw new Error('employer budget exceeded');
+  const timeoutMs = budgetTimeout(deadline);
+  if (!timeoutMs) throw new Error('employer budget exceeded');
+  const response = await fetch(url, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response;
+}
+
 function ukgSearchBody(skip: number): unknown {
   return {
     opportunitySearch: {
@@ -1615,6 +1631,79 @@ async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardF
   return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
+async function phenom(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const pageUrl = employer.careers_url || `https://${employer.slug}`;
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let totalHits = 0;
+  let from = 0;
+  let truncated = false;
+  const jobs: RawJob[] = [];
+  const seen = new Set<string>();
+  try {
+    const page = await directReaderGet(pageUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+    const config = parsePhenomConfig(await page.text(), page.url || pageUrl);
+    if (!config) return { jobs, ok: false, error: 'Phenom page configuration not found', totalListed: 0 };
+    const boardUrl = new URL(config.baseUrl);
+    const source = `Phenom:${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`;
+    const size = 500;
+    while (true) {
+      if (Date.now() >= deadline) { truncated = true; break; }
+      const response = await directReaderPost(config.widgetApiEndpoint, deadline, {
+        ddoKey: 'refineSearch',
+        jobs: true,
+        from,
+        size,
+        sort: { order: 'desc', field: 'dateCreated' },
+        refNum: config.refNum,
+        siteType: config.siteType,
+        locale: config.locale,
+        pageName: config.pageName,
+      });
+      const parsed = parsePhenomResponse(await response.json());
+      if (from === 0) totalHits = parsed.totalHits;
+      for (const item of parsed.jobs) {
+        const externalId = item.jobSeqNo || item.jobId;
+        if (externalId) seen.add(externalId);
+        if (!isRoleTitle(item.title, undefined, employer)) continue;
+        let candidateUrl: URL | null = null;
+        if (item.jobUrl) {
+          try {
+            candidateUrl = new URL(item.jobUrl, config.baseUrl);
+          } catch {
+            candidateUrl = null;
+          }
+        }
+        const ownUrl = candidateUrl?.hostname === boardUrl.hostname
+          ? candidateUrl.toString()
+          : new URL(`job/${encodeURIComponent(externalId)}`, config.baseUrl).toString();
+        if (known?.has(`${source}:${externalId}`)) {
+          jobs.push(unchangedJob(source, 'phenom', externalId, employer.name, item.title, ownUrl));
+          continue;
+        }
+        const postedAt = isoDate(item.postedDate || item.dateCreated);
+        jobs.push({
+          source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
+          externalId, company: employer.name, title: item.title,
+          locations: item.locations,
+          postedAt,
+          postedConfidence: postedAt ? 'confirmed' : 'unknown',
+          descriptionText: clean(item.description) || null,
+          applyUrl: ownUrl, linkType: 'employer',
+        });
+      }
+      from += parsed.itemsCount;
+      if (from >= totalHits) break;
+      if (parsed.itemsCount === 0) throw new Error(`Phenom returned an empty page before totalHits at offset ${from}`);
+    }
+    return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated };
+  } catch (err) {
+    if (Date.now() >= deadline) {
+      return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated: true };
+    }
+    return { jobs, ok: false, error: (err as Error).message, retryable: isRetryableBoardError(err), totalListed: totalHits, truncated };
+  }
+}
+
 const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
   // Workday coordinates live in careers_url, so the adapter ignores the slug.
@@ -1626,6 +1715,7 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Prom
   taleo,
   successfactors,
   neogov,
+  phenom,
 };
 
 

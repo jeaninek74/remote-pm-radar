@@ -1,0 +1,28 @@
+{
+  "refineSearch": {
+    "totalHits": 2,
+    "data": {
+      "jobs": [
+        {
+          "title": "Desktop Support Technician - Apple / Windows 11",
+          "jobSeqNo": "TESYUSJP006406870ENUS",
+          "jobId": "JP-006406870",
+          "reqId": "JP-006406870",
+          "dateCreated": "2026-11-07T22:57:15.756+0000",
+          "postedDate": "2026-11-07T22:57:15.756+0000",
+          "descriptionTeaser": "We are recruiting a Desktop Support Technician to provide hands-on support for Apple and Windows 11 environments. You will deliver day-to-day end-user assistance, desktop installation and hardware support, and client networking. Ideal candidates have 6–12 months of relevant experience and strong customer service skills.",
+          "location": "Sunnyvale, California, USA",
+          "city": "Sunnyvale",
+          "state": "California",
+          "cityStateCountry": "Sunnyvale, California, USA",
+          "multi_location": ["Sunnyvale,CA,94085,USA"],
+          "siteType": "external"
+        },
+        {
+          "jobSeqNo": "TESYUS-MALFORMED",
+          "location": "Remote"
+        }
+      ]
+    }
+  }
+}

@@ -6,7 +6,7 @@ import type { ParsedSalary } from './salary';
  * `workday` is not an open API but exposes a documented public JSON search
  * endpoint, so it is a first-class source rather than a manual link.
  */
-export type Ats = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'recruitee' | 'smartrecruiters' | 'workday' | 'oracle' | 'dayforce' | 'icims' | 'ukg' | 'taleo' | 'successfactors' | 'neogov';
+export type Ats = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'recruitee' | 'smartrecruiters' | 'workday' | 'oracle' | 'dayforce' | 'icims' | 'ukg' | 'taleo' | 'successfactors' | 'neogov' | 'phenom';
 
 export type CompanySize = 'Startup' | 'Small' | 'Midsize' | 'Large' | 'Enterprise';
 
@@ -53,6 +53,8 @@ export interface BoardFetchResult {
   retryable?: boolean;
   /** Total postings on the board before title filtering. */
   totalListed: number;
+  /** Unique raw postings seen before title filtering, when the adapter can report it. */
+  uniqueRead?: number;
   /** True when the employer time budget ended the read early: unseen postings are not evidence of closure. */
   truncated?: boolean;
 }
