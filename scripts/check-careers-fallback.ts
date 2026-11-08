@@ -85,7 +85,8 @@ const sharedNotFirstSets = [
   ['/job/001/project-manager', '/job/200/nurse-manager', '/job/300/analyst'],
   ['/job/002/project-coordinator', '/job/200/nurse-manager', '/job/300/analyst'],
 ];
-check('shared paths deduplicate even when not alphabetically first', sameCareersPostingSet(...sharedNotFirstSets));
+check('shared paths deduplicate even when not alphabetically first',
+  sameCareersPostingSet(sharedNotFirstSets[0], sharedNotFirstSets[1]));
 
 const oneAgainstManySets = [
   ['/job/12625/project-manager'],
