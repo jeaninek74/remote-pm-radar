@@ -77,6 +77,21 @@ check(
   commuteRequirement.remote === 'onsite' && commuteRequirement.ca === 'unknown',
 );
 
+const relocationAssistance = evaluateLocation({
+  locations: ['United States'],
+  description: 'Fully remote. Relocation assistance available.',
+});
+check(
+  'relocation assistance alone does not exclude a remote role',
+  relocationAssistance.remote === 'remote' && relocationAssistance.ca === 'us_wide',
+);
+
+const relocationRequired = evaluateLocation({
+  locations: ['USA'],
+  description: 'Applicants must relocate to Austin.',
+});
+check('explicit relocation requirement is not queued as remote', relocationRequired.remote === 'onsite');
+
 const occasionalOnsiteVisits = evaluateLocation({
   locations: ['USA'],
   description: 'This role is fully remote with occasional onsite client visits',
