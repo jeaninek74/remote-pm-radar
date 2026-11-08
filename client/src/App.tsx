@@ -199,6 +199,33 @@ export default function App() {
     }
   }, [jobs, notify]);
 
+  /**
+   * Board checkboxes: an Applied check stamps today's local date. Saves for one role run in order and
+   * only the newest response is applied, so a quick Viewed→Applied can't be undone by a late reply.
+   */
+  const trackChain = useRef(new Map<number, { seq: number; tail: Promise<unknown> }>());
+  const handleTrack = useCallback((id: number, status: string) => {
+    const patch: Record<string, string | null> = { appStatus: status };
+    if (status === 'Applied') patch.appliedAt = new Date().toLocaleDateString('en-CA');
+    if (status === 'Not Applied' || status === 'Viewed') patch.appliedAt = null;
+    const before = jobs.find((job) => job.id === id);
+    setJobs((current) => current.map((job) => (job.id === id ? { ...job, appStatus: status, appliedAt: patch.appliedAt ?? null } : job)));
+    const entry = trackChain.current.get(id) ?? { seq: 0, tail: Promise.resolve() };
+    const seq = entry.seq + 1;
+    const tail = entry.tail.then(() => saveTracking(id, patch)).then(
+      (result) => {
+        if (trackChain.current.get(id)?.seq !== seq) return;
+        setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
+      },
+      () => {
+        if (trackChain.current.get(id)?.seq !== seq) return;
+        if (before) setJobs((current) => current.map((job) => (job.id === id ? before : job)));
+        notify('Could not save that — try again.', true);
+      },
+    );
+    trackChain.current.set(id, { seq, tail });
+  }, [jobs, notify]);
+
   const handleUpdated = useCallback((updated: Job) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)));
   }, []);
@@ -329,6 +356,7 @@ export default function App() {
           onRefresh={triggerRefresh}
           onAdvanced={() => setSimple(false)}
           onOpen={(id) => { setSimple(false); setSelectedId(id); }}
+          onTrack={handleTrack}
         />
         {toast ? <div className={`toast${toast.error ? ' error' : ''}`}>{toast.text}</div> : null}
       </>

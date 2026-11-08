@@ -115,7 +115,7 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
                     onChange={(event) => onStatusChange(job.id, event.target.value)}
                     aria-label={`Application status for ${job.title}`}
                   >
-                    {['Not Applied', 'Interested', 'Applied', 'Recruiter Contacted', 'Interview Scheduled',
+                    {['Not Applied', 'Interested', 'Viewed', 'Applied', 'Recruiter Contacted', 'Interview Scheduled',
                       'Interview Completed', 'Offer Received', 'Rejected', 'No Longer Interested'].map((status) => (
                       <option key={status} value={status}>{status}</option>
                     ))}

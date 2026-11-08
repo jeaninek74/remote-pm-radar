@@ -8,7 +8,7 @@ interface Props {
   onUpdated: (job: Job) => void;
 }
 
-const STATUSES = ['Not Applied', 'Interested', 'Applied', 'Recruiter Contacted',
+const STATUSES = ['Not Applied', 'Interested', 'Viewed', 'Applied', 'Recruiter Contacted',
   'Interview Scheduled', 'Interview Completed', 'Offer Received', 'Rejected', 'No Longer Interested'];
 
 function Fact({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {

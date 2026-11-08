@@ -172,12 +172,14 @@ export async function buildWorkbook(input: {
   const tab2 = input.jobs.filter((j) => j.bucket === 'tab2');
   const queue = input.jobs.filter((j) => j.bucket === 'queue');
   const archived = input.jobs.filter((j) => j.bucket === 'archived');
+  const tracked = input.jobs.filter((j) => j.appStatus && j.appStatus !== 'Not Applied');
 
   addJobSheet(workbook, { title: RULES.tab0Label, jobs: tab0, tabColor: 'FF7C8B3A' });
   addJobSheet(workbook, { title: RULES.tab1Label, jobs: tab1, tabColor: 'FFB4552A' });
   addJobSheet(workbook, { title: RULES.tab2Label, jobs: tab2, tabColor: 'FF0F1720' });
   addJobSheet(workbook, { title: 'Needs Verification', jobs: queue, tabColor: 'FF9A8C68' });
   addJobSheet(workbook, { title: 'Archived', jobs: archived, tabColor: 'FF6B7280' });
+  addJobSheet(workbook, { title: 'Viewed - Applied', jobs: tracked, tabColor: 'FF3F6B4F' });
 
   const overview = workbook.addWorksheet('Summary');
   overview.columns = [
