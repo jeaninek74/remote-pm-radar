@@ -30,6 +30,14 @@ export interface ApplicantLocationRequirement {
   };
 }
 
+export interface JobLocationLd {
+  address?: {
+    addressLocality?: string;
+    addressRegion?: string;
+    addressCountry?: string | { name?: string };
+  };
+}
+
 export interface JobPostingLd {
   '@type'?: string | string[];
   title?: string;
@@ -37,7 +45,7 @@ export interface JobPostingLd {
   description?: string;
   employmentType?: string | string[];
   jobLocationType?: string;
-  jobLocation?: { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } } | { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } }[];
+  jobLocation?: JobLocationLd | JobLocationLd[];
   applicantLocationRequirements?: string | ApplicantLocationRequirement | Array<string | ApplicantLocationRequirement>;
   hiringOrganization?: { name?: string } | string;
   baseSalary?: { currency?: string; value?: { minValue?: number | string; maxValue?: number | string; value?: number | string; unitText?: string } };
@@ -47,6 +55,130 @@ export interface JobPostingLd {
 
 function asArray<T>(v: T | T[] | undefined | null): T[] {
   return v == null ? [] : Array.isArray(v) ? v : [v];
+}
+
+interface CountryContext {
+  name: string;
+  isUs: boolean;
+}
+
+const UNITED_STATES: CountryContext = { name: 'United States', isUs: true };
+const COUNTRY_LABELS: [string, CountryContext][] = [
+  ['united states of america', UNITED_STATES],
+  ['united states', UNITED_STATES],
+  ['usa', UNITED_STATES],
+  ['u s', UNITED_STATES],
+  ['us', UNITED_STATES],
+  ['canada', { name: 'Canada', isUs: false }],
+  ['israel', { name: 'Israel', isUs: false }],
+  ['spain', { name: 'Spain', isUs: false }],
+  ['mexico', { name: 'Mexico', isUs: false }],
+];
+
+function normalizedCountryText(value: string): string {
+  return value.toLowerCase().replace(/[-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function countryFromJsonLd(value: string | { name?: string } | undefined): CountryContext | null {
+  const raw = typeof value === 'string' ? value.trim() : value?.name?.trim() ?? '';
+  if (!raw) return null;
+  const key = normalizedCountryText(raw);
+  const named = COUNTRY_LABELS.find(([label]) => label === key)?.[1];
+  if (named) return named;
+  if (/^[a-z]{2}$/i.test(raw)) {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(raw.toUpperCase());
+    if (name && !/^unknown region$/i.test(name)) {
+      return { name, isUs: raw.toUpperCase() === 'US' };
+    }
+  }
+  return { name: raw, isUs: false };
+}
+
+function countryFromPath(url: string): CountryContext | null {
+  try {
+    const segments = new URL(url).pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+    const collectionIndex = segments.findIndex((segment) => segment.toLowerCase() === 'co');
+    if (collectionIndex < 0 || !segments[collectionIndex + 1]) return null;
+    const countrySlug = normalizedCountryText(segments[collectionIndex + 1]);
+    if (countrySlug === 'united states' || countrySlug === 'united states of america' || countrySlug === 'us' || countrySlug === 'usa') {
+      return UNITED_STATES;
+    }
+    return COUNTRY_LABELS.find(([label]) => label === countrySlug)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function countryFromLabel(label: string): CountryContext | null {
+  const normalized = ` ${normalizedCountryText(label)} `;
+  return COUNTRY_LABELS.find(([name]) => normalized.includes(` ${name} `))?.[1] ?? null;
+}
+
+function addressCountry(location: JobLocationLd | ApplicantLocationRequirement): string | { name?: string } | undefined {
+  return location.address?.addressCountry;
+}
+
+function countryContextForPosting(
+  locations: JobLocationLd[],
+  url: string,
+  linkText: string,
+): CountryContext | null {
+  return locations.map((location) => countryFromJsonLd(addressCountry(location))).find(Boolean)
+    ?? countryFromPath(url)
+    ?? countryFromLabel(linkText);
+}
+
+export interface CareersLocationFields {
+  locations: string[];
+  restrictions: string[];
+}
+
+export function careersLocationFields(
+  jobLocations: JobLocationLd | JobLocationLd[] | undefined,
+  applicantLocationRequirements: JobPostingLd['applicantLocationRequirements'],
+  url: string,
+  linkText = '',
+): CareersLocationFields {
+  const structuredLocations = asArray(jobLocations);
+  const country = countryContextForPosting(structuredLocations, url, linkText);
+  const locations = structuredLocations.map((location) => {
+    const address = location.address ?? {};
+    const locationCountry = countryFromJsonLd(address.addressCountry) ?? country;
+    if (locationCountry) {
+      const region = locationCountry.isUs ? address.addressRegion : undefined;
+      return [address.addressLocality, region, locationCountry.name].filter(Boolean).join(', ');
+    }
+    const rawCountry = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, rawCountry].filter(Boolean).join(', ');
+  }).filter(Boolean);
+  if (!locations.length && country) locations.push(country.name);
+
+  const restrictions = asArray(applicantLocationRequirements).map((requirement) => {
+    if (typeof requirement === 'string') {
+      const explicitCountry = countryFromLabel(requirement);
+      if (explicitCountry) return explicitCountry.name;
+      if (country && !country.isUs && /^[A-Z]{2}$/i.test(requirement.trim())) return country.name;
+      return requirement;
+    }
+    const requirementCountry = countryFromJsonLd(addressCountry(requirement)) ?? countryFromLabel(requirement.name ?? '');
+    if (requirementCountry) {
+      if (requirementCountry.isUs) return requirement.name || requirementCountry.name;
+      const name = requirement.name?.trim();
+      return name && !/^[A-Z]{2}$/i.test(name)
+        ? `${name}, ${requirementCountry.name}`
+        : requirementCountry.name;
+    }
+    if (country && !country.isUs) return country.name;
+    const address = requirement.address ?? {};
+    const rawCountry = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return requirement.name || [address.addressLocality, address.addressRegion, rawCountry].filter(Boolean).join(', ');
+  }).filter(Boolean);
+
+  return { locations: [...new Set(locations)], restrictions };
 }
 
 export function jobPostingFrom(html: string): JobPostingLd | null {
@@ -99,12 +231,25 @@ function absolute(href: string, base: string): string | null {
 const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
-const NON_POSTING_PATH = /\/(?:news|blogs?|articles?|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?)\//i;
+const NON_POSTING_PATH_SEGMENT = /^(?:.*[-_])?(?:news|blogs?|articles?|stor(?:y|ies)|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?|profiles?|find[-_]a[-_]doctor|providers?|director(?:y|ies))(?:[-_].*)?$/i;
 const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
 const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now)\b/i;
+const NON_POSTING_LINK_TEXT = /^(?:meet|read\s+more|learn\s+more|read\s+about|hear\s+from|watch)\b/i;
+
+function nonPostingPath(url: string): boolean {
+  try {
+    return new URL(url).pathname.split('/').filter(Boolean).some((segment) => {
+      let decoded = segment;
+      try { decoded = decodeURIComponent(segment); } catch { /* use the encoded segment */ }
+      return NON_POSTING_PATH_SEGMENT.test(decoded);
+    });
+  } catch {
+    return false;
+  }
+}
 
 export function looksLikePostingPage(url: string, text: string): boolean {
-  if (!POSTING_ID.test(url) || NON_POSTING_PATH.test(url) || NON_POSTING_FILE.test(url)) return false;
+  if (!POSTING_ID.test(url) || nonPostingPath(url) || NON_POSTING_FILE.test(url)) return false;
   const title = (text ?? '').trim();
   return !!title && ROLE_NOUN.test(title) && !CATEGORY_TITLE.test(title);
 }
@@ -113,8 +258,9 @@ function pageLinks(html: string, base: string, includeAnyJobPage = false): { url
   const out: { url: string; text: string }[] = [];
   for (const m of html.matchAll(ANCHOR)) {
     const url = absolute(m[1], base);
-    if (!url) continue;
+    if (!url || nonPostingPath(url)) continue;
     const text = stripHtml(m[2]).trim();
+    if (NON_POSTING_LINK_TEXT.test(text)) continue;
     if (text && isRoleTitle(text)) out.push({ url, text });
     else if (includeAnyJobPage && (JOB_URL.test(url) || POSTING_ID.test(url))) out.push({ url, text });
     else if (JOB_URL.test(url) && slugLooksLikeRole(url)) out.push({ url, text });
@@ -286,6 +432,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
   let truncated = false;
   for (const [url, text] of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
+    if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(text)) continue;
     const externalId = url.replace(origin, '').slice(0, 180);
     if (known?.has(`${source}:${externalId}`)) {
       jobs.push({ source, externalId, company: employer.name, title: text, locations: [], applyUrl: url, linkType: 'employer', unchanged: true });
@@ -297,14 +444,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
     if (!ld && !looksLikePostingPage(url, text)) continue;
     const title = (ld?.title ?? text ?? '').trim();
     if (!title || !isRoleTitle(title, undefined, employer)) continue;
-    const locations = asArray(ld?.jobLocation).map((l) => {
-      const a = l?.address ?? {};
-      const country = typeof a.addressCountry === 'string' ? a.addressCountry : a.addressCountry?.name;
-      return [a.addressLocality, a.addressRegion, country].filter(Boolean).join(', ');
-    }).filter(Boolean);
-    const restrictions = asArray(ld?.applicantLocationRequirements)
-      .map((r) => typeof r === 'string' ? r : r?.name ?? '')
-      .filter(Boolean);
+    const { locations, restrictions } = careersLocationFields(ld?.jobLocation, ld?.applicantLocationRequirements, url, text);
     const remote = /TELECOMMUTE/i.test(ld?.jobLocationType ?? '') ? true : null;
     const description = ld?.description ? stripHtml(ld.description) : stripHtml(html).slice(0, 25_000);
     const posted = isoDate(ld?.datePosted ?? '');

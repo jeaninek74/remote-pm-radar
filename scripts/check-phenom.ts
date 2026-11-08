@@ -12,6 +12,7 @@ import {
 } from '../server/engine/phenom';
 import { evaluateLocation } from '../server/engine/location';
 import { classifySalary, parseSalaryFromText } from '../server/engine/salary';
+import { sharedBoardPostingKey } from '../server/engine/ingest';
 
 let failures = 0;
 
@@ -197,5 +198,24 @@ check('Phenom max-only structured salary remains when description has no minimum
   selectPhenomSalary(maxOnlySalary, null) === maxOnlySalary);
 check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')
   === 'https://jobs.acme.com/us/en/job/123');
+const sharedPhenomTitle = 'Sourcing Program Manager - Work at Home';
+const bonSecoursPostingKey = sharedBoardPostingKey(
+  'Phenom:careers.bonsecours.com/us/en:BSMBSZUSR289400EXTERNALENUS',
+  'R289400',
+  sharedPhenomTitle,
+);
+const mercyPostingKey = sharedBoardPostingKey(
+  'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+  'R289400',
+  sharedPhenomTitle,
+);
+check('Phenom shared requisition IDs deduplicate across tenant prefixes',
+  bonSecoursPostingKey !== null && bonSecoursPostingKey === mercyPostingKey);
+check('Phenom shared requisition keys retain title identity',
+  sharedBoardPostingKey(
+    'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'R289400',
+    'Different Program Manager Role',
+  ) !== bonSecoursPostingKey);
 
 if (failures) throw new Error(`${failures} Phenom parser check(s) failed`);

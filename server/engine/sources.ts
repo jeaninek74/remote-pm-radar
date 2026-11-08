@@ -1765,7 +1765,15 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
           ? candidateUrl.toString()
           : phenomJobUrl(`job/${encodeURIComponent(externalId)}`, config.baseUrl);
         if (known?.has(`${source}:${externalId}`)) {
-          jobs.push(unchangedJob(source, 'phenom', externalId, employer.name, item.title, ownUrl));
+          jobs.push(unchangedJob(
+            source,
+            'phenom',
+            externalId,
+            employer.name,
+            item.title,
+            ownUrl,
+            item.reqId || item.jobId || null,
+          ));
           continue;
         }
         let detail: JobPostingLd | null = null;
@@ -1789,6 +1797,7 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         jobs.push({
           source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
           externalId, company: employer.name, title: item.title,
+          requisitionId: item.reqId || item.jobId || null,
           locations: phenomPrimaryLocations(item.locations, structuredLocations),
           restrictions: phenomRestrictions(detail),
           workplaceType,
@@ -2097,8 +2106,27 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
  * made a Workday tenant cost four minutes a sweep — so only identity is reported; the stored row
  * keeps its description, salary, dates and placement and is simply marked seen.
  */
-function unchangedJob(source: string, ats: Ats, externalId: string, company: string, title: string, applyUrl: string): RawJob {
-  return { source, ats, externalId, company, title, locations: [], applyUrl, linkType: 'employer', unchanged: true };
+function unchangedJob(
+  source: string,
+  ats: Ats,
+  externalId: string,
+  company: string,
+  title: string,
+  applyUrl: string,
+  requisitionId?: string | null,
+): RawJob {
+  return {
+    source,
+    ats,
+    externalId,
+    company,
+    title,
+    locations: [],
+    applyUrl,
+    linkType: 'employer',
+    requisitionId: requisitionId ?? null,
+    unchanged: true,
+  };
 }
 
 /** `known` holds the job keys (`source:externalId`) already stored for this employer. */

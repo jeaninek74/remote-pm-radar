@@ -219,6 +219,68 @@ check('city location preserves master result', cityLocation.remote === 'onsite' 
 const nonUs = evaluateLocation({ locations: ['Germany'], description: 'fully remote' });
 check('non-US location is not remote or US-wide', nonUs.remote !== 'remote' && nonUs.ca !== 'us_wide');
 
+const titledRemoteCases: [string, string][] = [
+  ['Cloud Data Migration Specialist- Remote', 'Reston, Virginia, United States of America'],
+  ['Salesforce Project Manager – (Remote US)', 'Reston, VA'],
+  ['Project Manager - Disaster Recovery (REMOTE ROLE)', 'Reston, VA, USA'],
+  ['CDBG Program Financial Lead - Disaster Management - Remote US', 'Reston, VA, USA'],
+  ['Project Manager-Digital Banking Transformation (Remote)', 'Seattle, WA, 98101, USA'],
+  ['IT Program Manager (Middle Office Migration) (100% Remote)', 'Reston, VA'],
+  ['Fully Remote Program Manager', 'Reston, VA'],
+  ['Work from Home Program Manager', 'Seattle, WA'],
+  ['Work at Home Program Manager', 'Seattle, WA'],
+];
+for (const [title, location] of titledRemoteCases) {
+  const verdict = evaluateLocation({ locations: [location], title });
+  check(`remote title is US-wide despite office location: ${title}`,
+    verdict.remote === 'remote' && verdict.ca === 'us_wide');
+}
+
+for (const title of [
+  'Remote Sensing Program Manager',
+  'Remote Monitoring Program Manager',
+  'Remote Patient Program Manager',
+]) {
+  const verdict = evaluateLocation({ locations: ['Reston, VA'], title });
+  check(`${title} is not mistaken for a remote role`,
+    verdict.remote === 'onsite' && verdict.ca === 'unknown');
+}
+
+const hybridRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Project Manager - Remote / Hybrid',
+});
+check('hybrid wording in a remote title takes precedence', hybridRemoteTitle.remote !== 'remote');
+
+const onsiteRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Project Manager - Remote, On-site',
+});
+check('on-site wording in a remote title takes precedence', onsiteRemoteTitle.remote !== 'remote');
+
+const hybridScheduleWithRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Project Manager - Remote',
+  workplaceType: 'remote',
+  description: 'This is a hybrid schedule, with 3 days a week in the office.',
+});
+check('hybrid schedule in the description takes precedence over a remote title',
+  hybridScheduleWithRemoteTitle.remote === 'hybrid');
+
+const onsiteScheduleWithRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Project Manager - Remote',
+  description: 'This is an on-site role at our office.',
+});
+check('on-site schedule in the description takes precedence over a remote title',
+  onsiteScheduleWithRemoteTitle.remote === 'onsite');
+
+const remoteLondon = evaluateLocation({
+  locations: ['London'],
+  title: 'Project Manager - Remote',
+});
+check('remote title with London remains non-US', remoteLondon.remote === 'remote' && remoteLondon.ca === 'not_us');
+
 const usAlias = evaluateLocation({ locations: ['US'], description: 'Fully remote role' });
 check('US alias is remote and US-wide', usAlias.remote === 'remote' && usAlias.ca === 'us_wide');
 

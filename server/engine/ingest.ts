@@ -190,6 +190,7 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
     isRemote: raw.isRemote,
     restrictions: raw.restrictions,
     description,
+    title: raw.title,
   });
 
   // Nothing is discarded silently: a role that fails a location rule is still stored, in the
@@ -816,7 +817,16 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       for (const raw of result.jobs) {
         if (raw.unchanged) {
           const key = `${raw.source}:${raw.externalId}`.slice(0, 190);
-          await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
+          if (raw.ats === 'phenom' && raw.requisitionId) {
+            await q(
+              `UPDATE jobs
+                  SET last_seen_at = now(), requisition_id = COALESCE(requisition_id, $2)
+                WHERE job_key = $1`,
+              [key, raw.requisitionId],
+            );
+          } else {
+            await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
+          }
           seenKeys.add(key);
           matched += 1;
           continue;
@@ -967,19 +977,27 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
 /* ------------------------------------------------------------ post-processors */
 
-export function sharedBoardPostingKey(jobKey: string): string | null {
+export function sharedBoardPostingKey(
+  jobKey: string,
+  requisitionId?: string | null,
+  title?: string | null,
+): string | null {
   const match = jobKey.match(/^oracle:([^/]+)\/[^:]+:(.+)$/);
-  if (!match) return null;
-  return `oracle-posting:${match[1].toLowerCase()}:${match[2]}`;
+  if (match) return `oracle-posting:${match[1].toLowerCase()}:${match[2]}`;
+  if (/^phenom:/i.test(jobKey) && requisitionId?.trim() && title?.trim()) {
+    return `phenom-posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}`;
+  }
+  return null;
 }
 
 async function dedupeJobs(): Promise<number> {
   const rows = await q<{
-    id: number; job_key: string; company: string; title: string; link_type: string; posted_at: string | null; bucket: string;
+    id: number; job_key: string; company: string; title: string; requisition_id: string | null;
+    link_type: string; posted_at: string | null; bucket: string;
   }>(
     // Winner order: a role the user is tracking, then an employer link, then the most useful
     // bucket (a salary tab beats Pay not published beats the queue), then the oldest posting.
-    `SELECT id, job_key, company, title, link_type, posted_at::text, bucket
+    `SELECT id, job_key, company, title, requisition_id, link_type, posted_at::text, bucket
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
       ORDER BY (app_status IS NOT NULL AND app_status <> 'Not Applied') DESC,
@@ -992,7 +1010,7 @@ async function dedupeJobs(): Promise<number> {
   for (const row of rows) {
     const keys = [
       `${companyKey(row.company)}::${titleKey(row.title)}`,
-      sharedBoardPostingKey(row.job_key),
+      sharedBoardPostingKey(row.job_key, row.requisition_id, row.title),
     ].filter((key): key is string => key !== null);
     let winner: { id: number; company: string; title: string } | undefined;
     for (const key of keys) {
