@@ -163,10 +163,14 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
   type UnknownResolution = Extract<BoardResolution, { kind: 'unknown' }>;
   let unreadable: Extract<BoardResolution, { kind: 'unreadable' }> | null = null;
   let firstCareersUnknown: UnknownResolution | null = null;
+  let homepageUnknown: UnknownResolution | null = null;
   let firstFallbackUnknown: UnknownResolution | null = null;
   let first404: UnknownResolution | null = null;
   const triedUrls = new Set<string>();
-  const tryUrl = async (url: string, fallback = false): Promise<Extract<BoardResolution, { kind: 'board' }> | null> => {
+  const tryUrl = async (
+    url: string,
+    source: 'homepage' | 'careers' | 'fallback' = 'careers',
+  ): Promise<Extract<BoardResolution, { kind: 'board' }> | null> => {
     if (Date.now() >= deadline) return null;
     let normalizedUrl: string;
     try {
@@ -182,12 +186,13 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
     }
     if (result.kind === 'unreadable') unreadable ??= result;
     else if (/\bHTTP\s+404\b/i.test(result.reason)) first404 ??= result;
-    else if (fallback) firstFallbackUnknown ??= result;
+    else if (source === 'homepage') homepageUnknown ??= result;
+    else if (source === 'fallback') firstFallbackUnknown ??= result;
     else firstCareersUnknown ??= result;
     return null;
   };
 
-  const homepageResult = await tryUrl(homepage);
+  const homepageResult = await tryUrl(homepage, 'homepage');
   if (homepageResult) return homepageResult;
 
   const homepageUrl = new URL(homepage);
@@ -215,12 +220,13 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
 
   const origin = new URL(homepage).origin;
   for (const path of ['/careers', '/jobs', '/employment']) {
-    const result = await tryUrl(new URL(path, origin).toString(), true);
+    const result = await tryUrl(new URL(path, origin).toString(), 'fallback');
     if (result) return result;
   }
 
   return unreadable
     ?? firstCareersUnknown
+    ?? homepageUnknown
     ?? firstFallbackUnknown
     ?? first404
     ?? { kind: 'unknown', reason: 'no supported board found' };
