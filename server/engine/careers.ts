@@ -156,7 +156,9 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
       const country = typeof a.addressCountry === 'string' ? a.addressCountry : a.addressCountry?.name;
       return [a.addressLocality, a.addressRegion, country].filter(Boolean).join(', ');
     }).filter(Boolean);
-    const restrictions = asArray(ld?.applicantLocationRequirements).map((r) => r?.name ?? '').filter(Boolean);
+    const restrictions = asArray(ld?.applicantLocationRequirements)
+      .map((r) => typeof r === 'string' ? r : r?.name ?? '')
+      .filter(Boolean);
     const remote = /TELECOMMUTE/i.test(ld?.jobLocationType ?? '') ? true : null;
     const description = ld?.description ? stripHtml(ld.description) : stripHtml(html).slice(0, 25_000);
     const posted = isoDate(ld?.datePosted ?? '');
