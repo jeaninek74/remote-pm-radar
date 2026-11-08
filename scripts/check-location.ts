@@ -107,6 +107,24 @@ const onsiteRequirementWithoutLocation = evaluateLocation({
 });
 check('on-site requirement without a location is onsite', onsiteRequirementWithoutLocation.remote === 'onsite');
 
+const negatedOnsiteRequirementWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'There is no on-site requirement',
+});
+check('negated on-site requirement without a location is unknown', negatedOnsiteRequirementWithoutLocation.remote === 'unknown');
+
+const negatedHybridRoleWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is not a hybrid role',
+});
+check('negated hybrid role without a location is unknown', negatedHybridRoleWithoutLocation.remote === 'unknown');
+
+const inPersonDaysWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Required 2 days a week in person',
+});
+check('days in person without a location is hybrid', inPersonDaysWithoutLocation.remote === 'hybrid');
+
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
 check(
   'US scope without remote language needs verification',
