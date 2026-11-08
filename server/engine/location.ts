@@ -70,6 +70,8 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
+const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
+const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person|on[- ]?site\s+(?:role|position|work|requirement|at|in|based)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within|relocat\w*)\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
@@ -145,13 +147,15 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   } else if (
     nationwideUsOnly
     && REMOTE_DESCRIPTION.test(descLower)
-    && !HYBRID_MARKERS.test(descLower)
+    && !HYBRID_DESCRIPTION_MARKERS.test(descLower)
+    && !EXPLICIT_ONSITE_MARKERS.test(descLower)
     && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
   ) {
     remote = 'remote';
   } else if (
     nationwideUsOnly
-    && !HYBRID_MARKERS.test(descLower)
+    && !HYBRID_DESCRIPTION_MARKERS.test(descLower)
+    && !EXPLICIT_ONSITE_MARKERS.test(descLower)
     && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
   ) {
     remote = 'unknown';

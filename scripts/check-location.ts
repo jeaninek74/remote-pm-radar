@@ -53,6 +53,21 @@ const usOnsite = evaluateLocation({
 });
 check('explicit on-site US role is not queued as unknown', usOnsite.remote !== 'remote' && usOnsite.remote !== 'unknown');
 
+const inPersonUs = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role is in-person at our Austin headquarters',
+});
+check('explicit in-person US role is not queued as unknown', inPersonUs.remote === 'onsite');
+
+const occasionalOnsiteVisits = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role is fully remote with occasional onsite client visits',
+});
+check(
+  'occasional onsite client visits do not override fully remote',
+  occasionalOnsiteVisits.remote === 'remote' && occasionalOnsiteVisits.ca === 'us_wide',
+);
+
 const cityLocation = evaluateLocation({ locations: ['San Francisco, CA'], description: 'fully remote' });
 console.log(`Master baseline for city location with remote description: ${cityLocation.remote}/${cityLocation.ca}`);
 check('city location preserves master result', cityLocation.remote === 'onsite' && cityLocation.ca === 'unknown');
