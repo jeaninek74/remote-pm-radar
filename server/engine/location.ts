@@ -72,6 +72,8 @@ const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united 
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
 const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
 const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in[- ]person\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|on[- ]?site\s+(?:role|position|work|requirement)\b|on[- ]?site\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|willing(?:ness)? to|expected to|need to) relocate|relocation (?:is )?required)\b/i;
+const LOCATIONLESS_HYBRID = /\b(?:hybrid\s+(?:role|position|schedule|work\s+(?:schedule|model|arrangement)|model|arrangement|opportunity)|(?:this|the)\s+(?:role|position|job)\s+is\s+hybrid|partially remote|part[- ]remote|\d\s*days?\s+(?:a|per)\s+week\s+(?:in|on[- ]?site|in[- ]office|at\s+(?:the|our)\s+office))\b/i;
+const LOCATIONLESS_ONSITE = /\b(?:(?:on[- ]?site|in[- ]person|office[- ]based)\s+(?:role|position|job)|(?:must|required to)\s+(?:work|report)\s+(?:on[- ]?site|in[- ]person|in\s+(?:the|our)\s+office)|within commuting distance|(?:must|required to|expected to|need to)\s+relocate|relocation (?:is )?required)\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
@@ -176,9 +178,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   ) {
     remote = 'unknown';
   } else if (!locations.length && !restrictions.length) {
-    remote = HYBRID_DESCRIPTION_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)
+    remote = LOCATIONLESS_HYBRID.test(descLower) && !/fully remote|100% remote/i.test(descLower)
       ? 'hybrid'
-      : EXPLICIT_ONSITE_MARKERS.test(descLower) ? 'onsite' : 'unknown';
+      : LOCATIONLESS_ONSITE.test(descLower) ? 'onsite' : 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
     remote = 'hybrid';
   } else {
