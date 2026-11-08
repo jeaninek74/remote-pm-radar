@@ -80,7 +80,6 @@ export function JobDrawer({ job, onClose, onUpdated }: Props) {
             </a>
             <span className={`badge ${ca.cls}`}>{ca.label}</span>
             <span className="badge">{categoryLabel(job.category)}</span>
-            <span className="badge">{job.matchScore}% resume match</span>
             {state === 'saving' ? <span className="save-state">Saving…</span> : null}
             {state === 'saved' ? <span className="save-state">Saved</span> : null}
             {state === 'error' ? <span className="save-state error">Save failed — retry</span> : null}
@@ -130,24 +129,13 @@ export function JobDrawer({ job, onClose, onUpdated }: Props) {
           </div>
 
           <div className="section">
-            <h3>Resume fit — against both resumes</h3>
-            <div style={{ fontSize: 12.5, marginBottom: 6 }}>
-              <strong>{job.matchScore}%</strong> · best resume: <em>{job.bestResume}</em>
-            </div>
-            <ul className="reason-list">
-              {job.matchReasons.map((reason) => <li key={reason}>{reason}</li>)}
-            </ul>
+            <h3>Requirements to check</h3>
             {job.gaps.length ? (
-              <>
-                <div style={{ marginTop: 10, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>
-                  Hard requirements to check
-                </div>
-                <ul className="gap-list">
-                  {job.gaps.map((gap) => <li key={gap}>{gap}</li>)}
-                </ul>
-              </>
+              <ul className="gap-list">
+                {job.gaps.map((gap) => <li key={gap}>{gap}</li>)}
+              </ul>
             ) : (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--green)' }}>No obvious hard blockers detected in the posting text.</div>
+              <div style={{ fontSize: 11.5, color: 'var(--green)' }}>No hard requirements to check were detected in the posting text.</div>
             )}
           </div>
 

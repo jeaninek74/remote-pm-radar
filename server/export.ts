@@ -23,9 +23,6 @@ const HEADERS: { header: string; key: keyof JobRow; width: number }[] = [
   { header: 'Maximum Annual Base Salary', key: 'salaryMax', width: 18 },
   { header: 'Hourly Rate (if applicable)', key: 'hourlyRate', width: 16 },
   { header: 'Salary Verification Source', key: 'salarySource', width: 34 },
-  { header: 'Resume Match %', key: 'matchScore', width: 12 },
-  { header: 'Best Matching Resume', key: 'bestResume', width: 32 },
-  { header: 'Matching Qualifications', key: 'matchReasons', width: 60 },
   { header: 'Hiring Urgency', key: 'urgency', width: 12 },
   { header: 'Hiring Urgency Evidence', key: 'urgencyEvidence', width: 50 },
   { header: 'Black-Owned Business Verification', key: 'blackOwned', width: 26 },
@@ -72,7 +69,6 @@ function caLabel(job: JobRow): string {
 
 function valueFor(job: JobRow, key: keyof JobRow): string | number | null {
   switch (key) {
-    case 'matchReasons': return job.matchReasons.join(' | ');
     case 'gaps': return job.gaps.join(' | ');
     case 'caEligibility': return caLabel(job);
     case 'bucket': return bucketLabel(job.bucket);
@@ -80,7 +76,6 @@ function valueFor(job: JobRow, key: keyof JobRow): string | number | null {
     case 'firstSeenAt': return job.firstSeenAt?.slice(0, 10) ?? '';
     case 'lastVerifiedAt': return job.lastVerifiedAt?.slice(0, 10) ?? '';
     case 'linkVerifiedAt': return job.linkVerifiedAt?.slice(0, 10) ?? '';
-    case 'matchScore': return job.matchScore;
     case 'salaryMin': return job.salaryMin;
     case 'salaryMax': return job.salaryMax;
     case 'hourlyRate': return job.hourlyRate;
@@ -142,7 +137,7 @@ function addJobSheet(workbook: ExcelJS.Workbook, { title, jobs, tabColor }: Shee
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PAPER } };
       });
     }
-    const linkCell = row.getCell(23);
+    const linkCell = row.getCell(20);
     const url = String(linkCell.value ?? '');
     if (/^https?:\/\//.test(url)) {
       linkCell.value = { text: url, hyperlink: url };

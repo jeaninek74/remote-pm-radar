@@ -134,7 +134,7 @@ export async function listJobs(): Promise<JobRow[]> {
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived')
          OR app_status <> 'Not Applied'
-      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, match_score DESC, posted_at DESC NULLS LAST`,
+      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, first_seen_at DESC NULLS LAST`,
   );
   return rows.map(mapJob);
 }

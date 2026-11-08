@@ -255,7 +255,6 @@ export default function App() {
       if (filters.employment !== 'All' && job.employmentType !== filters.employment) return false;
       if (filters.appStatus !== 'All' && job.appStatus !== filters.appStatus) return false;
       if (filters.blackOwned && job.blackOwned !== 'Verified Black-owned') return false;
-      if (filters.minMatch > 0 && job.matchScore < filters.minMatch) return false;
       if (filters.within !== 'any') {
         if (!job.postedAt) return false;
         const posted = new Date(`${job.postedAt}T00:00:00Z`).getTime();
@@ -267,7 +266,7 @@ export default function App() {
     const sorted = [...filtered];
     switch (filters.sort) {
       case 'found':
-        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || b.matchScore - a.matchScore);
+        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
         break;
       case 'newest':
         sorted.sort((a, b) => (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
@@ -279,7 +278,7 @@ export default function App() {
         sorted.sort((a, b) => a.company.localeCompare(b.company));
         break;
       default:
-        sorted.sort((a, b) => b.matchScore - a.matchScore || (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
+        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
     }
     return sorted;
   }, [filters, tab, tabJobs]);
