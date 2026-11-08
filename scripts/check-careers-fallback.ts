@@ -3,6 +3,7 @@ import {
   looksLikePostingPage,
   postingPathFromUrl,
   sameCareersPostingSet,
+  sweepCareersPostingLinks,
 } from '../server/engine/careers';
 
 function check(name: string, condition: boolean): void {
@@ -16,6 +17,15 @@ const links = candidatePostingLinks(
 );
 check('fallback considers non-target job links', links.some((link) => link.text === 'Registered Nurse'));
 check('fallback ignores unrelated links', !links.some((link) => link.url.endsWith('/about')));
+const sweepLinks = sweepCareersPostingLinks(
+  '<a href="/jobs/req-123456">View job</a><a href="/jobs/req-123457">Apply now</a><a href="/jobs/req-123458"></a><a href="/about">Details</a><a href="/jobs/req-123459">Unrelated page</a>',
+  'https://example.com/careers',
+);
+check('sweep reader accepts generic-label posting links', sweepLinks.length === 3
+  && sweepLinks.some((link) => link.text === 'View job')
+  && sweepLinks.some((link) => link.text === 'Apply now')
+  && sweepLinks.some((link) => link.text === ''));
+check('sweep reader rejects generic non-job links and non-role titles', !sweepLinks.some((link) => link.url.endsWith('/about') || link.url.endsWith('123459')));
 check(
   'posting-page heuristic recognizes a requisition with a role title',
   looksLikePostingPage('https://example.com/job/req-123456', 'Nurse Manager'),

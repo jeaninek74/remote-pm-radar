@@ -101,6 +101,7 @@ const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
 const NON_POSTING_PATH = /\/(?:news|blogs?|articles?|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?)\//i;
 const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
+const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now)\b/i;
 
 export function looksLikePostingPage(url: string, text: string): boolean {
   if (!POSTING_ID.test(url) || NON_POSTING_PATH.test(url) || NON_POSTING_FILE.test(url)) return false;
@@ -123,6 +124,12 @@ function pageLinks(html: string, base: string, includeAnyJobPage = false): { url
 
 export function candidatePostingLinks(html: string, base: string): { url: string; text: string }[] {
   return pageLinks(html, base, true);
+}
+
+export function sweepCareersPostingLinks(html: string, base: string): { url: string; text: string }[] {
+  return candidatePostingLinks(html, base).filter(({ url, text }) =>
+    (text && isRoleTitle(text))
+    || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && (JOB_URL.test(url) || POSTING_ID.test(url))));
 }
 
 export interface CareersPageProbe {
@@ -223,7 +230,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
   const candidates = new Map<string, string>();
   try {
     const html = await fetchText(base, 20_000);
-    for (const link of pageLinks(html, base)) candidates.set(link.url, link.text);
+    for (const link of sweepCareersPostingLinks(html, base)) candidates.set(link.url, link.text);
   } catch (err) {
     return { jobs: [], ok: false, error: `careers page: ${(err as Error).message}`, retryable: true, totalListed: 0 };
   }
