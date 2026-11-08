@@ -99,23 +99,169 @@ function absolute(href: string, base: string): string | null {
 const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
+const NON_POSTING_PATH = /\/(?:news|blogs?|articles?|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?)\//i;
+const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
+const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now)\b/i;
 
-function looksLikePostingPage(url: string, text: string): boolean {
-  if (!POSTING_ID.test(url)) return false;
+export function looksLikePostingPage(url: string, text: string): boolean {
+  if (!POSTING_ID.test(url) || NON_POSTING_PATH.test(url) || NON_POSTING_FILE.test(url)) return false;
   const title = (text ?? '').trim();
   return !!title && ROLE_NOUN.test(title) && !CATEGORY_TITLE.test(title);
 }
 
-function pageLinks(html: string, base: string): { url: string; text: string }[] {
+function pageLinks(html: string, base: string, includeAnyJobPage = false): { url: string; text: string }[] {
   const out: { url: string; text: string }[] = [];
   for (const m of html.matchAll(ANCHOR)) {
     const url = absolute(m[1], base);
     if (!url) continue;
     const text = stripHtml(m[2]).trim();
     if (text && isRoleTitle(text)) out.push({ url, text });
+    else if (includeAnyJobPage && (JOB_URL.test(url) || POSTING_ID.test(url))) out.push({ url, text });
     else if (JOB_URL.test(url) && slugLooksLikeRole(url)) out.push({ url, text });
   }
   return out;
+}
+
+export function candidatePostingLinks(html: string, base: string): { url: string; text: string }[] {
+  return pageLinks(html, base, true);
+}
+
+export function sweepCareersPostingLinks(html: string, base: string): { url: string; text: string }[] {
+  return candidatePostingLinks(html, base).filter(({ url, text }) =>
+    (text && isRoleTitle(text))
+    || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && (JOB_URL.test(url) || POSTING_ID.test(url))));
+}
+
+export interface CareersPageProbe {
+  postings: number;
+  matching: number;
+  postingPaths: string[];
+  postingIdentities: CareersPostingIdentity[];
+  examplePostingUrl?: string;
+  truncated: boolean;
+}
+
+export interface CareersPostingIdentity {
+  path: string;
+  title: string;
+}
+
+export function postingPathFromUrl(value: string): string {
+  const url = new URL(value);
+  return `${url.pathname}${url.search}`;
+}
+
+function normalizePostingTitle(title: string): string {
+  return title.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function postingIdentityKeys(
+  paths: string[],
+  identities: CareersPostingIdentity[] | undefined,
+): Set<string> {
+  const pathSet = new Set(paths);
+  const keys = new Set<string>();
+  const identifiedPaths = new Set<string>();
+  for (const { path, title } of identities ?? []) {
+    if (!pathSet.has(path)) continue;
+    const normalizedTitle = normalizePostingTitle(title);
+    keys.add(normalizedTitle ? `${path}|${normalizedTitle}` : path);
+    identifiedPaths.add(path);
+  }
+  for (const path of pathSet) {
+    if (!identifiedPaths.has(path)) keys.add(path);
+  }
+  return keys;
+}
+
+export function sameCareersPostingSet(
+  leftPaths: string[] | undefined,
+  rightPaths: string[] | undefined,
+  leftIdentities?: CareersPostingIdentity[],
+  rightIdentities?: CareersPostingIdentity[],
+): boolean {
+  if (!leftPaths?.length || !rightPaths?.length) return false;
+  const left = postingIdentityKeys(leftPaths, leftIdentities);
+  const right = postingIdentityKeys(rightPaths, rightIdentities);
+  if (left.size === right.size && [...left].every((key) => right.has(key))) return true;
+  const smaller = Math.min(left.size, right.size);
+  if (smaller < 2) return false;
+  const overlap = [...left].filter((key) => right.has(key)).length;
+  return overlap >= 2 && overlap / smaller >= 0.5;
+}
+
+function sameCareerSite(hostname: string, pageHost: string): boolean {
+  const normalize = (host: string) => host.toLowerCase().replace(/^www\./, '');
+  const host = normalize(hostname);
+  const page = normalize(pageHost);
+  return host === page || host.endsWith(`.${page}`) || page.endsWith(`.${host}`);
+}
+
+function titleFromUrl(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '').replace(/[-_]+/g, ' ');
+  } catch {
+    return '';
+  }
+}
+
+export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
+  const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], postingIdentities: [], truncated: false };
+  if (Date.now() >= deadline) return { ...result, truncated: true };
+  let pageHtml: string;
+  try {
+    pageHtml = await fetchText(url, Math.min(20_000, deadline - Date.now()));
+  } catch {
+    return result;
+  }
+  const pageUrl = new URL(url);
+  const candidates = new Map<string, { text: string }>();
+  for (const link of candidatePostingLinks(pageHtml, url)) {
+    let candidate: URL;
+    try {
+      candidate = new URL(link.url);
+    } catch {
+      continue;
+    }
+    if (!sameCareerSite(candidate.hostname, pageUrl.hostname)) continue;
+    candidate.hash = '';
+    if (!candidates.has(candidate.toString())) candidates.set(candidate.toString(), { text: link.text });
+  }
+
+  const seen = new Set<string>();
+  for (const [candidateUrl, candidate] of candidates) {
+    if (Date.now() >= deadline) { result.truncated = true; break; }
+    const key = candidateUrl.replace(/\/$/, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (NON_POSTING_FILE.test(candidateUrl)) continue;
+    let html = '';
+    try {
+      html = await fetchText(candidateUrl, Math.min(20_000, deadline - Date.now()));
+    } catch {
+      continue;
+    }
+    const posting = jobPostingFrom(html);
+    const urlTitle = titleFromUrl(candidateUrl);
+    if (!posting && !looksLikePostingPage(candidateUrl, candidate.text || urlTitle)) continue;
+    const identityTitle = (posting?.title ?? candidate.text).trim();
+    const title = (identityTitle || urlTitle).trim();
+    result.postings += 1;
+    if (title && isRoleTitle(title)) result.matching += 1;
+    const path = postingPathFromUrl(candidateUrl);
+    result.postingPaths.push(path);
+    result.postingIdentities.push({ path, title: identityTitle });
+    result.examplePostingUrl ??= candidateUrl;
+  }
+  result.postingPaths = [...new Set(result.postingPaths)].sort();
+  const identities = new Map<string, CareersPostingIdentity>();
+  for (const identity of result.postingIdentities) {
+    const title = normalizePostingTitle(identity.title);
+    identities.set(`${identity.path}\u0000${title}`, identity);
+  }
+  result.postingIdentities = [...identities.values()].sort((left, right) =>
+    left.path.localeCompare(right.path) || normalizePostingTitle(left.title).localeCompare(normalizePostingTitle(right.title)));
+  return result;
 }
 
 export async function fetchCareersPage(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
@@ -128,7 +274,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
   const candidates = new Map<string, string>();
   try {
     const html = await fetchText(base, 20_000);
-    for (const link of pageLinks(html, base)) candidates.set(link.url, link.text);
+    for (const link of sweepCareersPostingLinks(html, base)) candidates.set(link.url, link.text);
   } catch (err) {
     return { jobs: [], ok: false, error: `careers page: ${(err as Error).message}`, retryable: true, totalListed: 0 };
   }
