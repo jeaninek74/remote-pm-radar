@@ -103,15 +103,13 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
       );
   }, [active, category, q, urgentOnly]);
 
-  const visible = tab === 'nopay' ? shown.slice(0, 80) : shown;
-
   /**
    * The board must never render as an empty page. When nothing has cleared every rule
    * — which is normal on a new deployment, or in a quiet week — show what the radar has
    * actually seen, newest first, so the page always reflects real postings rather than
    * a blank panel.
    */
-  const fallback = useMemo(() => jobs.filter((job) => job.bucket === 'queue').slice(0, 25), [jobs]);
+  const fallback = useMemo(() => jobs.filter((job) => job.bucket === 'queue'), [jobs]);
   const current = TABS.find((item) => item.key === tab)!;
 
   const tabCount = (key: BoardTab): number =>
@@ -202,12 +200,6 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         </div>
       </div>
 
-      {tab === 'nopay' && shown.length > visible.length ? (
-        <p className="simple-balance" style={{ margin: '0 0 10px' }}>
-          Showing the 80 closest matches of {shown.length} — use the search box to narrow, or the full dashboard for the rest.
-        </p>
-      ) : null}
-
       {shown.length === 0 && fallback.length > 0 ? (
         <p className="simple-balance" style={{ margin: '0 0 10px' }}>
           Nothing has cleared every rule for {current.name} yet, so this is what the radar currently sees —
@@ -225,7 +217,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         </div>
       ) : (
         <ul className="joblist">
-          {(shown.length === 0 ? fallback : visible).map((job) => {
+          {(shown.length === 0 ? fallback : shown).map((job) => {
             const ca = caBadge(job);
             return (
               <li key={job.id} className="jobrow">

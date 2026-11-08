@@ -55,9 +55,9 @@ export const REFRESH = {
   employersPerRun: Number(process.env.EMPLOYERS_PER_RUN ?? 0),
   /**
    * Pages of 100 read from boards that paginate (SmartRecruiters). Each page is a different
-   * slice of the board, so a shallow read silently drops most of an employer's openings.
+   * slice of the board, so a shallow read silently drops openings. 0 = read every page.
    */
-  feedPages: Number(process.env.FEED_PAGES ?? 12),
+  feedPages: Number(process.env.FEED_PAGES ?? 0),
   /** Parallel network requests. */
   concurrency: Number(process.env.FETCH_CONCURRENCY ?? 7),
   /** Per-request timeout. */
@@ -77,7 +77,6 @@ export const REFRESH = {
   discoverBudgetMs: Number(process.env.DISCOVER_BUDGET_MS ?? 90_000),
   /** Budget of the standalone discovery pass that runs between sweeps (ends before the next slot). */
   discoverPassBudgetMs: Number(process.env.DISCOVER_PASS_BUDGET_MS ?? 11 * 60_000),
-  /** How many brand-new tab listings get a live link check per cycle. */
   /** Time budget for verifying new application links (every new live posting is checked; no count cap). */
   linkBudgetMs: Number(process.env.LINK_BUDGET_MS ?? 4 * 60_000),
 };
