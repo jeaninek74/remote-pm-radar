@@ -40,8 +40,9 @@ export interface RunStatus {
   queued: number;
 }
 
-export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshing: boolean }> {
+export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshing: boolean; buildId: string }> {
   const raw = await api<{
+    buildId: string;
     run: {
       id: number; status: string; finished_at: string | null; progress: string | null; new_jobs: number;
       added_tab1: number; added_tab2: number; queued: number;
@@ -49,6 +50,7 @@ export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshi
     refreshing: boolean;
   }>('/api/refresh/status');
   return {
+    buildId: raw.buildId,
     refreshing: raw.refreshing,
     run: raw.run
       ? {

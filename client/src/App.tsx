@@ -10,6 +10,7 @@ import { JobDrawer } from './components/JobDrawer';
 import { EmployersTab } from './components/EmployersTab';
 import { RunsTab } from './components/RunsTab';
 import { HowTo } from './components/HowTo';
+import { buildIdFromDocument, reloadIfBuildChanged } from './buildVersion';
 
 type TabKey = 'tab0' | 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
 
@@ -43,6 +44,37 @@ export default function App() {
   const pollRef = useRef<number | null>(null);
   const lastLoadAtRef = useRef(0);
   const lastRunKeyRef = useRef<string | null>(null);
+  const buildIdRef = useRef<string | null>(null);
+  const pendingSavesRef = useRef(0);
+  if (buildIdRef.current === null) buildIdRef.current = buildIdFromDocument(document);
+  const saveTrackingWhilePending = useCallback(async (id: number, patch: Record<string, string | null>) => {
+    pendingSavesRef.current += 1;
+    try {
+      return await saveTracking(id, patch);
+    } finally {
+      pendingSavesRef.current -= 1;
+    }
+  }, []);
+
+  const checkBuildId = useCallback((nextBuildId: string | null | undefined) => {
+    if (!nextBuildId) return false;
+    const previousBuildId = buildIdRef.current;
+    if (previousBuildId === null) {
+      buildIdRef.current = nextBuildId;
+      return false;
+    }
+    const interactionBlocked = Boolean(
+      document.querySelector('[aria-modal="true"], .drawer-backdrop, .modal-backdrop')
+      || document.activeElement?.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), textarea, select, [contenteditable="true"]')
+      || pendingSavesRef.current > 0,
+    );
+    return reloadIfBuildChanged(
+      previousBuildId,
+      nextBuildId,
+      interactionBlocked,
+      () => window.location.reload(),
+    );
+  }, []);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -51,6 +83,7 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     const [bootstrap, jobPayload] = await Promise.all([loadBootstrap(), loadJobs()]);
+    if (checkBuildId(bootstrap.buildId)) return;
     lastLoadAtRef.current = Date.now();
     const latestRun = bootstrap.runs[0];
     lastRunKeyRef.current = latestRun
@@ -74,11 +107,12 @@ export default function App() {
         pollRef.current = window.setInterval(() => void poll(), 3000);
       }
     }
-  }, []);
+  }, [checkBuildId]);
 
   const poll = useCallback(async () => {
     try {
       const status = await refreshStatus();
+      if (checkBuildId(status.buildId)) return;
       if (status.run) setProgress(status.run.progress ?? 'Refreshing…');
       if (!status.refreshing && status.run?.status !== 'running') {
         if (pollRef.current !== null) {
@@ -96,7 +130,7 @@ export default function App() {
     } catch {
       /* keep polling through transient errors */
     }
-  }, [loadAll, notify]);
+  }, [checkBuildId, loadAll, notify]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +159,7 @@ export default function App() {
       try {
         const status = await refreshStatus();
         if (!mounted) return;
+        if (checkBuildId(status.buildId)) return;
         if (!status.refreshing && status.run && status.run.status !== 'running') {
           const runKey = `${status.run.id}:${status.run.status}:${status.run.finishedAt ?? ''}`;
           if (runKey !== lastRunKeyRef.current) {
@@ -152,7 +187,7 @@ export default function App() {
       window.clearInterval(statusInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [loadAll, poll]);
+  }, [checkBuildId, loadAll, poll]);
 
   const loadEmployerData = useCallback(async () => {
     const payload = await loadEmployers();
@@ -191,13 +226,13 @@ export default function App() {
     const previous = jobs;
     setJobs((current) => current.map((job) => (job.id === id ? { ...job, appStatus: status } : job)));
     try {
-      const result = await saveTracking(id, { appStatus: status });
+      const result = await saveTrackingWhilePending(id, { appStatus: status });
       setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
     } catch {
       setJobs(previous);
       notify('Could not save that status — try again.', true);
     }
-  }, [jobs, notify]);
+  }, [jobs, notify, saveTrackingWhilePending]);
 
   /**
    * Board checkboxes: an Applied check stamps today's local date. Saves for one role run in order and
@@ -212,7 +247,7 @@ export default function App() {
     setJobs((current) => current.map((job) => (job.id === id ? { ...job, appStatus: status, appliedAt: patch.appliedAt ?? null } : job)));
     const entry = trackChain.current.get(id) ?? { seq: 0, tail: Promise.resolve() };
     const seq = entry.seq + 1;
-    const tail = entry.tail.then(() => saveTracking(id, patch)).then(
+    const tail = entry.tail.then(() => saveTrackingWhilePending(id, patch)).then(
       (result) => {
         if (trackChain.current.get(id)?.seq !== seq) return;
         setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
@@ -224,7 +259,7 @@ export default function App() {
       },
     );
     trackChain.current.set(id, { seq, tail });
-  }, [jobs, notify]);
+  }, [jobs, notify, saveTrackingWhilePending]);
 
   const handleUpdated = useCallback((updated: Job) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)));
@@ -475,7 +510,8 @@ export default function App() {
       </footer>
 
       {selected ? (
-        <JobDrawer job={selected} onClose={() => setSelectedId(null)} onUpdated={handleUpdated} />
+        <JobDrawer job={selected} onClose={() => setSelectedId(null)} onUpdated={handleUpdated}
+          saveTracking={saveTrackingWhilePending} />
       ) : null}
 
       {showHowTo ? <HowTo onClose={() => setShowHowTo(false)} windowDays={windowDays} /> : null}

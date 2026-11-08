@@ -141,6 +141,7 @@ export interface Employer {
 }
 
 export interface Bootstrap {
+  buildId: string;
   stats: Stats;
   runs: Run[];
   sources: SourceHealth[];
