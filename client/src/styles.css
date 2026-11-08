@@ -759,6 +759,7 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 .pill.cat-hybrid { background: #f6f0e6; color: #6a5533; }
 .role-title .pill.new { margin-left: 6px; vertical-align: middle; }
 .simple-empty { background: #fff; border: 1px dashed #ddd5c8; border-radius: 10px; padding: 28px; text-align: center; }
+.urgent-heading { margin: 14px 0 8px; font-size: 18px; }
 .simple-foot { margin-top: 26px; font-size: 11.5px; color: #8a8072; text-align: center; }
 @media (max-width: 760px) {
   .jobrow { grid-template-columns: 1fr; }

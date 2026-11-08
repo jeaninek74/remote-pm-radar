@@ -220,7 +220,7 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
     industry: raw.industry ?? employer?.industry ?? null,
     family: ACTIVE_ROLE_FAMILY,
   });
-  const urgency = detectUrgency(description);
+  const urgency = detectUrgency(`${raw.title}. ${description}`);
   const salary = raw.salary ?? null;
   const ownership = ownershipLabel(employer);
 
@@ -343,7 +343,9 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
         match_reasons = EXCLUDED.match_reasons,
         gaps = EXCLUDED.gaps,
         urgency = CASE WHEN jobs.urgency = 'High' THEN jobs.urgency ELSE EXCLUDED.urgency END,
-        urgency_evidence = COALESCE(jobs.urgency_evidence, EXCLUDED.urgency_evidence),
+        urgency_evidence = CASE WHEN EXCLUDED.urgency = 'High' AND jobs.urgency IS DISTINCT FROM 'High'
+                                THEN EXCLUDED.urgency_evidence
+                                ELSE COALESCE(jobs.urgency_evidence, EXCLUDED.urgency_evidence) END,
         black_owned_verification = EXCLUDED.black_owned_verification,
         ownership_source = EXCLUDED.ownership_source,
         apply_url = EXCLUDED.apply_url,
@@ -898,6 +900,9 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     await progress('Removing duplicates');
     counters.duplicates += await dedupeJobs();
 
+    await progress('Rechecking explicit hiring urgency');
+    await flagExplicitUrgency();
+
     await progress('Flagging employers hiring several similar roles');
     await flagMultiRoleUrgency();
 
@@ -1062,6 +1067,29 @@ async function flagMultiRoleUrgency(): Promise<void> {
       [row.company, `Employer is recruiting ${row.open_roles} project/program roles at the same time (inferred, not stated in the posting).`],
     );
   }
+}
+
+async function flagExplicitUrgency(): Promise<number> {
+  const rows = await q<{ id: number; title: string; description_excerpt: string | null }>(
+    `SELECT id, title, description_excerpt
+       FROM jobs
+      WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+        AND urgency IS DISTINCT FROM 'High'`,
+  );
+  let updated = 0;
+  for (const row of rows) {
+    const verdict = detectUrgency(`${row.title}. ${row.description_excerpt ?? ''}`);
+    if (verdict.level !== 'High' || !verdict.evidence) continue;
+    const changed = await q<{ id: number }>(
+      `UPDATE jobs
+          SET urgency='High', urgency_evidence=$2, updated_at=now()
+        WHERE id=$1 AND urgency IS DISTINCT FROM 'High'
+        RETURNING id`,
+      [row.id, verdict.evidence],
+    );
+    updated += changed.length;
+  }
+  return updated;
 }
 
 async function archiveByAge(): Promise<number> {

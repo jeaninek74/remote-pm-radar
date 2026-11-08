@@ -3,11 +3,16 @@ import { truncate } from './text';
 export type Urgency = 'High' | 'Medium' | 'Low' | 'Unknown';
 
 const EXPLICIT = [
+  /\bimmediately hiring\b/i,
   /urgently hiring/i,
   /hiring immediately/i,
+  /\b(?:hiring now|now hiring)\b/i,
+  /\bimmediate (?:hires?|hiring|availability|openings?)\b/i,
+  /\burgent(?:ly)? (?:need(?:ed)?|requirements?|hire|hiring|openings?|roles?|positions?)\b/i,
   /immediate opening/i,
   /immediate start/i,
-  /start (?:date )?(?:asap|immediately)/i,
+  /\b(?:start(?:ing)?(?:\s+date)?|begin(?:ning)?)\b[^.!?\r\n]{0,30}\b(?:asap|immediately)\b/i,
+  /\bASAP\s*(?:[-–—]|\b(?:to|through|until)\b)\s*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|[A-Za-z]+\s+\d{1,2}(?:,?\s+\d{4})?)\b/,
   /asap start/i,
   /expedited hiring/i,
   /fast interview process/i,

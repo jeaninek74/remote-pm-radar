@@ -12,7 +12,7 @@ export interface FilterState {
   employment: string;
   appStatus: string;
   within: 'any' | '24h' | '72h' | 'window';
-  sort: 'found' | 'newest' | 'salary' | 'company';
+  sort: 'newest' | 'salary' | 'company';
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -26,7 +26,7 @@ export const DEFAULT_FILTERS: FilterState = {
   employment: 'All',
   appStatus: 'All',
   within: 'any',
-  sort: 'found',
+  sort: 'newest',
 };
 
 interface Props {
@@ -144,7 +144,6 @@ export function Filters({ value, onChange, jobs, total, matched, windowDays }: P
 
         <select className="select" aria-label="Sort jobs" value={value.sort}
           onChange={(event) => set('sort', event.target.value as FilterState['sort'])}>
-          <option value="found">Sort: newest found</option>
           <option value="newest">Sort: newest posted</option>
           <option value="salary">Sort: highest salary</option>
           <option value="company">Sort: employer A–Z</option>

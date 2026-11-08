@@ -41,7 +41,7 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
           <tr>
             {header('company', 'Role & employer')}
             {header('salary', 'Salary')}
-            {header('found', 'Found')}
+            <th>Found</th>
             {header('newest', 'Posted')}
             <th>Remote / CA</th>
             <th>Urgency</th>

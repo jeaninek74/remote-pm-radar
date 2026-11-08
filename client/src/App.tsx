@@ -11,6 +11,7 @@ import { EmployersTab } from './components/EmployersTab';
 import { RunsTab } from './components/RunsTab';
 import { HowTo } from './components/HowTo';
 import { buildIdFromDocument, reloadIfBuildChanged } from './buildVersion';
+import { compareJobsByPostedDate } from './job-sort';
 
 type TabKey = 'tab0' | 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
 
@@ -300,11 +301,8 @@ export default function App() {
 
     const sorted = [...filtered];
     switch (filters.sort) {
-      case 'found':
-        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
-        break;
       case 'newest':
-        sorted.sort((a, b) => (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
+        sorted.sort(compareJobsByPostedDate);
         break;
       case 'salary':
         sorted.sort((a, b) => (b.salaryMin ?? 0) - (a.salaryMin ?? 0));
@@ -313,7 +311,7 @@ export default function App() {
         sorted.sort((a, b) => a.company.localeCompare(b.company));
         break;
       default:
-        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
+        sorted.sort(compareJobsByPostedDate);
     }
     return sorted;
   }, [filters, tab, tabJobs]);
