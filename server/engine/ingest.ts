@@ -198,6 +198,9 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   // Jeanine, 7 Nov 2026: "there should be no hybrid / on-site at all" — those postings, and roles
   // that demand routine travel, are dropped at ingestion rather than queued (RULES.md §4.1).
   if (loc.remote === 'hybrid' || loc.remote === 'onsite' || loc.travelHeavy) return null;
+  // Jeanine's no-hybrid rule also applies when office or hybrid wording appears only in the title.
+  if (/\b(hybrid|in[- ]office|in[- ]person)\b/i.test(raw.title)) return null;
+  if (/\bon[- ]?site\b/i.test(raw.title) && loc.remote !== 'remote') return null;
   if (loc.remote !== 'remote') {
     forced = { bucket: 'queue', reason: `Work arrangement not confirmed remote — ${loc.note || loc.remoteLabel}.` };
   } else if (loc.ca === 'state_restricted') {
@@ -960,13 +963,19 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
 /* ------------------------------------------------------------ post-processors */
 
+export function sharedBoardPostingKey(jobKey: string): string | null {
+  const match = jobKey.match(/^oracle:([^/]+)\/[^:]+:(.+)$/);
+  if (!match) return null;
+  return `oracle-posting:${match[1].toLowerCase()}:${match[2]}`;
+}
+
 async function dedupeJobs(): Promise<number> {
   const rows = await q<{
-    id: number; company: string; title: string; link_type: string; posted_at: string | null; bucket: string;
+    id: number; job_key: string; company: string; title: string; link_type: string; posted_at: string | null; bucket: string;
   }>(
     // Winner order: a role the user is tracking, then an employer link, then the most useful
     // bucket (a salary tab beats Pay not published beats the queue), then the oldest posting.
-    `SELECT id, company, title, link_type, posted_at::text, bucket
+    `SELECT id, job_key, company, title, link_type, posted_at::text, bucket
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
       ORDER BY (app_status IS NOT NULL AND app_status <> 'Not Applied') DESC,
@@ -977,13 +986,21 @@ async function dedupeJobs(): Promise<number> {
   const winners = new Map<string, { id: number; company: string; title: string }>();
   const losers: { id: number; of: number; company: string; title: string }[] = [];
   for (const row of rows) {
-    const key = `${companyKey(row.company)}::${titleKey(row.title)}`;
-    const winner = winners.get(key);
+    const keys = [
+      `${companyKey(row.company)}::${titleKey(row.title)}`,
+      sharedBoardPostingKey(row.job_key),
+    ].filter((key): key is string => key !== null);
+    let winner: { id: number; company: string; title: string } | undefined;
+    for (const key of keys) {
+      winner = winners.get(key);
+      if (winner) break;
+    }
     if (winner) {
       // Rows arrive in winner order, so the first row for a key always wins.
       losers.push({ id: row.id, of: winner.id, company: row.company, title: row.title });
     } else {
-      winners.set(key, { id: row.id, company: row.company, title: row.title });
+      const entry = { id: row.id, company: row.company, title: row.title };
+      for (const key of keys) winners.set(key, entry);
     }
   }
   for (const loser of losers) {
