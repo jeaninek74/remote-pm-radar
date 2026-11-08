@@ -1,4 +1,5 @@
 import { RULES } from '../config';
+import { explicitWorkplaceArrangement } from './location';
 import type { ParsedSalary } from './salary';
 
 export interface PhenomConfig {
@@ -65,7 +66,10 @@ export function phenomPrimaryLocations(feedLocations: string[], detailLocations:
 export function phenomRemoteInfo(
   feedLocations: string[],
   jobLocationType: string | null,
+  detailLocations: string[] = [],
 ): { isRemote: boolean | null; workplaceType: string | null } {
+  const arrangement = explicitWorkplaceArrangement(detailLocations, jobLocationType);
+  if (arrangement) return { isRemote: false, workplaceType: arrangement };
   if (jobLocationType) {
     const isRemote = /TELECOMMUTE/i.test(jobLocationType);
     return { isRemote, workplaceType: isRemote ? 'remote' : jobLocationType };

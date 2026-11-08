@@ -78,6 +78,19 @@ const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) 
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
+export function explicitWorkplaceArrangement(
+  locations: string[],
+  workplaceType?: string | null,
+): 'hybrid' | 'onsite' | null {
+  const locText = locations.map((location) => String(location ?? '').replace(/_/g, ' ').trim()).join(' | ');
+  const workplace = String(workplaceType ?? '').replace(/_/g, ' ').toLowerCase();
+  if (/hybrid/.test(workplace) || (HYBRID_MARKERS.test(locText) && !/fully remote|100% remote/i.test(locText))) {
+    return 'hybrid';
+  }
+  if (/onsite|on-site|in[- ]person/.test(workplace) || EXPLICIT_ONSITE_MARKERS.test(locText)) return 'onsite';
+  return null;
+}
+
 function affirmativeMatch(pattern: RegExp, text: string): boolean {
   const match = pattern.exec(text);
   return !!match && !/\b(?:no|not|without|never)\s+(?:an?\s+)?$/.test(text.slice(Math.max(0, match.index - 15), match.index));

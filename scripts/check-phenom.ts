@@ -9,6 +9,7 @@ import {
   phenomPrimaryLocations,
   phenomRemoteInfo,
 } from '../server/engine/phenom';
+import { evaluateLocation } from '../server/engine/location';
 import { classifySalary } from '../server/engine/salary';
 
 let failures = 0;
@@ -32,6 +33,15 @@ const feedRemote = phenomRemoteInfo(['Remote, US'], null);
 check('Phenom feed remote location remains primary over detail office address',
   primaryLocations.length === 1 && primaryLocations[0] === 'Remote, US'
     && feedRemote.isRemote === true && feedRemote.workplaceType === 'remote');
+const hybridDetailLocations = ['Hybrid - Boston, MA'];
+const hybridDetailRemote = phenomRemoteInfo(['Remote, US'], null, hybridDetailLocations);
+const hybridDetailVerdict = evaluateLocation({
+  locations: phenomPrimaryLocations(['Remote, US'], hybridDetailLocations),
+  workplaceType: hybridDetailRemote.workplaceType,
+  isRemote: hybridDetailRemote.isRemote,
+});
+check('Phenom hybrid detail location excludes the remote feed posting',
+  hybridDetailRemote.workplaceType === 'hybrid' && hybridDetailVerdict.remote === 'hybrid');
 
 const config = parsePhenomConfig(
   '<title>Careers at Acme Corp</title><script>phApp.phAppConfig={"widgetApiEndpoint":"https://jobs.acme.com/widgets","refNum":"ACMEUS","locale":"en_us","siteType":"external","baseUrl":"https://jobs.acme.com/us/en/","pageName":"home"};</script>',

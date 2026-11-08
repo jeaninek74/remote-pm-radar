@@ -1785,7 +1785,7 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         const salary = phenomSalary(detail, description);
         const structuredLocations = phenomJobLocations(detail);
         const jobLocationType = detail?.jobLocationType ?? null;
-        const { isRemote, workplaceType } = phenomRemoteInfo(item.locations, jobLocationType);
+        const { isRemote, workplaceType } = phenomRemoteInfo(item.locations, jobLocationType, structuredLocations);
         const postedAt = isoDate(detail?.datePosted || item.postedDate || item.dateCreated);
         jobs.push({
           source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
