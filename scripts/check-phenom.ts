@@ -6,6 +6,8 @@ import {
   phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
   phenomJobUrl,
+  phenomPrimaryLocations,
+  phenomRemoteInfo,
 } from '../server/engine/phenom';
 import { classifySalary } from '../server/engine/salary';
 
@@ -25,6 +27,11 @@ check('Phenom parser preserves totalHits and skips malformed items', parsed.tota
 check('Phenom parser reads posting fields', parsed.jobs[0]?.title === 'Desktop Support Technician - Apple / Windows 11'
   && parsed.jobs[0]?.locations[0] === 'Sunnyvale,CA,94085,USA'
   && parsed.jobs[0]?.description.startsWith('We are recruiting a Desktop Support Technician'));
+const primaryLocations = phenomPrimaryLocations(['Remote, US'], ['San Francisco, CA']);
+const feedRemote = phenomRemoteInfo(['Remote, US'], null);
+check('Phenom feed remote location remains primary over detail office address',
+  primaryLocations.length === 1 && primaryLocations[0] === 'Remote, US'
+    && feedRemote.isRemote === true && feedRemote.workplaceType === 'remote');
 
 const config = parsePhenomConfig(
   '<title>Careers at Acme Corp</title><script>phApp.phAppConfig={"widgetApiEndpoint":"https://jobs.acme.com/widgets","refNum":"ACMEUS","locale":"en_us","siteType":"external","baseUrl":"https://jobs.acme.com/us/en/","pageName":"home"};</script>',

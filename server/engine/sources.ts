@@ -16,6 +16,8 @@ import {
   phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
   phenomJobUrl,
+  phenomPrimaryLocations,
+  phenomRemoteInfo,
 } from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
@@ -1783,14 +1785,14 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         const salary = phenomSalary(detail, description);
         const structuredLocations = phenomJobLocations(detail);
         const jobLocationType = detail?.jobLocationType ?? null;
-        const isRemote = /TELECOMMUTE/i.test(jobLocationType ?? '') ? true : null;
+        const { isRemote, workplaceType } = phenomRemoteInfo(item.locations, jobLocationType);
         const postedAt = isoDate(detail?.datePosted || item.postedDate || item.dateCreated);
         jobs.push({
           source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
           externalId, company: employer.name, title: item.title,
-          locations: structuredLocations.length ? structuredLocations : item.locations,
+          locations: phenomPrimaryLocations(item.locations, structuredLocations),
           restrictions: phenomRestrictions(detail),
-          workplaceType: isRemote ? 'remote' : jobLocationType,
+          workplaceType,
           isRemote,
           postedAt,
           postedConfidence: postedAt ? 'confirmed' : 'unknown',

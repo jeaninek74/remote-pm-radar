@@ -55,6 +55,22 @@ export function phenomDetailRedirectTarget(
   }
 }
 
+export function phenomPrimaryLocations(feedLocations: string[], detailLocations: string[]): string[] {
+  return feedLocations.length ? feedLocations : detailLocations;
+}
+
+export function phenomRemoteInfo(
+  feedLocations: string[],
+  jobLocationType: string | null,
+): { isRemote: boolean | null; workplaceType: string | null } {
+  if (jobLocationType) {
+    const isRemote = /TELECOMMUTE/i.test(jobLocationType);
+    return { isRemote, workplaceType: isRemote ? 'remote' : jobLocationType };
+  }
+  const isRemote = feedLocations.some((location) => /\bremote\b/i.test(location));
+  return { isRemote: isRemote ? true : null, workplaceType: isRemote ? 'remote' : null };
+}
+
 export function phenomJobUrl(path: string, baseUrl: string): string {
   const base = new URL(baseUrl);
   if (!base.pathname.endsWith('/')) base.pathname += '/';
