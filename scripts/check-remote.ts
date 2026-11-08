@@ -21,6 +21,7 @@ async function main(): Promise<void> {
         isRemote: job.isRemote,
         restrictions: job.restrictions,
         description: (job.descriptionText ?? '').slice(0, 4000),
+        title: job.title,
       });
       console.log(`  ${verdict.remote.padEnd(8)} ${verdict.ca.padEnd(16)} wp=${String(job.workplaceType)} isRemote=${String(job.isRemote)} | ${job.locations.join(' / ') || '(none)'} | ${job.title}`);
     }

@@ -9,6 +9,7 @@ export interface LocationInput {
   isRemote?: boolean | null;
   restrictions?: string[] | null;
   description?: string | null;
+  title?: string | null;
 }
 
 export interface LocationVerdict {
@@ -75,6 +76,7 @@ const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in
 const LOCATIONLESS_HYBRID = /\b(?:hybrid\s+(?:role|position|schedule|work\s+(?:schedule|model|arrangement)|model|arrangement|opportunity)|(?:this|the)\s+(?:role|position|job)\s+is\s+hybrid|partially remote|part[- ]remote|\d\s*days?\s+(?:a|per)\s+week\s+(?:in[- ]office|in\s+(?:the\s+|our\s+)?office|on[- ]?site|in[- ]person|at\s+(?:the|our)\s+office))\b/i;
 const LOCATIONLESS_ONSITE = /\b(?:(?:on[- ]?site|in[- ]person|office[- ]based)\s+(?:role|position|job)|on[- ]?site\s+requirement|(?:must|required to)\s+(?:work|report)\s+(?:on[- ]?site|in[- ]person|in\s+(?:the|our)\s+office)|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|expected to|need to)\s+relocate|relocation (?:is )?required)\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
+const TITLE_REMOTE_MARKERS = /\b(?:(?:100\s*%\s*)?(?:fully\s+)?remote\b(?!\s+(?:sensing|monitoring|patient)\b)|work(?:ing)?\s+(?:from|at)\s+home|wfh)\b/i;
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
@@ -98,6 +100,18 @@ export function explicitWorkplaceArrangement(
 function affirmativeMatch(pattern: RegExp, text: string): boolean {
   const match = pattern.exec(text);
   return !!match && !/\b(?:no|not|without|never)\s+(?:an?\s+)?$/.test(text.slice(Math.max(0, match.index - 15), match.index));
+}
+
+function descriptionWorkplaceArrangement(text: string): 'hybrid' | 'onsite' | null {
+  if (
+    affirmativeMatch(LOCATIONLESS_HYBRID, text)
+    || affirmativeMatch(/\bin[- ]office\s+(?:role|position|schedule|requirement)\b/i, text)
+  ) return 'hybrid';
+  if (
+    affirmativeMatch(LOCATIONLESS_ONSITE, text)
+    || affirmativeMatch(EXPLICIT_ONSITE_MARKERS, text)
+  ) return 'onsite';
+  return null;
 }
 
 function detectStates(text: string): string[] {
@@ -166,6 +180,10 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const workplace = String(input.workplaceType ?? '').toLowerCase();
   const description = (input.description ?? '').slice(0, 25_000);
   const descLower = description.toLowerCase();
+  const title = String(input.title ?? '').trim();
+  const titleRemote = TITLE_REMOTE_MARKERS.test(title);
+  const titleArrangement = titleRemote ? explicitWorkplaceArrangement([title]) : null;
+  const descriptionArrangement = titleRemote ? descriptionWorkplaceArrangement(descLower) : null;
 
   const labels = [...locations, ...restrictions].join(', ') || 'Not stated';
 
@@ -174,13 +192,19 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   // ("New York (Hybrid); United States (Remote)"); a single "Remote/Hybrid" label does not.
   const remoteOption = locations.some((l) => REMOTE_MARKERS.test(l) && !HYBRID_MARKERS.test(l));
   let remote: RemoteKind = 'unknown';
-  if (remoteOption && !/hybrid|onsite|on-site|in[- ]person/.test(workplace)) {
+  if (titleArrangement) {
+    remote = titleArrangement;
+  } else if (descriptionArrangement) {
+    remote = descriptionArrangement;
+  } else if (remoteOption && !/hybrid|onsite|on-site|in[- ]person/.test(workplace)) {
     remote = 'remote';
   } else if (/hybrid/.test(workplace) || (HYBRID_MARKERS.test(locText) && !/fully remote|100% remote/i.test(locText))) {
     remote = 'hybrid';
   } else if (/onsite|on-site|in[- ]person/.test(workplace)) {
     remote = 'onsite';
   } else if (workplace === 'remote' || input.isRemote === true) {
+    remote = 'remote';
+  } else if (titleRemote) {
     remote = 'remote';
   } else if (REMOTE_MARKERS.test(scopeText)) {
     remote = REMOTE_MARKERS.test(locText) || restrictions.length > 0 ? 'remote' : 'unknown';
@@ -273,7 +297,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const hasUsScope = nationwideUsOnly
     || US_MARKERS.test(scopeText)
     || restrictions.some((r) => /united states|worldwide|anywhere|global/i.test(r))
-    || usEligibilityFromText(description);
+    || usEligibilityFromText(description)
+    || (titleRemote && !descriptionArrangement && !titleArrangement
+      && !REGION_MARKERS.test(scopeText) && detectStates(scopeText).length > 0);
   const hasRegionScope = REGION_MARKERS.test(scopeText);
 
   if (allStates.length && !allStates.includes('CA')) {

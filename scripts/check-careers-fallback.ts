@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
 import {
   candidatePostingLinks,
+  careersLocationFields,
   looksLikePostingPage,
   postingPathFromUrl,
   sameCareersPostingSet,
   sweepCareersPostingLinks,
 } from '../server/engine/careers';
+import { evaluateLocation } from '../server/engine/location';
 import { careersSlug, normalizedCareersUrl } from './expansion-urls';
 
 function check(name: string, condition: boolean): void {
@@ -19,6 +21,21 @@ const links = candidatePostingLinks(
 );
 check('fallback considers non-target job links', links.some((link) => link.text === 'Registered Nurse'));
 check('fallback ignores unrelated links', !links.some((link) => link.url.endsWith('/about')));
+const editorialLinks = candidatePostingLinks(
+  '<a href="https://www.whitman.edu/whitman-stories/2019/brian-choe">Read more about Choe&#39;s career path</a>'
+    + '<a href="https://samhealth.org/patients-visitors/find-a-doctor/hudson-benjamin-1992935787/">Meet Program Director, Ben Hudson, DO</a>'
+    + '<a href="/jobs/req-123459">Learn more about the team</a>'
+    + '<a href="/jobs/req-123460">Read about our culture</a>'
+    + '<a href="/jobs/req-123461">Hear from our people</a>'
+    + '<a href="/jobs/req-123462">Watch our story</a>',
+  'https://example.com/careers',
+);
+check('Whitman career-story link is rejected',
+  !editorialLinks.some((link) => link.url.includes('whitman-stories')));
+check('Samaritan find-a-doctor link is rejected',
+  !editorialLinks.some((link) => link.url.includes('find-a-doctor')));
+check('editorial link text prefixes are rejected',
+  !editorialLinks.some((link) => /^(?:meet|read more|learn more|read about|hear from|watch)\b/i.test(link.text)));
 check('careers URL keys preserve and sort query parameters',
   normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=B&query=x')
     === normalizedCareersUrl('https://employment.unl.edu/postings/search?query=x&campus=B')
@@ -57,6 +74,98 @@ check(
   'posting-page heuristic rejects a downloadable job description',
   !looksLikePostingPage('https://example.com/job/req-123456.pdf', 'Project Manager'),
 );
+check(
+  'posting-page heuristic rejects Whitman story paths',
+  !looksLikePostingPage('https://www.whitman.edu/whitman-stories/2019/brian-choe', 'Program Director'),
+);
+check(
+  'posting-page heuristic rejects Samaritan provider-directory paths',
+  !looksLikePostingPage(
+    'https://samhealth.org/patients-visitors/find-a-doctor/hudson-benjamin-1992935787/',
+    'Program Director',
+  ),
+);
+check('posting-page heuristic rejects singular story paths',
+  !looksLikePostingPage('https://example.com/story/123456/program-director', 'Program Director'));
+check('posting-page heuristic rejects directory paths',
+  !looksLikePostingPage('https://example.com/directory/123456/program-director', 'Program Director'));
+
+const guestyCountryCases = [
+  ['canada', 'CA', 'Canada'],
+  ['israel', 'IL', 'Israel'],
+  ['spain', 'ES', 'Spain'],
+  ['mexico', 'MX', 'Mexico'],
+] as const;
+for (const [pathCountry, code, countryName] of guestyCountryCases) {
+  const fields = careersLocationFields(
+    [{
+      address: {
+        addressLocality: 'Remote',
+        addressRegion: code,
+        addressCountry: code,
+      },
+    }],
+    [code],
+    `https://www.guesty.com/careers-open-positions/co/${pathCountry}/123/example-role/`,
+    `Example role ${countryName}`,
+  );
+  const verdict = evaluateLocation({
+    locations: fields.locations,
+    restrictions: fields.restrictions,
+    workplaceType: 'remote',
+  });
+  check(`Guesty ${countryName} context overrides the ${code} state code`,
+    fields.locations.some((location) => location.includes(countryName))
+      && !fields.locations.some((location) => new RegExp(`,\\s*${code}(?:,|$)`).test(location))
+      && fields.restrictions.every((restriction) => restriction.includes(countryName))
+      && verdict.ca === 'not_us');
+}
+
+const guestyPathCountry = careersLocationFields(
+  undefined,
+  undefined,
+  'https://www.guesty.com/careers-open-positions/co/canada/123/example-role/',
+);
+check('Guesty country path supplies Canada when structured location is absent',
+  guestyPathCountry.locations.includes('Canada')
+    && evaluateLocation({ locations: guestyPathCountry.locations, workplaceType: 'remote' }).ca === 'not_us');
+const guestyLabelCountry = careersLocationFields(
+  undefined,
+  undefined,
+  'https://jobs.example.com/careers/example-role',
+  'Program Manager\nSpain',
+);
+check('careers-page country label supplies Spain when structured location is absent',
+  guestyLabelCountry.locations.includes('Spain')
+    && evaluateLocation({ locations: guestyLabelCountry.locations, workplaceType: 'remote' }).ca === 'not_us');
+const californiaExclusion = careersLocationFields(
+  undefined,
+  ['United States except California'],
+  'https://jobs.example.com/careers/example-role',
+);
+check('string applicant location requirements preserve US state exclusions',
+  californiaExclusion.restrictions[0] === 'United States except California');
+const canadaPostingOpenToUsApplicants = careersLocationFields(
+  [{ address: { addressLocality: 'Toronto', addressCountry: 'Canada' } }],
+  ['US'],
+  'https://jobs.example.com/careers/example-role',
+);
+check('Canada posting preserves a US applicant restriction',
+  canadaPostingOpenToUsApplicants.restrictions[0] === 'US');
+const guestyUsaPath = careersLocationFields(
+  [{ address: { addressRegion: 'CA' } }],
+  ['CA'],
+  'https://www.guesty.com/careers-open-positions/co/usa/123/example-role/',
+  'Shield Program Lead USA',
+);
+const guestyUsaVerdict = evaluateLocation({
+  locations: guestyUsaPath.locations,
+  restrictions: guestyUsaPath.restrictions,
+  workplaceType: 'remote',
+});
+check('Guesty USA path remains US-eligible',
+  guestyUsaPath.locations.some((location) => location.includes('United States'))
+    && guestyUsaVerdict.ca === 'confirmed');
 
 const sharedPostingSets = [
   [
