@@ -41,6 +41,8 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  const lastLoadAtRef = useRef(0);
+  const lastRunKeyRef = useRef<string | null>(null);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -49,6 +51,11 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     const [bootstrap, jobPayload] = await Promise.all([loadBootstrap(), loadJobs()]);
+    lastLoadAtRef.current = Date.now();
+    const latestRun = bootstrap.runs[0];
+    lastRunKeyRef.current = latestRun
+      ? `${latestRun.id}:${latestRun.status}:${latestRun.finishedAt ?? ''}`
+      : null;
     setBoot(bootstrap);
     setJobs(jobPayload.jobs);
     // Land on a tab that actually has roles instead of an empty first impression.
@@ -104,9 +111,48 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
-      if (pollRef.current !== null) window.clearInterval(pollRef.current);
+      if (pollRef.current !== null) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
   }, [loadAll]);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkRefreshStatus = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const status = await refreshStatus();
+        if (!mounted) return;
+        if (!status.refreshing && status.run && status.run.status !== 'running') {
+          const runKey = `${status.run.id}:${status.run.status}:${status.run.finishedAt ?? ''}`;
+          if (runKey !== lastRunKeyRef.current) {
+            void loadAll().catch(() => {});
+          }
+        }
+        if (!status.refreshing && status.run?.status !== 'running') return;
+        setRefreshing(true);
+        setProgress(status.run?.progress ?? 'Refreshing…');
+        if (pollRef.current === null) {
+          pollRef.current = window.setInterval(() => void poll(), 3000);
+        }
+      } catch {}
+    };
+    const onVisibilityChange = () => {
+      if (!mounted || document.visibilityState !== 'visible') return;
+      if (Date.now() - lastLoadAtRef.current > 60_000) {
+        void loadAll().catch(() => {});
+      }
+    };
+    const statusInterval = window.setInterval(() => void checkRefreshStatus(), 60_000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      mounted = false;
+      window.clearInterval(statusInterval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [loadAll, poll]);
 
   const loadEmployerData = useCallback(async () => {
     const payload = await loadEmployers();
@@ -193,6 +239,9 @@ export default function App() {
 
     const sorted = [...filtered];
     switch (filters.sort) {
+      case 'found':
+        sorted.sort((a, b) => (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') || b.matchScore - a.matchScore);
+        break;
       case 'newest':
         sorted.sort((a, b) => (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
         break;

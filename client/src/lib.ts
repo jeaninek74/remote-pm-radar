@@ -32,6 +32,7 @@ export function startRefresh(): Promise<{ runId: number; alreadyRunning: boolean
 export interface RunStatus {
   id: number;
   status: string;
+  finishedAt: string | null;
   progress: string | null;
   newJobs: number;
   addedTab1: number;
@@ -42,7 +43,7 @@ export interface RunStatus {
 export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshing: boolean }> {
   const raw = await api<{
     run: {
-      id: number; status: string; progress: string | null; new_jobs: number;
+      id: number; status: string; finished_at: string | null; progress: string | null; new_jobs: number;
       added_tab1: number; added_tab2: number; queued: number;
     } | null;
     refreshing: boolean;
@@ -53,6 +54,7 @@ export async function refreshStatus(): Promise<{ run: RunStatus | null; refreshi
       ? {
         id: raw.run.id,
         status: raw.run.status,
+        finishedAt: raw.run.finished_at,
         progress: raw.run.progress,
         newJobs: raw.run.new_jobs,
         addedTab1: raw.run.added_tab1,
@@ -103,6 +105,25 @@ export function dateLabel(value: string | null | undefined): string {
   const d = new Date(value.length <= 10 ? `${value}T00:00:00Z` : value);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+export function foundLabel(firstSeenAt: string | null | undefined): string {
+  if (!firstSeenAt) return '';
+  const foundAt = new Date(firstSeenAt);
+  if (Number.isNaN(foundAt.getTime())) return '';
+  const age = Math.max(0, Date.now() - foundAt.getTime());
+  if (age < 2 * 60_000) return 'Found just now';
+  if (age < 60 * 60_000) return `Found ${Math.floor(age / 60_000)} min ago`;
+  if (age < 24 * 60 * 60_000) return `Found ${Math.floor(age / 3_600_000)} h ago`;
+  return `Found ${foundAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`;
+}
+
+export function isNewlyFound(firstSeenAt: string | null | undefined, hours = 24): boolean {
+  if (!firstSeenAt) return false;
+  const foundAt = new Date(firstSeenAt).getTime();
+  if (Number.isNaN(foundAt)) return false;
+  const age = Date.now() - foundAt;
+  return age >= 0 && age < hours * 3_600_000;
 }
 
 export function dateTimeLabel(value: string | null | undefined): string {
