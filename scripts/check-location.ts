@@ -274,6 +274,27 @@ const onsiteScheduleWithRemoteTitle = evaluateLocation({
 });
 check('on-site schedule in the description takes precedence over a remote title',
   onsiteScheduleWithRemoteTitle.remote === 'onsite');
+const negatedInOfficeWithRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Program Manager (Remote)',
+  description: 'This is not an in-office role.',
+});
+check('negated in-office wording does not override a remote title',
+  negatedInOfficeWithRemoteTitle.remote === 'remote');
+const negatedOnsiteWithRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Program Manager (Remote)',
+  description: 'This is not an on-site position.',
+});
+check('negated on-site wording does not override a remote title',
+  negatedOnsiteWithRemoteTitle.remote === 'remote');
+const affirmativeInOfficeWithRemoteTitle = evaluateLocation({
+  locations: ['Remote, US'],
+  title: 'Program Manager (Remote)',
+  description: 'This is an in-office role.',
+});
+check('affirmative in-office wording overrides a remote title',
+  affirmativeInOfficeWithRemoteTitle.remote !== 'remote');
 
 const remoteLondon = evaluateLocation({
   locations: ['London, United Kingdom'],

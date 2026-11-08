@@ -105,9 +105,12 @@ function affirmativeMatch(pattern: RegExp, text: string): boolean {
 function descriptionWorkplaceArrangement(text: string): 'hybrid' | 'onsite' | null {
   if (
     affirmativeMatch(LOCATIONLESS_HYBRID, text)
-    || /\bin[- ]office\s+(?:role|position|schedule|requirement)\b/i.test(text)
+    || affirmativeMatch(/\bin[- ]office\s+(?:role|position|schedule|requirement)\b/i, text)
   ) return 'hybrid';
-  if (affirmativeMatch(LOCATIONLESS_ONSITE, text) || EXPLICIT_ONSITE_MARKERS.test(text)) return 'onsite';
+  if (
+    affirmativeMatch(LOCATIONLESS_ONSITE, text)
+    || affirmativeMatch(EXPLICIT_ONSITE_MARKERS, text)
+  ) return 'onsite';
   return null;
 }
 
