@@ -34,9 +34,21 @@ check(
 );
 
 const sharedPostingSets = [
-  ['https://uvmhealth.org/job/12625/patient-service-specialist?location=VT'],
-  ['https://cvmc.org/job/12625/patient-service-specialist?location=VT'],
-  ['https://portermedical.org/job/12625/patient-service-specialist?location=VT'],
+  [
+    'https://uvmhealth.org/job/12625/patient-service-specialist?location=VT',
+    'https://uvmhealth.org/job/12626/nurse-manager?location=VT',
+    'https://uvmhealth.org/job/12627/clinic-coordinator?location=VT',
+  ],
+  [
+    'https://cvmc.org/job/12625/patient-service-specialist?location=VT',
+    'https://cvmc.org/job/12626/nurse-manager?location=VT',
+    'https://cvmc.org/job/12627/clinic-coordinator?location=VT',
+  ],
+  [
+    'https://portermedical.org/job/12625/patient-service-specialist?location=VT',
+    'https://portermedical.org/job/12626/nurse-manager?location=VT',
+    'https://portermedical.org/job/12627/clinic-coordinator?location=VT',
+  ],
 ].map((urls) => urls.map(postingPathFromUrl).sort());
 check(
   'posting path strips the host and keeps the query',
@@ -50,10 +62,28 @@ for (const postingPaths of sharedPostingSets) {
 }
 check('three hosts with the same posting path deduplicate to one insert', claimedSharedPostingSets.length === 1);
 
+const sharedNotFirstSets = [
+  ['/job/001/project-manager', '/job/200/nurse-manager', '/job/300/analyst'],
+  ['/job/002/project-coordinator', '/job/200/nurse-manager', '/job/300/analyst'],
+];
+check('shared paths deduplicate even when not alphabetically first', sameCareersPostingSet(...sharedNotFirstSets));
+
+const oneAgainstManySets = [
+  ['/job/12625/project-manager'],
+  ['/job/12625/project-manager', '/job/12626/nurse-manager', '/job/12627/analyst'],
+];
+const claimedOneAgainstMany: string[][] = [];
+for (const postingPaths of oneAgainstManySets) {
+  if (!claimedOneAgainstMany.some((claimed) => sameCareersPostingSet(claimed, postingPaths))) {
+    claimedOneAgainstMany.push(postingPaths);
+  }
+}
+check('a one-posting site and a larger site sharing it both insert', claimedOneAgainstMany.length === 2);
+
 const distinctPostingSets = [
-  ['https://employer-a.example/job/12625/project-manager'],
-  ['https://employer-b.example/job/88201/program-director'],
-].map((urls) => urls.map(postingPathFromUrl).sort());
+  ['/job/100/project-manager', '/job/101/analyst'],
+  ['/job/88201/program-director', '/job/88202/coordinator'],
+];
 const claimedDistinctPostingSets: string[][] = [];
 for (const postingPaths of distinctPostingSets) {
   if (!claimedDistinctPostingSets.some((claimed) => sameCareersPostingSet(claimed, postingPaths))) {
@@ -61,11 +91,3 @@ for (const postingPaths of distinctPostingSets) {
   }
 }
 check('two hosts with different postings remain eligible for inserts', claimedDistinctPostingSets.length === 2);
-check(
-  'posting sets match at half overlap with the same first path',
-  sameCareersPostingSet(['/a', '/b', '/c'], ['/a', '/b', '/d', '/e']),
-);
-check(
-  'posting sets below half overlap remain distinct',
-  !sameCareersPostingSet(['/a', '/b', '/c'], ['/a', '/d', '/e']),
-);

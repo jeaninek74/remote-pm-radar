@@ -142,10 +142,11 @@ export function sameCareersPostingSet(leftPaths: string[] | undefined, rightPath
   if (!leftPaths?.length || !rightPaths?.length) return false;
   const left = [...new Set(leftPaths)].sort();
   const right = [...new Set(rightPaths)].sort();
-  if (left[0] !== right[0]) return false;
+  const smaller = Math.min(left.length, right.length);
+  if (smaller < 2) return false;
   const rightSet = new Set(right);
   const overlap = left.filter((path) => rightSet.has(path)).length;
-  return overlap / Math.min(left.length, right.length) >= 0.5;
+  return overlap >= 2 && overlap / smaller >= 0.5;
 }
 
 function sameCareerSite(hostname: string, pageHost: string): boolean {
