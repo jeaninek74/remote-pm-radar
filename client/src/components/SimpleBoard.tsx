@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Job } from '../types';
+import { compareJobsByPostedDate } from '../job-sort';
 import {
   ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound, salaryLabel, salarySubLabel,
 } from '../lib';
@@ -99,9 +100,8 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return active
+    return (urgentOnly ? urgent : active)
       .filter((job) => {
-        if (urgentOnly && job.urgency !== 'High') return false;
         if (category !== 'all' && job.category !== category) return false;
         if (needle) {
           const hay = `${job.title} ${job.company} ${job.industry ?? ''} ${job.descriptionExcerpt}`.toLowerCase();
@@ -109,21 +109,17 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         }
         return true;
       })
-      .sort(
-        (a, b) =>
-          (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') ||
-          (b.postedAt ?? '').localeCompare(a.postedAt ?? ''),
-      );
-  }, [active, category, q, urgentOnly]);
+      .sort(compareJobsByPostedDate);
+  }, [active, category, q, urgent, urgentOnly]);
 
   /**
    * The board must never render as an empty page. When nothing has cleared every rule
    * — which is normal on a new deployment, or in a quiet week — show what the radar has
-   * actually seen, newest first, so the page always reflects real postings rather than
+   * actually seen, newest posted first, so the page always reflects real postings rather than
    * a blank panel.
    */
   const fallback = useMemo(
-    () => (tab === 'tracked' ? [] : open.filter((job) => job.bucket === 'queue')),
+    () => (tab === 'tracked' ? [] : open.filter((job) => job.bucket === 'queue').sort(compareJobsByPostedDate)),
     [open, tab],
   );
   const current = TABS.find((item) => item.key === tab)!;
@@ -186,7 +182,9 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
       </div>
 
       <p className="tab-note">
-        {tab === 'tab0'
+        {urgentOnly
+          ? 'Untracked immediate hires across the salary tabs and pay-not-published roles.'
+          : tab === 'tab0'
           ? 'Roles whose published starting salary is between $90,000 and $110,000.'
           : tab === 'tab1'
           ? 'Roles whose published starting salary is between $110,000 and $130,000.'
@@ -218,14 +216,20 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         </div>
       </div>
 
-      {shown.length === 0 && fallback.length > 0 ? (
+      {urgentOnly ? <h2 className="urgent-heading">Immediate hires</h2> : null}
+
+      {shown.length === 0 && !urgentOnly && fallback.length > 0 ? (
         <p className="simple-balance" style={{ margin: '0 0 10px' }}>
           Nothing has cleared every rule for {current.name} yet, so this is what the radar currently sees —
-          the {fallback.length} most recently evaluated postings, newest first.
+          the {fallback.length} queued postings, newest posted first.
         </p>
       ) : null}
 
-      {shown.length === 0 && tab === 'tracked' ? (
+      {shown.length === 0 && urgentOnly ? (
+        <div className="simple-empty">
+          <p>No immediate hires match the current search and category filters.</p>
+        </div>
+      ) : shown.length === 0 && tab === 'tracked' ? (
         <div className="simple-empty">
           <p>No roles checked yet.</p>
           <p className="muted">Tick “Viewed” or “Applied” on any role and it moves here.</p>

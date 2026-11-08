@@ -134,7 +134,8 @@ export async function listJobs(): Promise<JobRow[]> {
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived')
          OR app_status <> 'Not Applied'
-      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC, first_seen_at DESC NULLS LAST`,
+      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC,
+               posted_at DESC NULLS LAST, first_seen_at DESC NULLS LAST`,
   );
   return rows.map(mapJob);
 }
@@ -189,7 +190,7 @@ export async function getStats(): Promise<Stats> {
        count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Nontechnical')::text AS nontechnical,
        count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Technical')::text AS technical,
        count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Hybrid')::text AS hybrid,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND urgency='High')::text AS urgent,
+       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2','unsalaried') AND urgency='High')::text AS urgent,
        count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
        count(DISTINCT company) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
        count(*) FILTER (WHERE bucket='unsalaried')::text AS unsalaried,
