@@ -116,6 +116,12 @@ async function main(): Promise<void> {
 
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');
+  const phenomBoard = detect(
+    '<title>Careers at Acme Corp</title><script>phApp.phAppConfig={"widgetApiEndpoint":"https://jobs.acme.com/widgets","refNum":"ACMEUS","locale":"en_us","siteType":"external","baseUrl":"https://jobs.acme.com/us/en/","pageName":"home"};</script>',
+    'https://jobs.acme.com/us/en',
+  );
+  check('detect configured Phenom board', phenomBoard.kind === 'board'
+    && phenomBoard.ats === 'phenom' && phenomBoard.slug === 'jobs.acme.com/us/en');
 
   const oracle = detect(
     '<a href="https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions">Careers</a>',

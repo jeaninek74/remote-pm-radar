@@ -18,7 +18,7 @@ function employerFor(spec: string, index: number): EmployerRow {
   const target = rest.join(':');
   const isWorkday = ats === 'workday';
   const isIcims = ats === 'icims';
-  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors' || ats === 'neogov';
+  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors' || ats === 'neogov' || ats === 'phenom';
   const boardTarget = target.split('|')[0];
   const icimsTarget = isIcims ? boardTarget : target;
   const sourceName = ats === 'oracle'
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     const withSalary = result.jobs.filter((job) => job.salary?.min).length;
     const dated = result.jobs.filter((job) => job.postedAt).length;
     console.log(
-      `ok   ${spec}  listed=${result.totalListed} matches=${result.jobs.length} withSalary=${withSalary} dated=${dated} truncated=${result.truncated === true}  ${seconds}s`,
+      `ok   ${spec}  listed=${result.totalListed} uniqueRead=${result.uniqueRead ?? result.jobs.length} matches=${result.jobs.length} withSalary=${withSalary} dated=${dated} truncated=${result.truncated === true}  ${seconds}s`,
     );
     for (const job of result.jobs.slice(0, isNewDirectAts ? 2 : 3)) {
       if (employer.ats === 'icims') {

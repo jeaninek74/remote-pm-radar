@@ -13,7 +13,7 @@ export interface ParsedSalary {
   evidence: string;
 }
 
-const AMT = String.raw`(\d{1,3}(?:,\d{3})+|\d{1,3}(?:\.\d+)?\s?[kK])`;
+const AMT = String.raw`(\d{1,3}(?:,\d{3})+|\d{1,3}(?:\.\d+)?\s?[kK]|\d{1,3}(?:\.\d+)?)`;
 const DASH = String.raw`\s*(?:-|\u2013|\u2014|to|through|until)\s*`;
 
 /** "$180,200 — $313,000", "$150K–$180K", "USD 120,000 - 160,000" */
@@ -122,8 +122,9 @@ export function parseSalaryFromText(text: string, evidenceLabel = 'Job descripti
     const value = toNumber(match[1]);
     if (value === null) continue;
     const tail = flat.slice(match.index + match[0].length, match.index + match[0].length + 26).toLowerCase();
-    const hourly = /(\/|per\s)\s?(hour|hr)\b|hourly/.test(tail);
-    const monthly = /(\/|per\s)\s?month/.test(tail);
+    const amountAndTail = `${match[0]}${tail}`;
+    const hourly = /(\/|per\s)\s?(hour|hr)\b|hourly/.test(amountAndTail);
+    const monthly = /(\/|per\s)\s?month/.test(amountAndTail);
     const plus = /^\s*\+/.test(tail);
     const score = contextScore(flat, match.index, match[0].length);
     const around = flat.slice(Math.max(0, match.index - 120), Math.min(flat.length, match.index + 160));

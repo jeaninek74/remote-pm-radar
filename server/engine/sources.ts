@@ -9,6 +9,17 @@ import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
 import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
+import {
+  parsePhenomConfig,
+  parsePhenomBaseSalary,
+  parsePhenomResponse,
+  phenomDetailRedirectTarget,
+  phenomEndpointMatchesPageHost,
+  phenomJobUrl,
+  phenomPrimaryLocations,
+  phenomRemoteInfo,
+  selectPhenomSalary,
+} from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -807,14 +818,66 @@ async function directReaderPause(deadline: number): Promise<boolean> {
   return Date.now() < deadline;
 }
 
-async function directReaderGet(url: string, deadline: number, headers: Record<string, string> = {}): Promise<Response> {
+async function directReaderGet(
+  url: string,
+  deadline: number,
+  headers: Record<string, string> = {},
+  expectedHost?: string,
+): Promise<Response> {
+  let targetUrl = url;
+  let redirectsFollowed = 0;
+  if (expectedHost && !phenomEndpointMatchesPageHost(targetUrl, expectedHost)) {
+    throw new Error('Phenom detail page URL host does not match careers page host');
+  }
+  while (true) {
+    const timeoutMs = budgetTimeout(deadline);
+    if (!timeoutMs) throw new Error('employer budget exceeded');
+    const response = await fetch(targetUrl, {
+      redirect: expectedHost ? 'manual' : 'follow',
+      headers: { 'User-Agent': BROWSER_USER_AGENT, ...headers },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (expectedHost && response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      const nextUrl = location
+        ? phenomDetailRedirectTarget(targetUrl, location, expectedHost, redirectsFollowed)
+        : null;
+      if (!nextUrl) throw new Error('Phenom detail redirect left the careers host or exceeded 5 hops');
+      targetUrl = nextUrl;
+      redirectsFollowed += 1;
+      continue;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (expectedHost && !phenomEndpointMatchesPageHost(response.url || targetUrl, expectedHost)) {
+      throw new Error('Phenom detail response host did not match careers page host');
+    }
+    return response;
+  }
+}
+
+async function directReaderPost(
+  url: string,
+  deadline: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+  expectedHost?: string,
+): Promise<Response> {
+  if (!await directReaderPause(deadline)) throw new Error('employer budget exceeded');
   const timeoutMs = budgetTimeout(deadline);
   if (!timeoutMs) throw new Error('employer budget exceeded');
   const response = await fetch(url, {
-    redirect: 'follow',
-    headers: { 'User-Agent': BROWSER_USER_AGENT, ...headers },
+    method: 'POST',
+    redirect: expectedHost ? 'manual' : 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
+  if (expectedHost && response.status >= 300 && response.status < 400) {
+    throw new Error('Phenom widget API redirects are not accepted');
+  }
+  if (expectedHost && new URL(response.url || url).host.toLowerCase() !== expectedHost.toLowerCase()) {
+    throw new Error('Phenom widget API response host did not match careers page host');
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response;
 }
@@ -1615,6 +1678,143 @@ async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardF
   return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
+function phenomJobLocations(posting: JobPostingLd | null): string[] {
+  const values = Array.isArray(posting?.jobLocation)
+    ? posting.jobLocation
+    : posting?.jobLocation ? [posting.jobLocation] : [];
+  return values.map(({ address = {} }) => {
+    const country = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, country].filter(Boolean).join(', ');
+  }).filter(Boolean);
+}
+
+function phenomSalary(posting: JobPostingLd | null, description: string): ParsedSalary | null {
+  const structured = parsePhenomBaseSalary(posting?.baseSalary);
+  if (structured && structured.min !== null) return structured;
+  return selectPhenomSalary(structured, pickSalary(description, 'Phenom posting'));
+}
+
+function phenomRestrictions(posting: JobPostingLd | null): string[] {
+  const requirements = posting?.applicantLocationRequirements;
+  const values = Array.isArray(requirements) ? requirements : requirements ? [requirements] : [];
+  return values.map((requirement) => {
+    if (typeof requirement === 'string') return requirement;
+    if (requirement.name) return requirement.name;
+    const address = requirement.address ?? {};
+    const country = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, country].filter(Boolean).join(', ');
+  }).filter(Boolean);
+}
+
+async function phenom(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const pageUrl = employer.careers_url || `https://${employer.slug}`;
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let totalHits = 0;
+  let from = 0;
+  let truncated = false;
+  let detailsTruncated = false;
+  const jobs: RawJob[] = [];
+  const seen = new Set<string>();
+  try {
+    const page = await directReaderGet(pageUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+    const config = parsePhenomConfig(await page.text(), page.url || pageUrl);
+    if (!config) return { jobs, ok: false, error: 'Phenom page configuration not found', totalListed: 0 };
+    if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
+      return {
+        jobs,
+        ok: false,
+        error: 'Phenom widget API endpoint host does not match final careers page host',
+        totalListed: 0,
+      };
+    }
+    const boardUrl = new URL(config.baseUrl);
+    const source = `Phenom:${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`;
+    const size = 500;
+    while (true) {
+      if (Date.now() >= deadline) { truncated = true; break; }
+      const response = await directReaderPost(config.widgetApiEndpoint, deadline, {
+        ddoKey: 'refineSearch',
+        jobs: true,
+        from,
+        size,
+        sort: { order: 'desc', field: 'dateCreated' },
+        refNum: config.refNum,
+        siteType: config.siteType,
+        locale: config.locale,
+        pageName: config.pageName,
+      }, {}, config.pageHost);
+      const parsed = parsePhenomResponse(await response.json());
+      if (from === 0) totalHits = parsed.totalHits;
+      for (const item of parsed.jobs) {
+        const externalId = item.jobSeqNo || item.jobId;
+        if (externalId) seen.add(externalId);
+        if (!isRoleTitle(item.title, undefined, employer)) continue;
+        let candidateUrl: URL | null = null;
+        if (item.jobUrl) {
+          try {
+            candidateUrl = new URL(phenomJobUrl(item.jobUrl, config.baseUrl));
+          } catch {
+            candidateUrl = null;
+          }
+        }
+        const ownUrl = candidateUrl?.hostname === boardUrl.hostname
+          ? candidateUrl.toString()
+          : phenomJobUrl(`job/${encodeURIComponent(externalId)}`, config.baseUrl);
+        if (known?.has(`${source}:${externalId}`)) {
+          jobs.push(unchangedJob(source, 'phenom', externalId, employer.name, item.title, ownUrl));
+          continue;
+        }
+        let detail: JobPostingLd | null = null;
+        try {
+          const detailResponse = await directReaderGet(
+            ownUrl,
+            deadline,
+            { Accept: 'text/html,application/xhtml+xml' },
+            config.pageHost,
+          );
+          detail = jobPostingFrom(await detailResponse.text());
+        } catch {
+          if (Date.now() >= deadline) detailsTruncated = true;
+        }
+        const description = detail?.description ? clean(detail.description) : clean(item.description);
+        const salary = phenomSalary(detail, description);
+        const structuredLocations = phenomJobLocations(detail);
+        const jobLocationType = detail?.jobLocationType ?? null;
+        const { isRemote, workplaceType } = phenomRemoteInfo(item.locations, jobLocationType, structuredLocations);
+        const postedAt = isoDate(detail?.datePosted || item.postedDate || item.dateCreated);
+        jobs.push({
+          source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
+          externalId, company: employer.name, title: item.title,
+          locations: phenomPrimaryLocations(item.locations, structuredLocations),
+          restrictions: phenomRestrictions(detail),
+          workplaceType,
+          isRemote,
+          postedAt,
+          postedConfidence: postedAt ? 'confirmed' : 'unknown',
+          descriptionHtml: detail?.description ?? null,
+          descriptionText: description || null,
+          applyUrl: ownUrl, linkType: 'employer',
+          salary,
+          salarySource: salary ? 'Employer posting (Phenom)' : null,
+        });
+      }
+      from += parsed.itemsCount;
+      if (from >= totalHits) break;
+      if (parsed.itemsCount === 0) throw new Error(`Phenom returned an empty page before totalHits at offset ${from}`);
+    }
+    return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated: truncated || detailsTruncated };
+  } catch (err) {
+    if (Date.now() >= deadline) {
+      return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated: true };
+    }
+    return { jobs, ok: false, error: (err as Error).message, retryable: isRetryableBoardError(err), totalListed: totalHits, truncated };
+  }
+}
+
 const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
   // Workday coordinates live in careers_url, so the adapter ignores the slug.
@@ -1626,6 +1826,7 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Prom
   taleo,
   successfactors,
   neogov,
+  phenom,
 };
 
 

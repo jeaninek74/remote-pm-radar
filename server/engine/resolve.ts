@@ -3,6 +3,7 @@ import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHos
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed } from './neogov';
+import { parsePhenomConfig, parsePhenomResponse, phenomEndpointMatchesPageHost } from './phenom';
 import { stripHtml } from './text';
 
 const PAGE_TIMEOUT_MS = 15_000;
@@ -69,6 +70,7 @@ export type BoardDetection =
     slug: string;
     workday?: { tenant: string; wd: string; site: string };
     successFactors?: { host: string; company: string };
+    phenom?: ReturnType<typeof parsePhenomConfig>;
   }
   | { kind: 'unreadable'; platform: string }
   | { kind: 'none' };
@@ -199,6 +201,16 @@ export function detect(html: string, finalUrl: string): BoardDetection {
   }
   const neogov = neogovCoordinates(`${finalUrl}\n${html}`);
   if (neogov) return { kind: 'board', ats: 'neogov', slug: `${neogov.host}/${neogov.folder}` };
+  const phenom = parsePhenomConfig(html, finalUrl);
+  if (phenom) {
+    const base = new URL(phenom.baseUrl);
+    return {
+      kind: 'board',
+      ats: 'phenom',
+      slug: `${base.host}${base.pathname.replace(/\/$/, '')}`,
+      phenom,
+    };
+  }
   for (const pattern of ATS_PATTERNS) {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
     if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
@@ -220,7 +232,7 @@ function timeoutFor(deadline: number): number {
   return Math.min(PAGE_TIMEOUT_MS, remaining);
 }
 
-async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST' = 'GET', body?: string): Promise<T> {
+async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST' = 'GET', body?: string, expectedHost?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'User-Agent': BROWSER_USER_AGENT,
@@ -229,10 +241,16 @@ async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST
   const response = await fetch(url, {
     method,
     body,
-    redirect: 'follow',
+    redirect: expectedHost ? 'manual' : 'follow',
     headers,
     signal: AbortSignal.timeout(timeoutFor(deadline)),
   });
+  if (expectedHost && response.status >= 300 && response.status < 400) {
+    throw new Error('Phenom widget API redirects are not accepted');
+  }
+  if (expectedHost && new URL(response.url || url).host.toLowerCase() !== expectedHost.toLowerCase()) {
+    throw new Error('Phenom widget API response host did not match careers page host');
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -524,12 +542,51 @@ async function validateNeogovCandidate(
   };
 }
 
+async function validatePhenomCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const config = candidate.phenom;
+  if (!config) return { kind: 'unreadable', platform: 'Phenom' };
+  if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
+    return { kind: 'unreadable', platform: 'Phenom' };
+  }
+  try {
+    const response = await fetchJson<unknown>(
+      config.widgetApiEndpoint,
+      deadline,
+      'POST',
+      JSON.stringify({
+        ddoKey: 'refineSearch', jobs: true, from: 0, size: 1,
+        sort: { order: 'desc', field: 'dateCreated' },
+        refNum: config.refNum, siteType: config.siteType, locale: config.locale, pageName: config.pageName,
+      }),
+      config.pageHost,
+    );
+    const parsed = parsePhenomResponse(response);
+    if (parsed.totalHits <= 0 || !namesAgree(name, config.companyName)) {
+      return { kind: 'unreadable', platform: 'Phenom' };
+    }
+    return {
+      kind: 'board',
+      ats: 'phenom',
+      slug: candidate.slug,
+      careersUrl: config.baseUrl,
+      total: parsed.totalHits,
+    };
+  } catch {
+    return { kind: 'unreadable', platform: 'Phenom' };
+  }
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
     if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
     if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
     if (candidate.ats === 'neogov') return await validateNeogovCandidate(name, candidate, deadline);
+    if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
