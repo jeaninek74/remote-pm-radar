@@ -313,7 +313,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const outputFile = options.outputFile
     ?? (options.retryPlatform
-      ? `/home/ubuntu/expansion-results-${options.retryPlatform.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-retry.jsonl`
+      ? `/home/ubuntu/expansion-results-${options.retryPlatform.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-retry${options.write ? '' : '-dry-run'}.jsonl`
       : options.dryRun ? DRY_RUN_OUTPUT_FILE : OUTPUT_FILE);
   const entries = await readInputs(options.files);
   const retryNames = options.retryPlatform
