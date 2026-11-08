@@ -136,8 +136,14 @@ export interface CareersPageProbe {
   postings: number;
   matching: number;
   postingPaths: string[];
+  postingIdentities: CareersPostingIdentity[];
   examplePostingUrl?: string;
   truncated: boolean;
+}
+
+export interface CareersPostingIdentity {
+  path: string;
+  title: string;
 }
 
 export function postingPathFromUrl(value: string): string {
@@ -145,11 +151,35 @@ export function postingPathFromUrl(value: string): string {
   return `${url.pathname}${url.search}`;
 }
 
-export function sameCareersPostingSet(leftPaths: string[] | undefined, rightPaths: string[] | undefined): boolean {
+function normalizePostingTitle(title: string): string {
+  return title.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function postingIdentityKeys(identities: CareersPostingIdentity[] | undefined): Set<string> {
+  return new Set((identities ?? [])
+    .map(({ path, title }) => {
+      const normalizedTitle = normalizePostingTitle(title);
+      return normalizedTitle ? `${path}\u0000${normalizedTitle}` : '';
+    })
+    .filter(Boolean));
+}
+
+export function sameCareersPostingSet(
+  leftPaths: string[] | undefined,
+  rightPaths: string[] | undefined,
+  leftIdentities?: CareersPostingIdentity[],
+  rightIdentities?: CareersPostingIdentity[],
+): boolean {
   if (!leftPaths?.length || !rightPaths?.length) return false;
   const left = new Set(leftPaths);
   const right = new Set(rightPaths);
-  if (left.size === right.size && [...left].every((path) => right.has(path))) return true;
+  if (left.size === right.size && [...left].every((path) => right.has(path))) {
+    const leftKeys = postingIdentityKeys(leftIdentities);
+    const rightKeys = postingIdentityKeys(rightIdentities);
+    if (leftKeys.size > 0 && leftKeys.size === rightKeys.size && [...leftKeys].every((key) => rightKeys.has(key))) {
+      return true;
+    }
+  }
   const smaller = Math.min(left.size, right.size);
   if (smaller < 2) return false;
   const overlap = [...left].filter((path) => right.has(path)).length;
@@ -172,7 +202,7 @@ function titleFromUrl(url: string): string {
 }
 
 export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
-  const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], truncated: false };
+  const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], postingIdentities: [], truncated: false };
   if (Date.now() >= deadline) return { ...result, truncated: true };
   let pageHtml: string;
   try {
@@ -210,13 +240,23 @@ export async function inspectCareersPage(url: string, deadline: number): Promise
     const posting = jobPostingFrom(html);
     const urlTitle = titleFromUrl(candidateUrl);
     if (!posting && !looksLikePostingPage(candidateUrl, candidate.text || urlTitle)) continue;
-    const title = (posting?.title ?? candidate.text ?? urlTitle).trim();
+    const identityTitle = (posting?.title ?? candidate.text).trim();
+    const title = (identityTitle || urlTitle).trim();
     result.postings += 1;
     if (title && isRoleTitle(title)) result.matching += 1;
-    result.postingPaths.push(postingPathFromUrl(candidateUrl));
+    const path = postingPathFromUrl(candidateUrl);
+    result.postingPaths.push(path);
+    result.postingIdentities.push({ path, title: identityTitle });
     result.examplePostingUrl ??= candidateUrl;
   }
   result.postingPaths = [...new Set(result.postingPaths)].sort();
+  const identities = new Map<string, CareersPostingIdentity>();
+  for (const identity of result.postingIdentities) {
+    const title = normalizePostingTitle(identity.title);
+    identities.set(`${identity.path}\u0000${title}`, identity);
+  }
+  result.postingIdentities = [...identities.values()].sort((left, right) =>
+    left.path.localeCompare(right.path) || normalizePostingTitle(left.title).localeCompare(normalizePostingTitle(right.title)));
   return result;
 }
 

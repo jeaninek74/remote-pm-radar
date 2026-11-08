@@ -1,6 +1,10 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
-import { inspectCareersPage, sameCareersPostingSet } from '../server/engine/careers';
+import {
+  inspectCareersPage,
+  sameCareersPostingSet,
+  type CareersPostingIdentity,
+} from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
 import { canonicalCareersUrl, careersSlug, normalizedCareersUrl } from './expansion-urls';
 import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
@@ -15,7 +19,7 @@ interface WebsiteEmployer {
 }
 
 type ExpansionResult = BoardResolution
-  | { kind: 'careers'; careersUrl: string; postings: number; matching: number; postingPaths?: string[]; examplePostingUrl?: string; truncated?: boolean }
+  | { kind: 'careers'; careersUrl: string; postings: number; matching: number; postingPaths?: string[]; postingIdentities?: CareersPostingIdentity[]; examplePostingUrl?: string; truncated?: boolean }
   | { kind: 'skipped'; reason: string };
 
 interface ExpansionRecord {
@@ -256,6 +260,7 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
           postings: probe.postings,
           matching: probe.matching,
           postingPaths: probe.postingPaths,
+          postingIdentities: probe.postingIdentities,
           examplePostingUrl: probe.examplePostingUrl,
           truncated: probe.truncated,
         };
@@ -544,7 +549,7 @@ async function main(): Promise<void> {
     const existingNames = await readExistingNames(pool, normalizedNames);
     const existingCareersUrls = options.write && !options.dryRun ? await readExistingCareersUrls(pool) : new Set<string>();
     const claimedCareersUrls = new Set<string>();
-    const claimedCareersPostings: { name: string; postingPaths: string[] }[] = [];
+    const claimedCareersPostings: { name: string; postingPaths: string[]; postingIdentities?: CareersPostingIdentity[] }[] = [];
     const claimedNames = new Set<string>();
     await mapLimit(toProcess, 12, async (entry) => {
       const normalized = normalizeName(entry.name);
@@ -575,15 +580,20 @@ async function main(): Promise<void> {
         } else if (options.write && !options.dryRun && result.kind === 'careers') {
           const careersUrlKey = normalizedCareersUrl(result.careersUrl);
           const postingPaths = result.postingPaths;
+          const postingIdentities = result.postingIdentities;
           const samePostings = claimedCareersPostings.find((claimed) =>
-            sameCareersPostingSet(claimed.postingPaths, postingPaths));
+            sameCareersPostingSet(claimed.postingPaths, postingPaths, claimed.postingIdentities, postingIdentities));
           if (samePostings) {
             result = { kind: 'skipped', reason: `same postings as ${samePostings.name}` };
           } else if (existingCareersUrls.has(careersUrlKey) || claimedCareersUrls.has(careersUrlKey)) {
             result = { kind: 'skipped', reason: 'careers URL already exists' };
           } else {
             claimedCareersUrls.add(careersUrlKey);
-            claimedCareersPostings.push({ name: entry.name, postingPaths: postingPaths ?? [] });
+            claimedCareersPostings.push({
+              name: entry.name,
+              postingPaths: postingPaths ?? [],
+              postingIdentities,
+            });
             await pool.query(
               `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
                VALUES ($1,'manual',$2,$3,$4,$5,$6,$7,TRUE)

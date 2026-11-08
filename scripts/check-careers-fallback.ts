@@ -75,14 +75,20 @@ const sharedPostingSets = [
     'https://portermedical.org/job/12627/clinic-coordinator?location=VT',
   ],
 ].map((urls) => urls.map(postingPathFromUrl).sort());
+const postingIdentitiesForPaths = (paths: string[], title?: string) => paths.map((path) => ({
+  path,
+  title: title ?? path.split('?')[0].split('/').filter(Boolean).pop()?.replace(/[-_]+/g, ' ') ?? '',
+}));
 check(
   'posting path strips the host and keeps the query',
   sharedPostingSets[0][0] === '/job/12625/patient-service-specialist?location=VT',
 );
-const claimedSharedPostingSets: string[][] = [];
+const claimedSharedPostingSets: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
 for (const postingPaths of sharedPostingSets) {
-  if (!claimedSharedPostingSets.some((claimed) => sameCareersPostingSet(claimed, postingPaths))) {
-    claimedSharedPostingSets.push(postingPaths);
+  const identities = postingIdentitiesForPaths(postingPaths);
+  if (!claimedSharedPostingSets.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, postingPaths, claimed.identities, identities))) {
+    claimedSharedPostingSets.push({ paths: postingPaths, identities });
   }
 }
 check('three hosts with the same posting path deduplicate to one insert', claimedSharedPostingSets.length === 1);
@@ -91,13 +97,30 @@ const singlePostingMirrors = [
   ['/job/12625/patient-service-specialist'],
   ['/job/12625/patient-service-specialist'],
 ];
-const claimedSinglePostingMirrors: string[][] = [];
-for (const postingPaths of singlePostingMirrors) {
-  if (!claimedSinglePostingMirrors.some((claimed) => sameCareersPostingSet(claimed, postingPaths))) {
-    claimedSinglePostingMirrors.push(postingPaths);
+const claimedSinglePostingMirrors: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
+for (const [index, postingPaths] of singlePostingMirrors.entries()) {
+  const identities = postingIdentitiesForPaths(postingPaths, index === 0
+    ? 'Patient Service Specialist'
+    : ' patient service specialist ');
+  if (!claimedSinglePostingMirrors.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, postingPaths, claimed.identities, identities))) {
+    claimedSinglePostingMirrors.push({ paths: postingPaths, identities });
   }
 }
 check('two mirrors with the same single posting deduplicate to one insert', claimedSinglePostingMirrors.length === 1);
+
+const samePathDifferentTitleIdentities = [
+  postingIdentitiesForPaths(['/jobs/1'], 'Project Manager'),
+  postingIdentitiesForPaths(['/jobs/1'], 'Nurse Manager'),
+];
+const claimedSamePathDifferentTitles: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
+for (const identities of samePathDifferentTitleIdentities) {
+  if (!claimedSamePathDifferentTitles.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, identities.map((identity) => identity.path), claimed.identities, identities))) {
+    claimedSamePathDifferentTitles.push({ paths: identities.map((identity) => identity.path), identities });
+  }
+}
+check('two hosts with the same posting path and different titles both insert', claimedSamePathDifferentTitles.length === 2);
 
 const sharedNotFirstSets = [
   ['/job/001/project-manager', '/job/200/nurse-manager', '/job/300/analyst'],
