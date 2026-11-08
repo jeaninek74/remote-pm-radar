@@ -146,6 +146,15 @@ export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined):
   };
 }
 
+function explicitPhenomMinimumAmount(text: string): number | null {
+  const match = /\b(?:minimum|min(?:\.|\b)|at\s+least|starting\s+at|from|beginning\s+at)(?:\s+base)?(?:\s+(?:salary|pay|compensation))?[\s:=-]*(?:USD\s*|\$\s*)([\d,]+(?:\.\d+)?k?)/i.exec(text);
+  if (!match) return null;
+  const raw = match[1].replace(/,/g, '');
+  const thousands = /k$/i.test(raw);
+  const amount = Number(thousands ? raw.slice(0, -1) : raw);
+  return Number.isFinite(amount) ? amount * (thousands ? 1000 : 1) : null;
+}
+
 export function selectPhenomSalary(
   structured: ParsedSalary | null,
   description: ParsedSalary | null,
@@ -155,8 +164,8 @@ export function selectPhenomSalary(
   if (description && description.min !== null) {
     if (structured?.min === null && structured.max !== null) {
       const descriptionRange = description.max !== null && description.min < description.max;
-      const explicitMinimum = description.max === null
-        && /\b(?:minimum|min(?:\.|\b)|at\s+least|starting\s+at|from|beginning\s+at)(?:\s+base)?(?:\s+salary)?[\s:=-]*(?:USD\s*)?[$\d]/i.test(descriptionText);
+      const explicitMinimumAmount = explicitPhenomMinimumAmount(descriptionText);
+      const explicitMinimum = description.max === null && explicitMinimumAmount === description.min;
       return descriptionRange || explicitMinimum ? description : structured;
     }
     return description;

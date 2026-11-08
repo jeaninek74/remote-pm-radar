@@ -161,6 +161,16 @@ const minimumBaseSalary = parseSalaryFromText(minimumBaseSalaryText, 'Phenom des
 check('Phenom minimum base salary description supersedes max-only structured salary',
   minimumBaseSalary?.min === 95000 && minimumBaseSalary.max === null
     && selectPhenomSalary(maxOnly140Salary, minimumBaseSalary, minimumBaseSalaryText) === minimumBaseSalary);
+const maxOnly160Salary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { maxValue: '160000', unitText: 'YEAR' },
+});
+const experienceMinimumText = 'Minimum 10 years of experience. Pay up to $160,000';
+const experienceMinimumSalary = parseSalaryFromText(experienceMinimumText, 'Phenom description');
+const experienceMinimumSelected = selectPhenomSalary(maxOnly160Salary, experienceMinimumSalary, experienceMinimumText);
+check('Phenom experience minimum does not replace a structured max-only salary',
+  experienceMinimumSalary?.min === 160000 && experienceMinimumSalary.max === null
+    && experienceMinimumSelected?.min === null && experienceMinimumSelected.max === 160000);
 const invalidCurrencySalary = parsePhenomBaseSalary({
   currency: 'CAD',
   value: { minValue: '95000', unitText: 'YEAR' },
