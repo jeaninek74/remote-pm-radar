@@ -109,18 +109,55 @@ for (const [index, postingPaths] of singlePostingMirrors.entries()) {
 }
 check('two mirrors with the same single posting deduplicate to one insert', claimedSinglePostingMirrors.length === 1);
 
-const samePathDifferentTitleIdentities = [
+const sharedPathsDifferentTitleIdentities = [
+  [
+    { path: '/jobs/1', title: 'Project Manager' },
+    { path: '/jobs/2', title: 'Data Analyst' },
+  ],
+  [
+    { path: '/jobs/1', title: 'Nurse Manager' },
+    { path: '/jobs/2', title: 'Recruiter' },
+  ],
+];
+const claimedSharedPathsDifferentTitles: { paths: string[]; identities: typeof sharedPathsDifferentTitleIdentities[number] }[] = [];
+for (const identities of sharedPathsDifferentTitleIdentities) {
+  const paths = identities.map((identity) => identity.path);
+  if (!claimedSharedPathsDifferentTitles.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, paths, claimed.identities, identities))) {
+    claimedSharedPathsDifferentTitles.push({ paths, identities });
+  }
+}
+check('two hosts sharing two paths with different titles both insert', claimedSharedPathsDifferentTitles.length === 2);
+
+const singlePathDifferentTitleIdentities = [
   postingIdentitiesForPaths(['/jobs/1'], 'Project Manager'),
   postingIdentitiesForPaths(['/jobs/1'], 'Nurse Manager'),
 ];
-const claimedSamePathDifferentTitles: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
-for (const identities of samePathDifferentTitleIdentities) {
-  if (!claimedSamePathDifferentTitles.some((claimed) =>
-    sameCareersPostingSet(claimed.paths, identities.map((identity) => identity.path), claimed.identities, identities))) {
-    claimedSamePathDifferentTitles.push({ paths: identities.map((identity) => identity.path), identities });
+const claimedSinglePathDifferentTitles: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
+for (const identities of singlePathDifferentTitleIdentities) {
+  const paths = identities.map((identity) => identity.path);
+  if (!claimedSinglePathDifferentTitles.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, paths, claimed.identities, identities))) {
+    claimedSinglePathDifferentTitles.push({ paths, identities });
   }
 }
-check('two hosts with the same posting path and different titles both insert', claimedSamePathDifferentTitles.length === 2);
+check('two hosts with the same posting path and different titles both insert',
+  claimedSinglePathDifferentTitles.length === 2);
+
+const untitledSingleMirrors = [
+  postingIdentitiesForPaths(['/jobs/1'], ''),
+  postingIdentitiesForPaths(['/jobs/1'], ''),
+];
+const claimedUntitledSingleMirrors: { paths: string[]; identities: ReturnType<typeof postingIdentitiesForPaths> }[] = [];
+for (const identities of untitledSingleMirrors) {
+  const paths = identities.map((identity) => identity.path);
+  if (!claimedUntitledSingleMirrors.some((claimed) =>
+    sameCareersPostingSet(claimed.paths, paths, claimed.identities, identities))) {
+    claimedUntitledSingleMirrors.push({ paths, identities });
+  }
+}
+check('untitled single-posting mirrors with the same path deduplicate to one insert',
+  claimedUntitledSingleMirrors.length === 1);
 
 const sharedNotFirstSets = [
   ['/job/001/project-manager', '/job/200/nurse-manager', '/job/300/analyst'],

@@ -155,13 +155,23 @@ function normalizePostingTitle(title: string): string {
   return title.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
-function postingIdentityKeys(identities: CareersPostingIdentity[] | undefined): Set<string> {
-  return new Set((identities ?? [])
-    .map(({ path, title }) => {
-      const normalizedTitle = normalizePostingTitle(title);
-      return normalizedTitle ? `${path}\u0000${normalizedTitle}` : '';
-    })
-    .filter(Boolean));
+function postingIdentityKeys(
+  paths: string[],
+  identities: CareersPostingIdentity[] | undefined,
+): Set<string> {
+  const pathSet = new Set(paths);
+  const keys = new Set<string>();
+  const identifiedPaths = new Set<string>();
+  for (const { path, title } of identities ?? []) {
+    if (!pathSet.has(path)) continue;
+    const normalizedTitle = normalizePostingTitle(title);
+    keys.add(normalizedTitle ? `${path}|${normalizedTitle}` : path);
+    identifiedPaths.add(path);
+  }
+  for (const path of pathSet) {
+    if (!identifiedPaths.has(path)) keys.add(path);
+  }
+  return keys;
 }
 
 export function sameCareersPostingSet(
@@ -171,18 +181,12 @@ export function sameCareersPostingSet(
   rightIdentities?: CareersPostingIdentity[],
 ): boolean {
   if (!leftPaths?.length || !rightPaths?.length) return false;
-  const left = new Set(leftPaths);
-  const right = new Set(rightPaths);
-  if (left.size === right.size && [...left].every((path) => right.has(path))) {
-    const leftKeys = postingIdentityKeys(leftIdentities);
-    const rightKeys = postingIdentityKeys(rightIdentities);
-    if (leftKeys.size > 0 && leftKeys.size === rightKeys.size && [...leftKeys].every((key) => rightKeys.has(key))) {
-      return true;
-    }
-  }
+  const left = postingIdentityKeys(leftPaths, leftIdentities);
+  const right = postingIdentityKeys(rightPaths, rightIdentities);
+  if (left.size === right.size && [...left].every((key) => right.has(key))) return true;
   const smaller = Math.min(left.size, right.size);
   if (smaller < 2) return false;
-  const overlap = [...left].filter((path) => right.has(path)).length;
+  const overlap = [...left].filter((key) => right.has(key)).length;
   return overlap >= 2 && overlap / smaller >= 0.5;
 }
 
