@@ -71,6 +71,7 @@ const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere i
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
+const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
 function detectStates(text: string): string[] {
@@ -109,11 +110,17 @@ function residencyRestriction(description: string): string[] {
  * salary tabs.
  */
 function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'travelHeavy' | 'travelShare'> {
-  const locations = (input.locations ?? []).map((l) => String(l ?? '').trim()).filter(Boolean);
+  const locations = (input.locations ?? []).map((l) => String(l ?? '').replace(/_/g, ' ').trim()).filter(Boolean);
   const restrictions = (input.restrictions ?? []).map((r) => String(r ?? '').trim()).filter(Boolean);
   const locText = locations.join(' | ');
   const restrictionText = restrictions.join(' | ');
   const scopeText = `${locText} | ${restrictionText}`;
+  const nationwideUsOnly = locations.length > 0
+    && locations.every((location) =>
+      US_MARKERS.test(location) || /^(?:united states|us|usa|united states of america)$/i.test(location),
+    )
+    && detectStates(locText).length === 0
+    && !REGION_MARKERS.test(locText);
   const workplace = String(input.workplaceType ?? '').toLowerCase();
   const description = (input.description ?? '').slice(0, 25_000);
   const descLower = description.toLowerCase();
@@ -135,6 +142,13 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     remote = 'remote';
   } else if (REMOTE_MARKERS.test(scopeText)) {
     remote = REMOTE_MARKERS.test(locText) || restrictions.length > 0 ? 'remote' : 'unknown';
+  } else if (
+    nationwideUsOnly
+    && REMOTE_DESCRIPTION.test(descLower)
+    && !HYBRID_MARKERS.test(descLower)
+    && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
+  ) {
+    remote = 'remote';
   } else if (!locations.length && !restrictions.length) {
     remote = 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
@@ -182,7 +196,8 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     };
   }
 
-  const hasUsScope = US_MARKERS.test(scopeText)
+  const hasUsScope = nationwideUsOnly
+    || US_MARKERS.test(scopeText)
     || restrictions.some((r) => /united states|worldwide|anywhere|global/i.test(r))
     || usEligibilityFromText(description);
   const hasRegionScope = REGION_MARKERS.test(scopeText);
