@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { parsePhenomConfig, parsePhenomResponse } from '../server/engine/phenom';
+import {
+  parsePhenomConfig,
+  parsePhenomResponse,
+  phenomEndpointMatchesPageHost,
+} from '../server/engine/phenom';
 
 let failures = 0;
 
@@ -24,5 +28,13 @@ const config = parsePhenomConfig(
 );
 check('Phenom config is parsed from tenant page data', config?.refNum === 'ACMEUS'
   && config.locale === 'en_us' && config.siteType === 'external' && config.companyName === 'Acme Corp');
+check('Phenom widget endpoint must match the final page host', !!config
+  && phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost));
+const crossHostConfig = parsePhenomConfig(
+  '<script>phApp.phAppConfig={"widgetApiEndpoint":"https://api.example.net/widgets"};</script>',
+  'https://careers.example.com/us/en/',
+);
+check('Phenom cross-host widget endpoint is rejected', !!crossHostConfig
+  && !phenomEndpointMatchesPageHost(crossHostConfig.widgetApiEndpoint, crossHostConfig.pageHost));
 
 if (failures) throw new Error(`${failures} Phenom parser check(s) failed`);

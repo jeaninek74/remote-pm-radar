@@ -9,7 +9,11 @@ import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
 import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
-import { parsePhenomConfig, parsePhenomResponse } from './phenom';
+import {
+  parsePhenomConfig,
+  parsePhenomResponse,
+  phenomEndpointMatchesPageHost,
+} from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -820,17 +824,29 @@ async function directReaderGet(url: string, deadline: number, headers: Record<st
   return response;
 }
 
-async function directReaderPost(url: string, deadline: number, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+async function directReaderPost(
+  url: string,
+  deadline: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+  expectedHost?: string,
+): Promise<Response> {
   if (!await directReaderPause(deadline)) throw new Error('employer budget exceeded');
   const timeoutMs = budgetTimeout(deadline);
   if (!timeoutMs) throw new Error('employer budget exceeded');
   const response = await fetch(url, {
     method: 'POST',
-    redirect: 'follow',
+    redirect: expectedHost ? 'manual' : 'follow',
     headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/json', 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
+  if (expectedHost && response.status >= 300 && response.status < 400) {
+    throw new Error('Phenom widget API redirects are not accepted');
+  }
+  if (expectedHost && new URL(response.url || url).host.toLowerCase() !== expectedHost.toLowerCase()) {
+    throw new Error('Phenom widget API response host did not match careers page host');
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response;
 }
@@ -1643,6 +1659,14 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
     const page = await directReaderGet(pageUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
     const config = parsePhenomConfig(await page.text(), page.url || pageUrl);
     if (!config) return { jobs, ok: false, error: 'Phenom page configuration not found', totalListed: 0 };
+    if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
+      return {
+        jobs,
+        ok: false,
+        error: 'Phenom widget API endpoint host does not match final careers page host',
+        totalListed: 0,
+      };
+    }
     const boardUrl = new URL(config.baseUrl);
     const source = `Phenom:${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`;
     const size = 500;
@@ -1658,7 +1682,7 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         siteType: config.siteType,
         locale: config.locale,
         pageName: config.pageName,
-      });
+      }, {}, config.pageHost);
       const parsed = parsePhenomResponse(await response.json());
       if (from === 0) totalHits = parsed.totalHits;
       for (const item of parsed.jobs) {

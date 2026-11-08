@@ -3,7 +3,7 @@ import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHos
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed } from './neogov';
-import { parsePhenomConfig, parsePhenomResponse } from './phenom';
+import { parsePhenomConfig, parsePhenomResponse, phenomEndpointMatchesPageHost } from './phenom';
 import { stripHtml } from './text';
 
 const PAGE_TIMEOUT_MS = 15_000;
@@ -232,7 +232,7 @@ function timeoutFor(deadline: number): number {
   return Math.min(PAGE_TIMEOUT_MS, remaining);
 }
 
-async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST' = 'GET', body?: string): Promise<T> {
+async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST' = 'GET', body?: string, expectedHost?: string): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'User-Agent': BROWSER_USER_AGENT,
@@ -241,10 +241,16 @@ async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST
   const response = await fetch(url, {
     method,
     body,
-    redirect: 'follow',
+    redirect: expectedHost ? 'manual' : 'follow',
     headers,
     signal: AbortSignal.timeout(timeoutFor(deadline)),
   });
+  if (expectedHost && response.status >= 300 && response.status < 400) {
+    throw new Error('Phenom widget API redirects are not accepted');
+  }
+  if (expectedHost && new URL(response.url || url).host.toLowerCase() !== expectedHost.toLowerCase()) {
+    throw new Error('Phenom widget API response host did not match careers page host');
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -543,6 +549,9 @@ async function validatePhenomCandidate(
 ): Promise<BoardResolution> {
   const config = candidate.phenom;
   if (!config) return { kind: 'unreadable', platform: 'Phenom' };
+  if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
+    return { kind: 'unreadable', platform: 'Phenom' };
+  }
   try {
     const response = await fetchJson<unknown>(
       config.widgetApiEndpoint,
@@ -553,6 +562,7 @@ async function validatePhenomCandidate(
         sort: { order: 'desc', field: 'dateCreated' },
         refNum: config.refNum, siteType: config.siteType, locale: config.locale, pageName: config.pageName,
       }),
+      config.pageHost,
     );
     const parsed = parsePhenomResponse(response);
     if (parsed.totalHits <= 0 || !namesAgree(name, config.companyName)) {

@@ -1,5 +1,6 @@
 export interface PhenomConfig {
   widgetApiEndpoint: string;
+  pageHost: string;
   refNum: string;
   locale: string;
   siteType: string;
@@ -28,6 +29,14 @@ export interface PhenomResponse {
   jobs: PhenomJob[];
 }
 
+export function phenomEndpointMatchesPageHost(endpoint: string, pageHost: string): boolean {
+  try {
+    return new URL(endpoint).host.toLowerCase() === pageHost.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 function stringField(source: string, field: string): string {
   const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`["']${escaped}["']\\s*:\\s*["']([^"']*)["']`, 'i').exec(source)?.[1] ?? '';
@@ -53,6 +62,7 @@ export function parsePhenomConfig(html: string, pageUrl: string): PhenomConfig |
     .trim();
   return {
     widgetApiEndpoint: new URL(widgetApiEndpoint, page).toString(),
+    pageHost: page.host.toLowerCase(),
     refNum: stringField(html, 'refNum'),
     locale: stringField(html, 'locale'),
     siteType: stringField(html, 'siteType'),
