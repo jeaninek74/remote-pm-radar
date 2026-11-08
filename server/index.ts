@@ -30,6 +30,27 @@ const PUBLIC_DIR = [
   path.join(__dirname, '..', 'dist', 'client'),
 ].find((candidate) => fs.existsSync(path.join(candidate, 'index.html'))) ?? path.join(process.cwd(), 'dist', 'client');
 
+function readBuildId(): string {
+  const indexPath = path.join(PUBLIC_DIR, 'index.html');
+  try {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    const scriptPath = /<script\b[^>]*\bsrc=["']([^"']+\.js(?:\?[^"']*)?)["']/i.exec(html)?.[1];
+    if (scriptPath) {
+      const assetName = path.posix.basename(scriptPath.replace(/[?#].*$/, ''));
+      if (assetName) return assetName;
+    }
+  } catch {
+    // Fall through to the file timestamp when the asset name is unavailable.
+  }
+  try {
+    return `mtime-${fs.statSync(indexPath).mtimeMs}`;
+  } catch {
+    return 'unavailable';
+  }
+}
+
+const BUILD_ID = readBuildId();
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
@@ -54,6 +75,7 @@ app.get('/api/health', async (_req, res) => {
     ok: db.ok,
     app: APP.name,
     version: APP.version,
+    buildId: BUILD_ID,
     database: db.ok ? 'connected' : db.error,
     refreshing: isRefreshing(),
     time: new Date().toISOString(),
@@ -80,6 +102,7 @@ app.get('/api/bootstrap', async (_req, res, next) => {
       cronExpression: CRON_EXPRESSION,
       windowDays: RULES.windowDays,
       profile: describeProfile(),
+      buildId: BUILD_ID,
       refreshing: isRefreshing(),
     });
   } catch (err) {
@@ -175,7 +198,7 @@ app.get('/api/refresh/status', async (_req, res, next) => {
               new_employers, links_checked, links_valid, message, errors
          FROM refresh_runs ORDER BY id DESC LIMIT 1`,
     );
-    res.json({ run: rows[0] ?? null, refreshing: isRefreshing() });
+    res.json({ run: rows[0] ?? null, refreshing: isRefreshing(), buildId: BUILD_ID });
   } catch (err) {
     next(err);
   }
@@ -235,10 +258,20 @@ app.get('/api/export.csv', async (req, res, next) => {
 
 /* --------------------------------------------------------------- static app */
 
-app.use(express.static(PUBLIC_DIR, { index: false, maxAge: '1h' }));
+app.use(express.static(PUBLIC_DIR, {
+  index: false,
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (path.resolve(filePath) === path.join(PUBLIC_DIR, 'index.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'), {
+    headers: { 'Cache-Control': 'no-cache' },
+  });
 });
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -10,6 +10,7 @@ import { JobDrawer } from './components/JobDrawer';
 import { EmployersTab } from './components/EmployersTab';
 import { RunsTab } from './components/RunsTab';
 import { HowTo } from './components/HowTo';
+import { reloadIfBuildChanged } from './buildVersion';
 
 type TabKey = 'tab0' | 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
 
@@ -43,6 +44,26 @@ export default function App() {
   const pollRef = useRef<number | null>(null);
   const lastLoadAtRef = useRef(0);
   const lastRunKeyRef = useRef<string | null>(null);
+  const buildIdRef = useRef<string | null>(null);
+
+  const checkBuildId = useCallback((nextBuildId: string | null | undefined) => {
+    if (!nextBuildId) return false;
+    const previousBuildId = buildIdRef.current;
+    if (previousBuildId === null) {
+      buildIdRef.current = nextBuildId;
+      return false;
+    }
+    const interactionBlocked = Boolean(
+      document.querySelector('[aria-modal="true"], .drawer-backdrop, .modal-backdrop')
+      || document.activeElement?.matches('input, textarea, select, [contenteditable="true"]'),
+    );
+    return reloadIfBuildChanged(
+      previousBuildId,
+      nextBuildId,
+      interactionBlocked,
+      () => window.location.reload(),
+    );
+  }, []);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -51,6 +72,7 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     const [bootstrap, jobPayload] = await Promise.all([loadBootstrap(), loadJobs()]);
+    if (checkBuildId(bootstrap.buildId)) return;
     lastLoadAtRef.current = Date.now();
     const latestRun = bootstrap.runs[0];
     lastRunKeyRef.current = latestRun
@@ -74,11 +96,12 @@ export default function App() {
         pollRef.current = window.setInterval(() => void poll(), 3000);
       }
     }
-  }, []);
+  }, [checkBuildId]);
 
   const poll = useCallback(async () => {
     try {
       const status = await refreshStatus();
+      if (checkBuildId(status.buildId)) return;
       if (status.run) setProgress(status.run.progress ?? 'Refreshing…');
       if (!status.refreshing && status.run?.status !== 'running') {
         if (pollRef.current !== null) {
@@ -96,7 +119,7 @@ export default function App() {
     } catch {
       /* keep polling through transient errors */
     }
-  }, [loadAll, notify]);
+  }, [checkBuildId, loadAll, notify]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +148,7 @@ export default function App() {
       try {
         const status = await refreshStatus();
         if (!mounted) return;
+        if (checkBuildId(status.buildId)) return;
         if (!status.refreshing && status.run && status.run.status !== 'running') {
           const runKey = `${status.run.id}:${status.run.status}:${status.run.finishedAt ?? ''}`;
           if (runKey !== lastRunKeyRef.current) {
@@ -152,7 +176,7 @@ export default function App() {
       window.clearInterval(statusInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [loadAll, poll]);
+  }, [checkBuildId, loadAll, poll]);
 
   const loadEmployerData = useCallback(async () => {
     const payload = await loadEmployers();
