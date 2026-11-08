@@ -6,7 +6,7 @@ import type { ParsedSalary } from './salary';
  * `workday` is not an open API but exposes a documented public JSON search
  * endpoint, so it is a first-class source rather than a manual link.
  */
-export type Ats = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'recruitee' | 'smartrecruiters' | 'workday' | 'oracle' | 'dayforce' | 'icims';
+export type Ats = 'greenhouse' | 'lever' | 'ashby' | 'workable' | 'recruitee' | 'smartrecruiters' | 'workday' | 'oracle' | 'dayforce' | 'icims' | 'ukg' | 'taleo' | 'successfactors';
 
 export type CompanySize = 'Startup' | 'Small' | 'Midsize' | 'Large' | 'Enterprise';
 

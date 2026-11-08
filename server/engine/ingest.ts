@@ -116,6 +116,15 @@ export function careersUrlFor(ats: string, slug: string): string {
     case 'workable': return `https://apply.workable.com/${slug}/`;
     case 'recruitee': return `https://${slug}.recruitee.com/`;
     case 'smartrecruiters': return `https://jobs.smartrecruiters.com/${slug}`;
+    case 'ukg': {
+      const [host, tenant, boardGuid] = slug.split('/');
+      return host && tenant && boardGuid ? `https://${host}/${tenant}/JobBoard/${boardGuid}` : '';
+    }
+    case 'taleo': {
+      const [host, section] = slug.split('/');
+      return host && section ? `https://${host}/careersection/${section}/jobsearch.ftl?lang=en` : '';
+    }
+    case 'successfactors': return `https://${slug}/`;
     default: return '';
   }
 }

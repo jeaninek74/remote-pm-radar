@@ -33,6 +33,42 @@ async function main(): Promise<void> {
   const icimsSharedHost = detect('<script src="https://cdn.icims.com/widget.js"></script>', 'https://employer.example/jobs');
   check('ignore shared iCIMS CDN host', icimsSharedHost.kind === 'none');
 
+  const ukg = detect(
+    '<a href="https://recruiting.ultipro.com/FRA1012FRANK/JobBoard/e51857cc-39da-44b8-a30e-839c982ff791">Careers</a>',
+    'https://employer.example/careers',
+  );
+  check(
+    'detect UKG board URL',
+    ukg.kind === 'board' && ukg.ats === 'ukg'
+      && ukg.slug === 'recruiting.ultipro.com/FRA1012FRANK/e51857cc-39da-44b8-a30e-839c982ff791',
+  );
+  const ukgFinal = detect('', 'https://recruiting2.ultipro.com/CKE1000CKER/JobBoard/8d7aeff6-90f7-47bf-9f70-771c5260877f');
+  check('detect UKG board in final URL', ukgFinal.kind === 'board' && ukgFinal.ats === 'ukg');
+
+  const ukgSubstring = detect('<main>ukgtools helps teams hire</main>', 'https://employer.example/careers');
+  check('do not flag a UKG substring as an ATS signature', ukgSubstring.kind === 'none');
+
+  const taleo = detect(
+    '<a href="https://hdr.taleo.net/careersection/ex/jobsearch.ftl?lang=en">Careers</a>',
+    'https://employer.example/careers',
+  );
+  check('detect Taleo board URL', taleo.kind === 'board' && taleo.ats === 'taleo' && taleo.slug === 'hdr.taleo.net/ex');
+  const taleoPreferred = detect(
+    '<a href="https://towson.taleo.net/careersection/in/jobsearch.ftl">Internal</a><a href="https://towson.taleo.net/careersection/ex/jobsearch.ftl">External</a>',
+    'https://employer.example/careers',
+  );
+  check('prefer an external Taleo section', taleoPreferred.kind === 'board' && taleoPreferred.slug === 'towson.taleo.net/ex');
+
+  const successFactors = detect(
+    '<a href="https://career4.successfactors.com?company=HALprod">Careers</a>',
+    'https://employer.example/careers',
+  );
+  check(
+    'detect SuccessFactors RMK company link',
+    successFactors.kind === 'board' && successFactors.ats === 'successfactors'
+      && successFactors.successFactors?.company === 'HALprod',
+  );
+
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');
 
