@@ -4,7 +4,7 @@ import { resolveBoard } from '../server/engine/resolve';
 interface SeedCandidate {
   name: string;
   website: string;
-  ats: 'ukg' | 'taleo' | 'successfactors';
+  ats: 'ukg' | 'taleo' | 'successfactors' | 'neogov';
   board: string;
 }
 
@@ -19,6 +19,10 @@ function candidateUrl(candidate: SeedCandidate): string {
   if (candidate.ats === 'taleo') {
     const [host, section] = candidate.board.split('/');
     return `https://${host}/careersection/${section}/jobsearch.ftl?lang=en`;
+  }
+  if (candidate.ats === 'neogov') {
+    const [host, folder] = candidate.board.split('/');
+    return `https://${host}/careers/${folder}`;
   }
   const url = new URL(`https://${candidate.board}`);
   url.pathname = '/career';

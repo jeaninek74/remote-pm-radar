@@ -2,6 +2,7 @@ import type { Ats } from './types';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
+import { parseNeogovFeed } from './neogov';
 import { stripHtml } from './text';
 
 const PAGE_TIMEOUT_MS = 15_000;
@@ -123,6 +124,40 @@ function successFactorsCoordinates(source: string): { host: string; company: str
   return null;
 }
 
+function neogovCoordinates(source: string): { host: string; folder: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  const reservedFolders = new Set(['home', 'jobs', 'search', 'login', 'signin', 'profile']);
+  for (const match of normalized.matchAll(
+    /https?:\/\/((?:www\.)?(?:governmentjobs|schooljobs)\.com)\/careers\/([A-Za-z0-9_-]+)(?=[/?#"'<>\\\s]|$)/gi,
+  )) {
+    if (reservedFolders.has(match[2].toLowerCase())) continue;
+    return { host: match[1].toLowerCase(), folder: match[2] };
+  }
+  return null;
+}
+
+function neogovAgencyNames(html: string): string[] {
+  const names: string[] = [];
+  const add = (value: string | undefined) => {
+    if (!value) return;
+    const name = stripHtml(value).replace(/\s+/g, ' ').trim();
+    if (name && !names.includes(name)) names.push(name);
+  };
+
+  for (const match of html.matchAll(/<(h1|h2|div|span)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi)) {
+    const classes = /\bclass\s*=\s*["']([^"']+)["']/i.exec(match[2])?.[1].split(/\s+/) ?? [];
+    if (!classes.includes('agency-name')) continue;
+    add(/\btitle\s*=\s*["']([^"']+)["']/i.exec(match[2])?.[1] ?? match[3]);
+  }
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html)?.[1];
+  if (title) {
+    for (const part of title.split('|')) add(part);
+  }
+  const verbiage = /<div\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bverbiage\b[^"']*["'])[^>]*>([\s\S]*?)<\/div\s*>/i.exec(html)?.[1];
+  if (verbiage) add(verbiage.slice(0, 1200));
+  return names;
+}
+
 function rmkHost(host: string): boolean {
   return !/\.successfactors\.(?:com|eu)$/i.test(host);
 }
@@ -153,6 +188,8 @@ export function detect(html: string, finalUrl: string): BoardDetection {
       successFactors,
     };
   }
+  const neogov = neogovCoordinates(`${finalUrl}\n${html}`);
+  if (neogov) return { kind: 'board', ats: 'neogov', slug: `${neogov.host}/${neogov.folder}` };
   for (const pattern of ATS_PATTERNS) {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
     if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
@@ -423,11 +460,65 @@ async function validateSuccessFactorsCandidate(
   }
 }
 
+async function validateNeogovCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const [host, folder, extra] = candidate.slug.split('/');
+  if (
+    extra
+    || !/^(?:www\.)?(?:governmentjobs|schooljobs)\.com$/i.test(host)
+    || !/^[A-Za-z0-9_-]+$/.test(folder)
+  ) {
+    return { kind: 'unknown', reason: 'Invalid NEOGOV agency coordinates' };
+  }
+
+  const careerUrl = `https://${host}/careers/${folder}`;
+  const response = await fetch(careerUrl, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `NEOGOV agency page HTTP ${response.status}` };
+
+  const finalUrl = new URL(response.url || careerUrl);
+  const finalHost = finalUrl.hostname.toLowerCase();
+  if (!/^(?:www\.)?(?:governmentjobs|schooljobs)\.com$/i.test(finalHost)) {
+    return { kind: 'unreadable', platform: 'NEOGOV' };
+  }
+  const finalFolder = /^\/careers\/([A-Za-z0-9_-]+)/i.exec(finalUrl.pathname)?.[1] ?? folder;
+  const agencyNames = neogovAgencyNames(await response.text());
+  if (!agencyNames.some((agencyName) => namesAgree(name, agencyName))) {
+    return {
+      kind: 'unknown',
+      reason: `NEOGOV agency name did not match employer: ${(agencyNames[0] ?? 'not found').slice(0, 120)}`,
+    };
+  }
+
+  const feedUrl = `https://${finalHost}/SearchEngine/JobsFeed?agency=${encodeURIComponent(finalFolder)}`;
+  const feedResponse = await fetch(feedUrl, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'application/rss+xml,application/xml,text/xml,*/*' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!feedResponse.ok) return { kind: 'unknown', reason: `NEOGOV feed HTTP ${feedResponse.status}` };
+  const items = parseNeogovFeed(await feedResponse.text());
+  return {
+    kind: 'board',
+    ats: 'neogov',
+    slug: `${finalHost}/${finalFolder}`,
+    careersUrl: `https://${finalHost}/careers/${finalFolder}`,
+    total: items.length,
+  };
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
     if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
     if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
+    if (candidate.ats === 'neogov') return await validateNeogovCandidate(name, candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(

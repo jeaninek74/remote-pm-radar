@@ -69,6 +69,24 @@ async function main(): Promise<void> {
       && successFactors.successFactors?.company === 'HALprod',
   );
 
+  const neogovHtml = detect(
+    '<a href="https://www.schooljobs.com/careers/hawaiiedu/jobs/12345">Open positions</a>',
+    'https://employer.example/careers',
+  );
+  check(
+    'detect NEOGOV agency in HTML',
+    neogovHtml.kind === 'board' && neogovHtml.ats === 'neogov'
+      && neogovHtml.slug === 'www.schooljobs.com/hawaiiedu',
+  );
+  const neogovFinal = detect('', 'https://www.governmentjobs.com/careers/lccc/jobs/5543608-0');
+  check(
+    'detect NEOGOV agency in final URL',
+    neogovFinal.kind === 'board' && neogovFinal.ats === 'neogov'
+      && neogovFinal.slug === 'www.governmentjobs.com/lccc',
+  );
+  const neogovHome = detect('', 'https://www.governmentjobs.com/careers/home');
+  check('keep NEOGOV home URL unreadable', neogovHome.kind === 'unreadable' && neogovHome.platform === 'NEOGOV');
+
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');
 
