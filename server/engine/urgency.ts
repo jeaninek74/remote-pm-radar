@@ -11,7 +11,7 @@ const EXPLICIT = [
   /\burgent(?:ly)? (?:need(?:ed)?|requirements?|hire|hiring|openings?|roles?|positions?)\b/i,
   /immediate opening/i,
   /immediate start/i,
-  /\b(?:start(?:ing)?(?:\s+date)?|begin(?:ning)?)\b[^\r\n]{0,30}\b(?:asap|immediately)\b/i,
+  /\b(?:start(?:ing)?(?:\s+date)?|begin(?:ning)?)\b[^.!?\r\n]{0,30}\b(?:asap|immediately)\b/i,
   /\bASAP\s*(?:[-–—]|\b(?:to|through|until)\b)\s*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|[A-Za-z]+\s+\d{1,2}(?:,?\s+\d{4})?)\b/,
   /asap start/i,
   /expedited hiring/i,

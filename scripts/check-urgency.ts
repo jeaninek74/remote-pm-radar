@@ -33,6 +33,7 @@ for (const { label, text } of positiveCases) {
 
 const negativeCases = [
   'The urgent care program supports physicians and patients across the region.',
+  'Benefits start after 30 days. Apply ASAP to be considered for this role.',
   'The immediate supervisor provides coaching to project team members.',
   'Immediate family benefits are available to full-time employees after enrollment.',
   'Please report immediately to the office when the emergency alarm is activated.',
