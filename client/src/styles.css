@@ -393,7 +393,6 @@ table.jobs tbody tr.selected { background: var(--accent-soft); }
 
 table.jobs td { padding: 10px; vertical-align: top; }
 
-.col-match { width: 62px; }
 .col-role { min-width: 320px; }
 .col-salary { width: 168px; }
 .col-posted { width: 92px; }
@@ -401,21 +400,6 @@ table.jobs td { padding: 10px; vertical-align: top; }
 .col-urg { width: 92px; }
 .col-status { width: 150px; }
 .col-link { width: 70px; }
-
-.match-badge {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  font-weight: 500;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-}
-
-.match-bar { width: 42px; height: 3px; background: var(--paper-sink); position: relative; }
-.match-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--green); }
-.match-badge.mid .match-bar i { background: var(--amber); }
-.match-badge.low .match-bar i { background: #a09480; }
 
 .role-title { font-weight: 600; font-size: 13px; line-height: 1.3; color: var(--ink); }
 .role-company { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
@@ -573,8 +557,6 @@ table.jobs td { padding: 10px; vertical-align: top; }
 .pay-line { font-family: var(--font-display); font-size: 30px; font-weight: 600; letter-spacing: -0.02em; }
 .pay-note { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
 
-.reason-list { margin: 0; padding-left: 18px; font-size: 12.5px; }
-.reason-list li { margin-bottom: 4px; }
 .gap-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--danger); }
 
 .field { margin-bottom: 12px; }

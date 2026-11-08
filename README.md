@@ -120,9 +120,8 @@ amend it). "Proven by" names the DB-free script that exercises the rule; run the
 | Urgency High / Medium / Low / Unknown, confirmed vs inferred, never from recency (§12) | `server/engine/urgency.ts` | explicit phrase list mirrors §12 |
 | Dashboard totals, filters, REFRESH JOBS NOW, progress and failed sources (§13–14) | `client/src/components/KpiBand.tsx`, `Filters.tsx`, `App.tsx`, `/api/refresh` | `/api/bootstrap` stats |
 | Scheduled refresh, confirmed not assumed (§15) | `server/index.ts` cron, `.github/workflows/refresh.yml` | `/api/bootstrap` reports `cronEnabled` + `nextRefresh`; `/api/runs` shows one run per :00/:30 |
-| 29 job columns, clickable link, export (§16, §24) | `server/export.ts` `HEADERS` (29 columns in prompt order) | `GET /api/export.xlsx` |
+| 26 job columns, clickable link, export | `server/export.ts` `HEADERS` (26 columns) | `GET /api/export.xlsx` |
 | Application statuses, dates and notes preserved across refreshes (§17) | `server/config.ts` `APP_STATUSES`, `jobs` row fields `appStatus`, `appliedAt`, `interviewAt`, `followUpAt`, `recruiterNotes`, `notes` | upserts never touch those columns |
-| Resume matching from both resumes, transparent 0–100, no inflation (§2, §18) | `project-management.ts` competencies + lanes (one per resume), `match.ts` | reasons and gaps are stored on every job |
 | No duplicates (§19) | `ingest.ts` `jobKey` + `dedupeJobs()` | run column "Dupes" |
 | Continuous employer discovery, oldest-searched first (§20) | `ingest.ts` employer rotation, `discoverPerRun` | run column "New employers" |
 | Needs Verification, Archived, Employer Database, Refresh History (§21) | `App.tsx` tabs, `EmployersTab.tsx`, `RunsTab.tsx` | — |

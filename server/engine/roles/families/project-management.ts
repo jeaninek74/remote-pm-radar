@@ -11,6 +11,9 @@ import { BOTH, type RoleFamily } from '../types';
 
 const LEADS = String.raw`(?:project|program|programme|portfolio|pmo|delivery|implementation|transformation|integration|deployment|onboarding|migration|pmo operations)`;
 const RANKS = String.raw`(?:manager|management|director|lead|leader|head|officer|principal|consultant|specialist|coordinator|administrator|supervisor)`;
+const OPERATIONS_RANKS = String.raw`(?:manager|management|director|lead|leader|head|officer|supervisor|administrator|executive|vp|vice president|president)`;
+const OPERATIONS_TECHNICAL_PREFIX = String.raw`(?<!\b(?:it|network|security|cyber|cloud|data|database|devops|dev|technical|technology|systems?|infrastructure|platform|noc|soc|site reliability|data center|server|production support)\s+)`;
+const OPERATIONS_QUALIFIERS = String.raw`(?:[a-z][a-z-]*[\s,&/-]+){0,3}`;
 
 const SEARCH_LEADS = ['project', 'program', 'programme', 'portfolio', 'pmo', 'delivery', 'implementation', 'transformation', 'integration', 'deployment', 'onboarding', 'migration'];
 const SEARCH_RANKS = ['manager', 'management', 'director', 'lead', 'coordinator', 'consultant', 'specialist', 'officer', 'principal'];
@@ -18,6 +21,9 @@ const SEARCH_EXTRA = [
   'technical program manager', 'technical project manager', 'senior project manager', 'senior program manager',
   'it project manager', 'it program manager', 'program management office', 'project management office',
   'chief of staff', 'business operations manager', 'change manager', 'change management', 'operational excellence',
+  'operations manager', 'director of operations', 'operations director', 'head of operations',
+  'business operations', 'strategy and operations', 'clinical operations manager',
+  'healthcare operations manager', 'marketing operations manager',
   'strategic initiatives', 'continuous improvement', 'scrum master', 'agile delivery', 'release manager',
   'engagement manager', 'customer implementation', 'clinical program manager', 'construction project manager',
   'capital projects', 'infrastructure program manager', 'epic project manager', 'erp project manager',
@@ -110,6 +116,11 @@ export const PROJECT_MANAGEMENT: RoleFamily = {
     new RegExp(String.raw`\b${LEADS}\b[\s,\-/]+(?:[a-z&,\- ]{0,28}?)\b${RANKS}\b`, 'i'),
     // "Manager, Project Management", "Director of Program Management", "Head of PMO"
     new RegExp(String.raw`\b${RANKS}\b[\s,\-]*(?:of\s+)?(?:[a-z&,\- ]{0,20}?)\b${LEADS}\b`, 'i'),
+    new RegExp(String.raw`${OPERATIONS_TECHNICAL_PREFIX}\boperations\s+${OPERATIONS_RANKS}\b`, 'i'),
+    new RegExp(String.raw`\b${OPERATIONS_RANKS}\b[\s,\-]*(?:of\s+)?${OPERATIONS_QUALIFIERS}${OPERATIONS_TECHNICAL_PREFIX}\boperations\b`, 'i'),
+    new RegExp(String.raw`${OPERATIONS_QUALIFIERS}${OPERATIONS_TECHNICAL_PREFIX}\boperations\s+${OPERATIONS_RANKS}\b`, 'i'),
+    /\bchief operating officer\b/i,
+    /\bcoo\b/i,
     /\bpmo\b/i,
     /\bprogram management office\b/i,
     /\bproject management office\b/i,

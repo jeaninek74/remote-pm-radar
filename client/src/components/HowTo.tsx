@@ -6,7 +6,7 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
           <div>
             <h2>How to use this board</h2>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-              Eight steps from seeing a role to closing the loop.
+              Seven steps from seeing a role to closing the loop.
             </div>
           </div>
           <button className="close-x" onClick={onClose} aria-label="Close">×</button>
@@ -34,41 +34,34 @@ export function HowTo({ onClose, windowDays }: { onClose: () => void; windowDays
             are dropped.
           </p>
 
-          <h3>3. Read the match score before the job description</h3>
-          <p>
-            Each role is scored against both resumes — the construction/PM resume and the 2026 general resume — and the
-            drawer names the better fit plus the specific qualifications that matched. Anything the posting demands that
-            your resumes do not show appears under <em>hard requirements to check</em>. Read those first.
-          </p>
-
-          <h3>4. Confirm urgency yourself</h3>
+          <h3>3. Confirm urgency yourself</h3>
           <p>
             <strong>High</strong> only appears when the posting itself says the role is urgent or the start is immediate.
             <strong> Medium</strong> means the employer has several project/program roles open at once, which is an
             inference and is labelled as one. <strong>Low</strong> means the posting is silent — not that hiring is slow.
           </p>
 
-          <h3>5. Apply through the employer link</h3>
+          <h3>4. Apply through the employer link</h3>
           <p>
             Use <strong>Open employer application</strong> in the drawer. Every tabbed role links to the employer's own
             applicant-tracking system. The link was checked during the last refresh; the date and HTTP
             result sit in the verification facts.
           </p>
 
-          <h3>6. Track the application where the job lives</h3>
+          <h3>5. Track the application where the job lives</h3>
           <p>
             Set the status inline in the table or in the drawer. Add the applied date, interview date, follow-up date,
             recruiter notes and personal notes. These fields are yours: a refresh never overwrites them.
           </p>
 
-          <h3>7. Work the verification queue weekly</h3>
+          <h3>6. Work the verification queue weekly</h3>
           <p>
             The queue holds roles that look promising but fail a hard rule — no published salary, only a last-updated
             date, or a link that is not the employer’s own. Each row explains its own blocker.
             Clear or ignore them; they never pollute the salary tabs.
           </p>
 
-          <h3>8. Export when you need it offline</h3>
+          <h3>7. Export when you need it offline</h3>
           <p>
             <strong>Export Excel</strong> produces the full workbook: the two salary tabs, the queue, the archive,
             a summary sheet, the employer database with ownership sourcing, and refresh history. CSV exports the

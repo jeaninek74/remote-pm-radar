@@ -112,7 +112,6 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
       .sort(
         (a, b) =>
           (b.firstSeenAt ?? '').localeCompare(a.firstSeenAt ?? '') ||
-          b.matchScore - a.matchScore ||
           (b.postedAt ?? '').localeCompare(a.postedAt ?? ''),
       );
   }, [active, category, q, urgentOnly]);

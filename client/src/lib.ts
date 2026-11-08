@@ -200,12 +200,6 @@ export function caBadge(job: Job): { label: string; cls: string; title: string }
   }
 }
 
-export function matchTone(score: number): string {
-  if (score >= 75) return '';
-  if (score >= 55) return 'mid';
-  return 'low';
-}
-
 export function download(path: string): void {
   const link = document.createElement('a');
   link.href = path;

@@ -12,8 +12,7 @@ export interface FilterState {
   employment: string;
   appStatus: string;
   within: 'any' | '24h' | '72h' | 'window';
-  minMatch: number;
-  sort: 'match' | 'found' | 'newest' | 'salary' | 'company';
+  sort: 'found' | 'newest' | 'salary' | 'company';
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -27,7 +26,6 @@ export const DEFAULT_FILTERS: FilterState = {
   employment: 'All',
   appStatus: 'All',
   within: 'any',
-  minMatch: 0,
   sort: 'found',
 };
 
@@ -51,7 +49,7 @@ export function Filters({ value, onChange, jobs, total, matched, windowDays }: P
   const active =
     value.q !== '' || value.category !== 'All' || value.urgency !== 'All' || value.industry !== 'All' ||
     value.size !== 'All' || value.state !== 'All' || value.blackOwned || value.employment !== 'All' ||
-    value.appStatus !== 'All' || value.within !== 'any' || value.minMatch > 0;
+    value.appStatus !== 'All' || value.within !== 'any';
 
   return (
     <>
@@ -144,17 +142,9 @@ export function Filters({ value, onChange, jobs, total, matched, windowDays }: P
           Verified Black-owned
         </label>
 
-        <select className="select" aria-label="Minimum resume match" value={String(value.minMatch)}
-          onChange={(event) => set('minMatch', Number(event.target.value))}>
-          {[0, 50, 60, 70, 80, 90].map((score) => (
-            <option key={score} value={score}>{score === 0 ? 'Any match score' : `Match ≥ ${score}%`}</option>
-          ))}
-        </select>
-
         <select className="select" aria-label="Sort jobs" value={value.sort}
           onChange={(event) => set('sort', event.target.value as FilterState['sort'])}>
           <option value="found">Sort: newest found</option>
-          <option value="match">Sort: best resume match</option>
           <option value="newest">Sort: newest posted</option>
           <option value="salary">Sort: highest salary</option>
           <option value="company">Sort: employer A–Z</option>

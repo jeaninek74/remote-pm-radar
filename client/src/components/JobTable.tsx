@@ -1,6 +1,6 @@
 import type { Job } from '../types';
 import {
-  ageLabel, caBadge, categoryClass, categoryLabel, foundLabel, isNewlyFound, matchTone, salaryLabel, salarySubLabel,
+  ageLabel, caBadge, categoryClass, categoryLabel, foundLabel, isNewlyFound, salaryLabel, salarySubLabel,
   urgencyClass,
 } from '../lib';
 import type { FilterState } from './Filters';
@@ -39,7 +39,6 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
       <table className="jobs">
         <thead>
           <tr>
-            {header('match', 'Match')}
             {header('company', 'Role & employer')}
             {header('salary', 'Salary')}
             {header('found', 'Found')}
@@ -62,12 +61,6 @@ export function JobTable({ jobs, selectedId, onSelect, onStatusChange, sort, onS
                 tabIndex={0}
                 onKeyDown={(event) => { if (event.key === 'Enter') onSelect(job.id); }}
               >
-                <td className="col-match">
-                  <div className={`match-badge ${matchTone(job.matchScore)}`}>
-                    <span>{job.matchScore}%</span>
-                    <span className="match-bar"><i style={{ width: `${job.matchScore}%` }} /></span>
-                  </div>
-                </td>
                 <td className="col-role">
                   <div className="role-title">
                     {job.title}
