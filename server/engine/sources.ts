@@ -709,6 +709,31 @@ function icimsLocations(posting: JobPostingLd): string[] {
   }).filter(Boolean);
 }
 
+function icimsRestrictions(posting: JobPostingLd): string[] {
+  const requirements = posting.applicantLocationRequirements == null
+    ? []
+    : Array.isArray(posting.applicantLocationRequirements)
+      ? posting.applicantLocationRequirements
+      : [posting.applicantLocationRequirements];
+  return requirements.map((requirement) => {
+    if (typeof requirement === 'string') return requirement.trim();
+    const address = requirement.address;
+    const country = typeof address?.addressCountry === 'string'
+      ? address.addressCountry
+      : address?.addressCountry?.name;
+    return [
+      requirement.name,
+      address?.addressLocality,
+      address?.addressRegion,
+      country,
+    ].filter((part): part is string =>
+      typeof part === 'string' && Boolean(part.trim()) && !/^unavailable$/i.test(part.trim()),
+    ).map((part) => part.trim()).join(', ');
+  }).filter((restriction) =>
+    Boolean(restriction) && !/^unavailable$/i.test(restriction.trim()),
+  );
+}
+
 function icimsBaseSalary(posting: JobPostingLd): ParsedSalary | null {
   const baseSalary = posting.baseSalary;
   if (!baseSalary?.value || baseSalary.currency?.toUpperCase() !== 'USD') return null;
@@ -798,6 +823,7 @@ async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardF
       company: employer.name,
       title: posting.title,
       locations: icimsLocations(posting),
+      restrictions: icimsRestrictions(posting),
       workplaceType: remote ? 'remote' : null,
       isRemote: remote ? true : null,
       descriptionText: description || null,

@@ -21,6 +21,15 @@ const SITEMAP_TAG = /<(?:loc)>\s*([^<\s]+)\s*<\/loc>/gi;
 const ANCHOR = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const JSON_LD = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
+export interface ApplicantLocationRequirement {
+  name?: string;
+  address?: {
+    addressLocality?: string;
+    addressRegion?: string;
+    addressCountry?: string | { name?: string };
+  };
+}
+
 export interface JobPostingLd {
   '@type'?: string | string[];
   title?: string;
@@ -29,7 +38,7 @@ export interface JobPostingLd {
   employmentType?: string | string[];
   jobLocationType?: string;
   jobLocation?: { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } } | { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } }[];
-  applicantLocationRequirements?: { name?: string } | { name?: string }[];
+  applicantLocationRequirements?: string | ApplicantLocationRequirement | Array<string | ApplicantLocationRequirement>;
   hiringOrganization?: { name?: string } | string;
   baseSalary?: { currency?: string; value?: { minValue?: number | string; maxValue?: number | string; value?: number | string; unitText?: string } };
   identifier?: { value?: string } | string;

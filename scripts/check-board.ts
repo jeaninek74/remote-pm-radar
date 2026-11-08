@@ -64,6 +64,7 @@ async function main(): Promise<void> {
           postedAt: job.postedAt,
           workplaceType: job.workplaceType,
           locations: job.locations,
+          restrictions: job.restrictions ?? [],
           descriptionLength: job.descriptionText?.length ?? 0,
           salary: job.salary ? {
             min: job.salary.min,
