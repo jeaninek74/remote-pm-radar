@@ -161,7 +161,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
             role="tab"
             aria-selected={tab === item.key}
             className={`tab${tab === item.key ? ' on' : ''}${item.key === 'nopay' || item.key === 'tracked' ? ' mute' : ''}`}
-            onClick={() => { setTab(item.key); setCategory('all'); setQ(''); }}
+            onClick={() => { setTab(item.key); setUrgentOnly(false); setCategory('all'); setQ(''); }}
           >
             <span className="tab-name">{item.name}</span>
             <span className="tab-range">{item.key === 'tab0' ? profile?.bands.tab0.label ?? item.range : item.key === 'tab1' ? profile?.bands.tab1.label ?? item.range : item.key === 'tab2' ? profile?.bands.tab2.label ?? item.range : item.range}</span>
@@ -178,7 +178,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         <button
           className="ghost-btn"
           onClick={() => setUrgentOnly((value) => !value)}
-          disabled={urgent.length === 0}
+          disabled={!urgentOnly && urgent.length === 0}
         >
           {urgentOnly ? 'Show all roles' : 'Show immediate hires'}
         </button>
