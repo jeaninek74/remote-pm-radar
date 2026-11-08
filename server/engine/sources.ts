@@ -1647,12 +1647,39 @@ async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardF
   return { jobs, ok: true, totalListed: all.length, truncated };
 }
 
+function phenomJobLocations(posting: JobPostingLd | null): string[] {
+  const values = Array.isArray(posting?.jobLocation)
+    ? posting.jobLocation
+    : posting?.jobLocation ? [posting.jobLocation] : [];
+  return values.map(({ address = {} }) => {
+    const country = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, country].filter(Boolean).join(', ');
+  }).filter(Boolean);
+}
+
+function phenomRestrictions(posting: JobPostingLd | null): string[] {
+  const requirements = posting?.applicantLocationRequirements;
+  const values = Array.isArray(requirements) ? requirements : requirements ? [requirements] : [];
+  return values.map((requirement) => {
+    if (typeof requirement === 'string') return requirement;
+    if (requirement.name) return requirement.name;
+    const address = requirement.address ?? {};
+    const country = typeof address.addressCountry === 'string'
+      ? address.addressCountry
+      : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, country].filter(Boolean).join(', ');
+  }).filter(Boolean);
+}
+
 async function phenom(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const pageUrl = employer.careers_url || `https://${employer.slug}`;
   const deadline = Date.now() + REFRESH.employerBudgetMs;
   let totalHits = 0;
   let from = 0;
   let truncated = false;
+  let detailsTruncated = false;
   const jobs: RawJob[] = [];
   const seen = new Set<string>();
   try {
@@ -1704,14 +1731,29 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
           jobs.push(unchangedJob(source, 'phenom', externalId, employer.name, item.title, ownUrl));
           continue;
         }
-        const postedAt = isoDate(item.postedDate || item.dateCreated);
+        let detail: JobPostingLd | null = null;
+        try {
+          const detailResponse = await directReaderGet(ownUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+          detail = jobPostingFrom(await detailResponse.text());
+        } catch {
+          if (Date.now() >= deadline) detailsTruncated = true;
+        }
+        const description = detail?.description ? clean(detail.description) : clean(item.description);
+        const structuredLocations = phenomJobLocations(detail);
+        const jobLocationType = detail?.jobLocationType ?? null;
+        const isRemote = /TELECOMMUTE/i.test(jobLocationType ?? '') ? true : null;
+        const postedAt = isoDate(detail?.datePosted || item.postedDate || item.dateCreated);
         jobs.push({
           source, ats: 'phenom', board: `${boardUrl.host}${boardUrl.pathname.replace(/\/$/, '')}`,
           externalId, company: employer.name, title: item.title,
-          locations: item.locations,
+          locations: structuredLocations.length ? structuredLocations : item.locations,
+          restrictions: phenomRestrictions(detail),
+          workplaceType: isRemote ? 'remote' : jobLocationType,
+          isRemote,
           postedAt,
           postedConfidence: postedAt ? 'confirmed' : 'unknown',
-          descriptionText: clean(item.description) || null,
+          descriptionHtml: detail?.description ?? null,
+          descriptionText: description || null,
           applyUrl: ownUrl, linkType: 'employer',
         });
       }
@@ -1719,7 +1761,7 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
       if (from >= totalHits) break;
       if (parsed.itemsCount === 0) throw new Error(`Phenom returned an empty page before totalHits at offset ${from}`);
     }
-    return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated };
+    return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated: truncated || detailsTruncated };
   } catch (err) {
     if (Date.now() >= deadline) {
       return { jobs, ok: true, totalListed: totalHits, uniqueRead: seen.size, truncated: true };
