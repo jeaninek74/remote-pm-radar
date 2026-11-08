@@ -30,6 +30,7 @@ const BROWSER_USER_AGENT =
 const CAREERS_LINK = /careers?|jobs|employment|join (?:us|our team)|work (?:with|for|at) us|job (?:postings|openings|opportunities)|open positions|current openings|human resources|\bhr\b/i;
 const STRONG_CAREERS_LINK = /\b(careers?|jobs? (?:at|with)|job (?:postings|openings|opportunities)|employment(?: opportunities)?|work (?:with|for|at) us|join (?:us|our team)|open positions|current openings|human resources|hr)\b/i;
 const EXCLUDED_CAREERS_LINK = /career[\s_-]*(?:services?|ed(?:ucation)?|center|development|readiness|pathways?)|student|alumni|hire[\s-]*a[\s-]*grad|externship|internship program|employee[\s-]*directory/i;
+const STAFF_CAREERS_LINK = /\b(staff|faculty|employees?|administrative)\b/i;
 const ATS_HOSTS = [
   'myworkdayjobs.com',
   'greenhouse.io',
@@ -122,10 +123,14 @@ async function careersLinks(pageUrl: string, deadline: number): Promise<string[]
       const href = decodeHtml(match[1] ?? match[2] ?? match[3] ?? '').trim();
       const text = decodeHtml((match[4] ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
       if (!CAREERS_LINK.test(href) && !CAREERS_LINK.test(text)) continue;
-      if (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text)) continue;
       try {
         const target = new URL(href, base);
         if ((target.protocol === 'https:' || target.protocol === 'http:') && sameSiteOrAts(target, base)) {
+          if (
+            (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
+            && !isAtsHost(target.hostname)
+            && !STAFF_CAREERS_LINK.test(`${href}\n${text}`)
+          ) continue;
           if (target.protocol === 'http:') target.protocol = 'https:';
           const url = target.toString();
           if (seen.has(url)) continue;
