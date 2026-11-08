@@ -138,6 +138,13 @@ const guestyLabelCountry = careersLocationFields(
 check('careers-page country label supplies Spain when structured location is absent',
   guestyLabelCountry.locations.includes('Spain')
     && evaluateLocation({ locations: guestyLabelCountry.locations, workplaceType: 'remote' }).ca === 'not_us');
+const californiaExclusion = careersLocationFields(
+  undefined,
+  ['United States except California'],
+  'https://jobs.example.com/careers/example-role',
+);
+check('string applicant location requirements preserve US state exclusions',
+  californiaExclusion.restrictions[0] === 'United States except California');
 const guestyUsaPath = careersLocationFields(
   [{ address: { addressRegion: 'CA' } }],
   ['CA'],

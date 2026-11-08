@@ -157,8 +157,6 @@ export function careersLocationFields(
 
   const restrictions = asArray(applicantLocationRequirements).map((requirement) => {
     if (typeof requirement === 'string') {
-      const explicitCountry = countryFromLabel(requirement);
-      if (explicitCountry) return explicitCountry.name;
       if (country && !country.isUs && /^[A-Z]{2}$/i.test(requirement.trim())) return country.name;
       return requirement;
     }
