@@ -179,8 +179,19 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
 
   // --- California eligibility ----------------------------------------------
   const listedStates = detectStates(scopeText);
+  const restrictionStates = detectStates(restrictionText);
   const residencyStates = residencyRestriction(description);
   const allStates = [...new Set([...listedStates, ...residencyStates])];
+
+  if (restrictionStates.length && !restrictionStates.includes('CA')) {
+    return {
+      remote,
+      ca: 'state_restricted',
+      note: `Posting restricts work to ${restrictionStates.join(', ')} — California not eligible.`,
+      states: restrictionStates,
+      remoteLabel: labels,
+    };
+  }
 
   if (allStates.includes('CA')) {
     return {

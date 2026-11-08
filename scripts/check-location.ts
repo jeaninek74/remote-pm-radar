@@ -63,6 +63,50 @@ check('non-US location is not remote or US-wide', nonUs.remote !== 'remote' && n
 const usAlias = evaluateLocation({ locations: ['US'], description: 'Fully remote role' });
 check('US alias is remote and US-wide', usAlias.remote === 'remote' && usAlias.ca === 'us_wide');
 
+const texasWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['Texas, United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'Texas restriction takes precedence over spelled-out country',
+  texasWithCountry.remote === 'remote' && texasWithCountry.ca === 'state_restricted' && texasWithCountry.states.includes('TX'),
+);
+
+const splitTexasWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['Texas', 'United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'separate Texas and country restrictions remain state-restricted',
+  splitTexasWithCountry.remote === 'remote' && splitTexasWithCountry.ca === 'state_restricted' && splitTexasWithCountry.states.includes('TX'),
+);
+
+const californiaWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['California, United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'California restriction with country remains CA-eligible',
+  californiaWithCountry.remote === 'remote' && californiaWithCountry.ca === 'confirmed' && californiaWithCountry.states.includes('CA'),
+);
+
+const countryOnly = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'bare country restriction remains US-wide',
+  countryOnly.remote === 'remote' && countryOnly.ca === 'us_wide',
+);
+
 if (failures) {
   console.error(`${failures} location check(s) failed`);
   process.exit(1);
