@@ -97,23 +97,41 @@ const hourlySalary = parsePhenomBaseSalary({
 });
 check('Phenom hourly salary annualizes before rounding',
   hourlySalary?.min === 130000 && hourlySalary.max === null && hourlySalary.hourlyRate === 62.5);
-const descriptionRangeSalary = parseSalaryFromText('Base salary range is $100,000 - $120,000 per year', 'Phenom description');
+const descriptionRangeText = 'Base salary range is $100,000 - $120,000 per year';
+const descriptionRangeSalary = parseSalaryFromText(descriptionRangeText, 'Phenom description');
 check('Phenom description salary fixture parses a range',
   descriptionRangeSalary?.min === 100000 && descriptionRangeSalary.max === 120000);
 check('Phenom description range supersedes max-only structured salary',
-  selectPhenomSalary(maxOnlySalary, descriptionRangeSalary) === descriptionRangeSalary);
+  selectPhenomSalary(maxOnlySalary, descriptionRangeSalary, descriptionRangeText) === descriptionRangeSalary);
+const upperBoundDescription = 'Up to $120,000';
+const upperBoundSalary = parseSalaryFromText(upperBoundDescription, 'Phenom description');
+const upperBoundSelected = selectPhenomSalary(maxOnlySalary, upperBoundSalary, upperBoundDescription);
+check('Phenom up-to description does not turn structured max into a minimum',
+  upperBoundSalary?.min === 120000 && upperBoundSalary.max === null
+    && upperBoundSelected?.min === null && upperBoundSelected.max === 120000
+    && classifySalary(upperBoundSelected.min, upperBoundSelected.max, upperBoundSelected.interval).bucket === 'none');
+const explicitMinimumText = 'Starting at $95,000 per year';
+const explicitMinimumSalary = parseSalaryFromText(explicitMinimumText, 'Phenom description');
+check('Phenom explicit description minimum supersedes max-only structured salary',
+  explicitMinimumSalary?.min === 95000
+    && selectPhenomSalary(maxOnlySalary, explicitMinimumSalary, explicitMinimumText) === explicitMinimumSalary);
+const fromMinimumText = 'From $95,000 per year';
+const fromMinimumSalary = parseSalaryFromText(fromMinimumText, 'Phenom description');
+check('Phenom description from-minimum supersedes max-only structured salary',
+  fromMinimumSalary?.min === 95000
+    && selectPhenomSalary(maxOnlySalary, fromMinimumSalary, fromMinimumText) === fromMinimumSalary);
 const invalidCurrencySalary = parsePhenomBaseSalary({
   currency: 'CAD',
   value: { minValue: '95000', unitText: 'YEAR' },
 });
 check('Phenom description range replaces invalid-currency structured salary',
-  invalidCurrencySalary === null && selectPhenomSalary(invalidCurrencySalary, descriptionRangeSalary) === descriptionRangeSalary);
+  invalidCurrencySalary === null && selectPhenomSalary(invalidCurrencySalary, descriptionRangeSalary, descriptionRangeText) === descriptionRangeSalary);
 const invalidUnitSalary = parsePhenomBaseSalary({
   currency: 'USD',
   value: { minValue: '95000', unitText: 'FORTNIGHT' },
 });
 check('Phenom invalid-unit structured salary falls back to description',
-  invalidUnitSalary === null && selectPhenomSalary(invalidUnitSalary, descriptionRangeSalary) === descriptionRangeSalary);
+  invalidUnitSalary === null && selectPhenomSalary(invalidUnitSalary, descriptionRangeSalary, descriptionRangeText) === descriptionRangeSalary);
 check('Phenom max-only structured salary remains when description has no minimum',
   selectPhenomSalary(maxOnlySalary, null) === maxOnlySalary);
 check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')

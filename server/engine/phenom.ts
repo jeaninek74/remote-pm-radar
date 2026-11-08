@@ -140,9 +140,18 @@ export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined):
 export function selectPhenomSalary(
   structured: ParsedSalary | null,
   description: ParsedSalary | null,
+  descriptionText = '',
 ): ParsedSalary | null {
   if (structured && structured.min !== null) return structured;
-  if (description && description.min !== null) return description;
+  if (description && description.min !== null) {
+    if (structured?.min === null && structured.max !== null) {
+      const descriptionRange = description.max !== null && description.min < description.max;
+      const explicitMinimum = description.max === null
+        && /\b(?:starting\s+at|from)\s+(?:USD\s*)?[$\d]/i.test(descriptionText);
+      return descriptionRange || explicitMinimum ? description : structured;
+    }
+    return description;
+  }
   return structured?.min === null ? structured : description;
 }
 

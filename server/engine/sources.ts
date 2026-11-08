@@ -1693,7 +1693,7 @@ function phenomJobLocations(posting: JobPostingLd | null): string[] {
 function phenomSalary(posting: JobPostingLd | null, description: string): ParsedSalary | null {
   const structured = parsePhenomBaseSalary(posting?.baseSalary);
   if (structured && structured.min !== null) return structured;
-  return selectPhenomSalary(structured, pickSalary(description, 'Phenom posting'));
+  return selectPhenomSalary(structured, pickSalary(description, 'Phenom posting'), description);
 }
 
 function phenomRestrictions(posting: JobPostingLd | null): string[] {
