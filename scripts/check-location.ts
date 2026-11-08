@@ -276,10 +276,22 @@ check('on-site schedule in the description takes precedence over a remote title'
   onsiteScheduleWithRemoteTitle.remote === 'onsite');
 
 const remoteLondon = evaluateLocation({
-  locations: ['London'],
+  locations: ['London, United Kingdom'],
   title: 'Project Manager - Remote',
 });
 check('remote title with London remains non-US', remoteLondon.remote === 'remote' && remoteLondon.ca === 'not_us');
+const remoteLondonKentucky = evaluateLocation({
+  locations: ['London, KY'],
+  title: 'Program Manager (Remote)',
+});
+check('US city London, Kentucky remains US-wide with a remote title',
+  remoteLondonKentucky.remote === 'remote' && remoteLondonKentucky.ca === 'us_wide');
+const remoteNewLondonConnecticut = evaluateLocation({
+  locations: ['New London, CT, USA'],
+  title: 'Program Manager (Remote)',
+});
+check('New London, Connecticut remains US-wide with a remote title',
+  remoteNewLondonConnecticut.remote === 'remote' && remoteNewLondonConnecticut.ca === 'us_wide');
 
 const usAlias = evaluateLocation({ locations: ['US'], description: 'Fully remote role' });
 check('US alias is remote and US-wide', usAlias.remote === 'remote' && usAlias.ca === 'us_wide');
