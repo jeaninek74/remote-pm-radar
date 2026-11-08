@@ -11,6 +11,7 @@ import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
 import {
   parsePhenomConfig,
+  parsePhenomBaseSalary,
   parsePhenomResponse,
   phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
@@ -1687,33 +1688,10 @@ function phenomJobLocations(posting: JobPostingLd | null): string[] {
 }
 
 function phenomSalary(posting: JobPostingLd | null, description: string): ParsedSalary | null {
-  const baseSalary = posting?.baseSalary;
-  const value = baseSalary?.value;
-  if (baseSalary && value && (!baseSalary.currency || /^USD$/i.test(baseSalary.currency))) {
-    const number = (input: string | number | undefined) => {
-      if (input === undefined) return null;
-      const parsed = Number(String(input).replace(/,/g, ''));
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-    const minimum = number(value.minValue ?? value.value);
-    const maximum = number(value.maxValue ?? value.value);
-    const unit = value.unitText?.toLowerCase() ?? 'year';
-    const factor = /month/.test(unit) ? 12 : 1;
-    const isHourly = /hour/.test(unit);
-    const min = minimum === null ? null : Math.round(minimum * factor);
-    const max = maximum === null ? null : Math.round(maximum * factor);
-    const format = (amount: number) => amount.toLocaleString('en-US');
-    if (min !== null || max !== null) {
-      const low = min ?? max!;
-      const high = max ?? min!;
-      const amount = low === high ? format(low) : `${format(low)} - ${format(high)}`;
-      const structured = parseSalaryFromText(
-        `Base salary USD ${amount} per ${isHourly ? 'hour' : 'year'}`,
-        'Phenom structured baseSalary',
-      );
-      if (structured) return structured;
-    }
-  }
+  const structured = parsePhenomBaseSalary(posting?.baseSalary);
+  if (structured) return structured;
+  const salaryValue = posting?.baseSalary?.value;
+  if (salaryValue?.maxValue != null && salaryValue.minValue == null && salaryValue.value == null) return null;
   return pickSalary(description, 'Phenom posting');
 }
 

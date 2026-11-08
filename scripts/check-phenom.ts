@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
 import {
   parsePhenomConfig,
+  parsePhenomBaseSalary,
   parsePhenomResponse,
   phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
   phenomJobUrl,
 } from '../server/engine/phenom';
+import { classifySalary } from '../server/engine/salary';
 
 let failures = 0;
 
@@ -45,6 +47,25 @@ check('Phenom detail cross-host redirects are rejected',
   phenomDetailRedirectTarget('https://jobs.acme.com/job/1', 'https://evil.example/job/1', 'jobs.acme.com', 0) === null);
 check('Phenom detail redirects stop after five hops',
   phenomDetailRedirectTarget('https://jobs.acme.com/job/1', '/job/2', 'jobs.acme.com', 5) === null);
+const maxOnlySalary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { maxValue: '120000', unitText: 'YEAR' },
+});
+check('Phenom max-only salary preserves a null minimum and does not enter a band',
+  maxOnlySalary?.min === null && maxOnlySalary.max === 120000
+    && classifySalary(maxOnlySalary.min, maxOnlySalary.max, maxOnlySalary.interval).bucket === 'none');
+const minOnlySalary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { minValue: '95000', unitText: 'YEAR' },
+});
+check('Phenom min-only salary preserves a null maximum',
+  minOnlySalary?.min === 95000 && minOnlySalary.max === null);
+const hourlySalary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { minValue: '62.50', unitText: 'HOUR' },
+});
+check('Phenom hourly salary annualizes before rounding',
+  hourlySalary?.min === 130000 && hourlySalary.max === null && hourlySalary.hourlyRate === 62.5);
 check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')
   === 'https://jobs.acme.com/us/en/job/123');
 

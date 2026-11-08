@@ -1,3 +1,6 @@
+import { RULES } from '../config';
+import type { ParsedSalary } from './salary';
+
 export interface PhenomConfig {
   widgetApiEndpoint: string;
   pageHost: string;
@@ -56,6 +59,56 @@ export function phenomJobUrl(path: string, baseUrl: string): string {
   const base = new URL(baseUrl);
   if (!base.pathname.endsWith('/')) base.pathname += '/';
   return new URL(path, base).toString();
+}
+
+export interface PhenomBaseSalary {
+  currency?: string;
+  value?: {
+    minValue?: number | string;
+    maxValue?: number | string;
+    value?: number | string;
+    unitText?: string;
+  };
+}
+
+export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined): ParsedSalary | null {
+  const value = baseSalary?.value;
+  if (!baseSalary || !value || (baseSalary.currency && !/^USD$/i.test(baseSalary.currency))) return null;
+  const amount = (input: number | string | undefined): number | null => {
+    if (input === undefined) return null;
+    const parsed = Number(String(input).replace(/[,$\s]/g, ''));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  };
+  const rawMinimum = value.minValue ?? value.value;
+  const rawMaximum = value.maxValue;
+  const minimum = amount(rawMinimum);
+  const maximum = amount(rawMaximum);
+  if (rawMinimum != null && minimum === null || rawMaximum != null && maximum === null) return null;
+  if (minimum === null && maximum === null) return null;
+
+  const unit = value.unitText?.toLowerCase().trim() ?? '';
+  const hourly = /hour|hr/.test(unit);
+  const factor = hourly
+    ? RULES.hoursPerYear
+    : /week/.test(unit) ? 52
+      : /month/.test(unit) ? 12
+        : !unit || /year|annual|annum/.test(unit) ? 1 : null;
+  if (factor === null) return null;
+  const min = minimum === null ? null : Math.round(minimum * factor);
+  const max = maximum === null ? null : Math.round(maximum * factor);
+  if (min !== null && max !== null && max < min) return null;
+  const format = (amountValue: number) => amountValue.toLocaleString('en-US');
+  const amountText = min === null
+    ? `maximum $${format(max!)}`
+    : max === null ? `minimum $${format(min)}` : `$${format(min)} - $${format(max)}`;
+  return {
+    min,
+    max,
+    interval: hourly ? 'hour' : 'year',
+    hourlyRate: hourly ? minimum : null,
+    isOTE: false,
+    evidence: `Phenom structured baseSalary: ${amountText}${hourly ? ' hourly, annualised at 2,080 hours' : ''}`,
+  };
 }
 
 
