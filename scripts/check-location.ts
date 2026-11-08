@@ -68,6 +68,24 @@ check(
   occasionalOnsiteVisits.remote === 'remote' && occasionalOnsiteVisits.ca === 'us_wide',
 );
 
+const occasionalInPersonMeetings = evaluateLocation({
+  locations: ['USA'],
+  description: 'This is a remote-first role that may require travel to Boston for occasional in-person team meetings and company events.',
+});
+check(
+  'occasional in-person meetings do not negate remote-first',
+  occasionalInPersonMeetings.remote === 'remote' && occasionalInPersonMeetings.ca === 'us_wide',
+);
+
+const clientOnboardingTravel = evaluateLocation({
+  locations: ['USA'],
+  description: 'Travel up to 25% of the time to onboard main clients in person and support go-live.',
+});
+check(
+  'client onboarding travel does not make the role explicitly on-site',
+  clientOnboardingTravel.remote === 'unknown' && clientOnboardingTravel.ca === 'us_wide',
+);
+
 const cityLocation = evaluateLocation({ locations: ['San Francisco, CA'], description: 'fully remote' });
 console.log(`Master baseline for city location with remote description: ${cityLocation.remote}/${cityLocation.ca}`);
 check('city location preserves master result', cityLocation.remote === 'onsite' && cityLocation.ca === 'unknown');
