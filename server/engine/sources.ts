@@ -12,6 +12,7 @@ import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
 import {
   parsePhenomConfig,
   parsePhenomResponse,
+  phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
   phenomJobUrl,
 } from './phenom';
@@ -813,16 +814,41 @@ async function directReaderPause(deadline: number): Promise<boolean> {
   return Date.now() < deadline;
 }
 
-async function directReaderGet(url: string, deadline: number, headers: Record<string, string> = {}): Promise<Response> {
-  const timeoutMs = budgetTimeout(deadline);
-  if (!timeoutMs) throw new Error('employer budget exceeded');
-  const response = await fetch(url, {
-    redirect: 'follow',
-    headers: { 'User-Agent': BROWSER_USER_AGENT, ...headers },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response;
+async function directReaderGet(
+  url: string,
+  deadline: number,
+  headers: Record<string, string> = {},
+  expectedHost?: string,
+): Promise<Response> {
+  let targetUrl = url;
+  let redirectsFollowed = 0;
+  if (expectedHost && !phenomEndpointMatchesPageHost(targetUrl, expectedHost)) {
+    throw new Error('Phenom detail page URL host does not match careers page host');
+  }
+  while (true) {
+    const timeoutMs = budgetTimeout(deadline);
+    if (!timeoutMs) throw new Error('employer budget exceeded');
+    const response = await fetch(targetUrl, {
+      redirect: expectedHost ? 'manual' : 'follow',
+      headers: { 'User-Agent': BROWSER_USER_AGENT, ...headers },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (expectedHost && response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      const nextUrl = location
+        ? phenomDetailRedirectTarget(targetUrl, location, expectedHost, redirectsFollowed)
+        : null;
+      if (!nextUrl) throw new Error('Phenom detail redirect left the careers host or exceeded 5 hops');
+      targetUrl = nextUrl;
+      redirectsFollowed += 1;
+      continue;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (expectedHost && !phenomEndpointMatchesPageHost(response.url || targetUrl, expectedHost)) {
+      throw new Error('Phenom detail response host did not match careers page host');
+    }
+    return response;
+  }
 }
 
 async function directReaderPost(
@@ -1765,7 +1791,12 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         }
         let detail: JobPostingLd | null = null;
         try {
-          const detailResponse = await directReaderGet(ownUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+          const detailResponse = await directReaderGet(
+            ownUrl,
+            deadline,
+            { Accept: 'text/html,application/xhtml+xml' },
+            config.pageHost,
+          );
           detail = jobPostingFrom(await detailResponse.text());
         } catch {
           if (Date.now() >= deadline) detailsTruncated = true;

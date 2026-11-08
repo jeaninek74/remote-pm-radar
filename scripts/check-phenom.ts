@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import {
   parsePhenomConfig,
   parsePhenomResponse,
+  phenomDetailRedirectTarget,
   phenomEndpointMatchesPageHost,
   phenomJobUrl,
 } from '../server/engine/phenom';
@@ -37,6 +38,13 @@ const crossHostConfig = parsePhenomConfig(
 );
 check('Phenom cross-host widget endpoint is rejected', !!crossHostConfig
   && !phenomEndpointMatchesPageHost(crossHostConfig.widgetApiEndpoint, crossHostConfig.pageHost));
+check('Phenom detail redirects can stay on the careers host',
+  phenomDetailRedirectTarget('https://jobs.acme.com/job/1', '/us/en/job/1', 'jobs.acme.com', 0)
+    === 'https://jobs.acme.com/us/en/job/1');
+check('Phenom detail cross-host redirects are rejected',
+  phenomDetailRedirectTarget('https://jobs.acme.com/job/1', 'https://evil.example/job/1', 'jobs.acme.com', 0) === null);
+check('Phenom detail redirects stop after five hops',
+  phenomDetailRedirectTarget('https://jobs.acme.com/job/1', '/job/2', 'jobs.acme.com', 5) === null);
 check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')
   === 'https://jobs.acme.com/us/en/job/123');
 
