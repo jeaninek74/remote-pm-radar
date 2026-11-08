@@ -128,8 +128,24 @@ export function candidatePostingLinks(html: string, base: string): { url: string
 export interface CareersPageProbe {
   postings: number;
   matching: number;
+  postingPaths: string[];
   examplePostingUrl?: string;
   truncated: boolean;
+}
+
+export function postingPathFromUrl(value: string): string {
+  const url = new URL(value);
+  return `${url.pathname}${url.search}`;
+}
+
+export function sameCareersPostingSet(leftPaths: string[] | undefined, rightPaths: string[] | undefined): boolean {
+  if (!leftPaths?.length || !rightPaths?.length) return false;
+  const left = [...new Set(leftPaths)].sort();
+  const right = [...new Set(rightPaths)].sort();
+  if (left[0] !== right[0]) return false;
+  const rightSet = new Set(right);
+  const overlap = left.filter((path) => rightSet.has(path)).length;
+  return overlap / Math.min(left.length, right.length) >= 0.5;
 }
 
 function sameCareerSite(hostname: string, pageHost: string): boolean {
@@ -148,7 +164,7 @@ function titleFromUrl(url: string): string {
 }
 
 export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
-  const result: CareersPageProbe = { postings: 0, matching: 0, truncated: false };
+  const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], truncated: false };
   if (Date.now() >= deadline) return { ...result, truncated: true };
   let pageHtml: string;
   try {
@@ -189,8 +205,10 @@ export async function inspectCareersPage(url: string, deadline: number): Promise
     const title = (posting?.title ?? candidate.text ?? urlTitle).trim();
     result.postings += 1;
     if (title && isRoleTitle(title)) result.matching += 1;
+    result.postingPaths.push(postingPathFromUrl(candidateUrl));
     result.examplePostingUrl ??= candidateUrl;
   }
+  result.postingPaths = [...new Set(result.postingPaths)].sort();
   return result;
 }
 
