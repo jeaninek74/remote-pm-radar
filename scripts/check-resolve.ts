@@ -1,3 +1,4 @@
+import { parseNeogovFeed } from '../server/engine/neogov';
 import { detect, namesAgree, neogovVerbiageMatches, resolveBoard } from '../server/engine/resolve';
 
 let failures = 0;
@@ -94,6 +95,24 @@ async function main(): Promise<void> {
     'NEOGOV verbiage does not match separated employer tokens',
     !neogovVerbiageMatches('Lehigh Valley Hospital', 'The Lehigh Valley has many hospital partners.'),
   );
+  const mixedNeogovFeed = parseNeogovFeed(
+    '<rss><channel>'
+      + '<item><title>Missing job ID</title><link>https://example.com/jobs/1</link></item>'
+      + '<item><title>Valid role</title><link>https://example.com/jobs/2</link><joblisting:jobId>2</joblisting:jobId></item>'
+      + '<item><title>Missing link</title><joblisting:jobId>3</joblisting:jobId></item>'
+      + '</channel></rss>',
+  );
+  check(
+    'NEOGOV feed skips malformed items',
+    mixedNeogovFeed.length === 1 && mixedNeogovFeed[0].title === 'Valid role',
+  );
+  let rejectedNonRssNeogovResponse = false;
+  try {
+    parseNeogovFeed('<html>blocked</html>');
+  } catch {
+    rejectedNonRssNeogovResponse = true;
+  }
+  check('NEOGOV feed rejects non-RSS response', rejectedNonRssNeogovResponse);
 
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');

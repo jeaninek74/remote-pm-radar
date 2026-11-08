@@ -49,32 +49,30 @@ function tagValue(xml: string, tag: string): string {
 
 export function parseNeogovFeed(xml: string): NeogovFeedItem[] {
   if (!/<rss\b/i.test(xml)) throw new Error('NEOGOV response was not an RSS feed');
-  const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item\s*>/gi)].map((match) => {
-    const item = match[1];
-    const parsed: NeogovFeedItem = {
-      title: tagValue(item, 'title'),
-      description: tagValue(item, 'description'),
-      link: tagValue(item, 'link'),
-      pubDate: tagValue(item, 'pubDate'),
-      jobId: tagValue(item, 'joblisting:jobId'),
-      jobNumberSingle: tagValue(item, 'joblisting:jobNumberSingle'),
-      advertiseFromDateUTC: tagValue(item, 'joblisting:advertiseFromDateUTC'),
-      minimumSalary: tagValue(item, 'joblisting:minimumSalary'),
-      maximumSalary: tagValue(item, 'joblisting:maximumSalary'),
-      salaryCurrency: tagValue(item, 'joblisting:salaryCurrency'),
-      salaryInterval: tagValue(item, 'joblisting:salaryInterval'),
-      jobType: tagValue(item, 'joblisting:jobType'),
-      department: tagValue(item, 'joblisting:department'),
-      examplesOfDuties: tagValue(item, 'joblisting:examplesofduties'),
-      qualifications: tagValue(item, 'joblisting:qualifications'),
-      supplementalInformation: tagValue(item, 'joblisting:supplementalinformation'),
-      location: tagValue(item, 'joblisting:location'),
-      employerZipcode: tagValue(item, 'joblisting:employerzipcode'),
-    };
-    if (!parsed.title || !parsed.link || !parsed.jobId) {
-      throw new Error('NEOGOV RSS item was missing its title, link, or job ID');
-    }
-    return parsed;
-  });
+  const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item\s*>/gi)]
+    .map((match): NeogovFeedItem => {
+      const item = match[1];
+      return {
+        title: tagValue(item, 'title'),
+        description: tagValue(item, 'description'),
+        link: tagValue(item, 'link'),
+        pubDate: tagValue(item, 'pubDate'),
+        jobId: tagValue(item, 'joblisting:jobId'),
+        jobNumberSingle: tagValue(item, 'joblisting:jobNumberSingle'),
+        advertiseFromDateUTC: tagValue(item, 'joblisting:advertiseFromDateUTC'),
+        minimumSalary: tagValue(item, 'joblisting:minimumSalary'),
+        maximumSalary: tagValue(item, 'joblisting:maximumSalary'),
+        salaryCurrency: tagValue(item, 'joblisting:salaryCurrency'),
+        salaryInterval: tagValue(item, 'joblisting:salaryInterval'),
+        jobType: tagValue(item, 'joblisting:jobType'),
+        department: tagValue(item, 'joblisting:department'),
+        examplesOfDuties: tagValue(item, 'joblisting:examplesofduties'),
+        qualifications: tagValue(item, 'joblisting:qualifications'),
+        supplementalInformation: tagValue(item, 'joblisting:supplementalinformation'),
+        location: tagValue(item, 'joblisting:location'),
+        employerZipcode: tagValue(item, 'joblisting:employerzipcode'),
+      };
+    })
+    .filter((item) => item.title && item.link && item.jobId);
   return items;
 }
