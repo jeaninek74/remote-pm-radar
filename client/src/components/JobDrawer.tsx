@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Job } from '../types';
-import { caBadge, categoryLabel, dateLabel, dateTimeLabel, money, salaryLabel, saveTracking } from '../lib';
+import { caBadge, categoryLabel, dateLabel, dateTimeLabel, money, salaryLabel } from '../lib';
 
 interface Props {
   job: Job;
   onClose: () => void;
   onUpdated: (job: Job) => void;
+  saveTracking: (id: number, patch: Record<string, string | null>) => Promise<{ job: Job }>;
 }
 
 const STATUSES = ['Not Applied', 'Interested', 'Viewed', 'Applied', 'Recruiter Contacted',
@@ -20,7 +21,7 @@ function Fact({ label, value, wide }: { label: string; value: React.ReactNode; w
   );
 }
 
-export function JobDrawer({ job, onClose, onUpdated }: Props) {
+export function JobDrawer({ job, onClose, onUpdated, saveTracking }: Props) {
   const [draft, setDraft] = useState({
     appStatus: job.appStatus,
     notes: job.notes ?? '',
