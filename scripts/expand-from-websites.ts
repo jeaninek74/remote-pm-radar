@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { inspectCareersPage, sameCareersPostingSet } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
 import { normalizedCareersUrl } from './expansion-urls';
+import { matchesRetryResult } from './expansion-retry';
 
 interface WebsiteEmployer {
   name: string;
@@ -523,9 +524,7 @@ async function main(): Promise<void> {
   const retryRecords = retryFiles.length ? (await Promise.all(retryFiles.map(loadOutput))).flat() : null;
   const retryNames = retryRecords
     ? new Set(retryRecords
-      .filter((record) => options.retryPlatform
-        ? record.result.kind === 'unreadable' && record.result.platform.toLowerCase() === options.retryPlatform.toLowerCase()
-        : record.result.kind === 'unknown')
+      .filter((record) => matchesRetryResult(record.result, options.retryPlatform))
       .map((record) => normalizeName(record.name)))
     : null;
   const eligible = retryNames ? entries.filter((entry) => retryNames.has(normalizeName(entry.name))) : entries;
@@ -534,7 +533,9 @@ async function main(): Promise<void> {
     : sampleSmallestStates(eligible, options.smallestStates, options.limit ?? eligible.length);
   const oldRecords = await loadOutput(outputFile);
   const records = new Map(oldRecords.map((record) => [record.name, record]));
-  const alreadyWritten = new Set([...records.keys()].map(normalizeName));
+  const alreadyWritten = new Set([...records.values()]
+    .filter((record) => !retryRecords || !matchesRetryResult(record.result, options.retryPlatform))
+    .map((record) => normalizeName(record.name)));
   const toProcess = selected.filter((entry) => !alreadyWritten.has(normalizeName(entry.name)));
   const normalizedNames = [...new Set(toProcess.map((entry) => normalizeName(entry.name)))];
   const uri = await databaseUrl();
