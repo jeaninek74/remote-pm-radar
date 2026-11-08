@@ -48,8 +48,11 @@ export function phenomDetailRedirectTarget(
 ): string | null {
   if (!location || redirectsFollowed >= 5) return null;
   try {
-    const target = new URL(location, currentUrl);
-    return phenomEndpointMatchesPageHost(target.toString(), pageHost) ? target.toString() : null;
+    const current = new URL(currentUrl);
+    const target = new URL(location, current);
+    return current.protocol === target.protocol && phenomEndpointMatchesPageHost(target.toString(), pageHost)
+      ? target.toString()
+      : null;
   } catch {
     return null;
   }

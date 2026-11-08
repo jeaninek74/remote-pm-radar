@@ -52,6 +52,8 @@ check('Phenom detail redirects can stay on the careers host',
     === 'https://jobs.acme.com/us/en/job/1');
 check('Phenom detail cross-host redirects are rejected',
   phenomDetailRedirectTarget('https://jobs.acme.com/job/1', 'https://evil.example/job/1', 'jobs.acme.com', 0) === null);
+check('Phenom detail HTTPS downgrade redirects are rejected',
+  phenomDetailRedirectTarget('https://jobs.acme.com/job/1', 'http://jobs.acme.com/job/2', 'jobs.acme.com', 0) === null);
 check('Phenom detail redirects stop after five hops',
   phenomDetailRedirectTarget('https://jobs.acme.com/job/1', '/job/2', 'jobs.acme.com', 5) === null);
 const maxOnlySalary = parsePhenomBaseSalary({
