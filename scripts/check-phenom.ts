@@ -140,6 +140,15 @@ const fromMinimumSalary = parseSalaryFromText(fromMinimumText, 'Phenom descripti
 check('Phenom description from-minimum supersedes max-only structured salary',
   fromMinimumSalary?.min === 95000
     && selectPhenomSalary(maxOnlySalary, fromMinimumSalary, fromMinimumText) === fromMinimumSalary);
+const maxOnly140Salary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { maxValue: '140000', unitText: 'YEAR' },
+});
+const minimumBaseSalaryText = 'Minimum base salary $95,000';
+const minimumBaseSalary = parseSalaryFromText(minimumBaseSalaryText, 'Phenom description');
+check('Phenom minimum base salary description supersedes max-only structured salary',
+  minimumBaseSalary?.min === 95000 && minimumBaseSalary.max === null
+    && selectPhenomSalary(maxOnly140Salary, minimumBaseSalary, minimumBaseSalaryText) === minimumBaseSalary);
 const invalidCurrencySalary = parsePhenomBaseSalary({
   currency: 'CAD',
   value: { minValue: '95000', unitText: 'YEAR' },

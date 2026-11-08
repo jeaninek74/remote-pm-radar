@@ -147,7 +147,7 @@ export function selectPhenomSalary(
     if (structured?.min === null && structured.max !== null) {
       const descriptionRange = description.max !== null && description.min < description.max;
       const explicitMinimum = description.max === null
-        && /\b(?:starting\s+at|from)\s+(?:USD\s*)?[$\d]/i.test(descriptionText);
+        && /\b(?:minimum|min(?:\.|\b)|at\s+least|starting\s+at|from|beginning\s+at)(?:\s+base)?(?:\s+salary)?[\s:=-]*(?:USD\s*)?[$\d]/i.test(descriptionText);
       return descriptionRange || explicitMinimum ? description : structured;
     }
     return description;
