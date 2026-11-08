@@ -1,9 +1,15 @@
-import { reloadIfBuildChanged } from '../client/src/buildVersion';
+import { buildIdFromHtml, reloadIfBuildChanged } from '../client/src/buildVersion';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
   if (!condition) process.exitCode = 1;
 }
+
+const sampleHtml = '<script src="/assets/main-a.js"></script>'
+  + '<script src="/assets/app-b.js"></script>'
+  + '<link rel="stylesheet" href="/assets/screen-c.css">';
+check('server build id includes sorted JavaScript and CSS asset basenames',
+  buildIdFromHtml(sampleHtml) === 'app-b.js+main-a.js+screen-c.css');
 
 let reloads = 0;
 const reload = () => { reloads += 1; };

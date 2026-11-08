@@ -10,6 +10,7 @@ import {
 } from './queries';
 import { buildCsv, buildWorkbook } from './export';
 import { PROFILE, describeProfile } from './profile';
+import { buildIdFromHtml } from '../client/src/buildVersion';
 
 /** Filename stem for exports, derived from the board name so nothing is branded by hand. */
 function exportSlug(): string {
@@ -34,11 +35,8 @@ function readBuildId(): string {
   const indexPath = path.join(PUBLIC_DIR, 'index.html');
   try {
     const html = fs.readFileSync(indexPath, 'utf8');
-    const scriptPath = /<script\b[^>]*\bsrc=["']([^"']+\.js(?:\?[^"']*)?)["']/i.exec(html)?.[1];
-    if (scriptPath) {
-      const assetName = path.posix.basename(scriptPath.replace(/[?#].*$/, ''));
-      if (assetName) return assetName;
-    }
+    const buildId = buildIdFromHtml(html);
+    if (buildId) return buildId;
   } catch {
     // Fall through to the file timestamp when the asset name is unavailable.
   }
