@@ -687,9 +687,7 @@ function elementsWithClass(html: string, className: string): string[] {
 
 function icimsDescription(html: string): string {
   const content = elementsWithClass(html, 'iCIMS_JobContent')[0];
-  if (!content) return '';
-  const sections = elementsWithClass(content, 'iCIMS_Expandable_Text').map(clean).filter(Boolean);
-  return (sections.length ? sections : [clean(content)]).join('\n\n');
+  return content ? clean(content) : '';
 }
 
 function icimsLocations(posting: JobPostingLd): string[] {
