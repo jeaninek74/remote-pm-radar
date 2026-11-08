@@ -79,10 +79,7 @@ const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:th
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
 export function hasRemoteLocationOption(locations: string[]): boolean {
-  return locations.some((location) => {
-    const text = String(location ?? '').replace(/_/g, ' ');
-    return REMOTE_MARKERS.test(text) && !HYBRID_MARKERS.test(text) && !REGION_MARKERS.test(text);
-  });
+  return locations.some((location) => REMOTE_MARKERS.test(String(location ?? '').replace(/_/g, ' ')));
 }
 
 export function explicitWorkplaceArrangement(

@@ -1,5 +1,5 @@
 import { RULES } from '../config';
-import { explicitWorkplaceArrangement, hasRemoteLocationOption } from './location';
+import { evaluateLocation, explicitWorkplaceArrangement } from './location';
 import type { ParsedSalary } from './salary';
 
 export interface PhenomConfig {
@@ -61,8 +61,17 @@ export function phenomDetailRedirectTarget(
 
 export function phenomPrimaryLocations(feedLocations: string[], detailLocations: string[]): string[] {
   if (!feedLocations.length) return detailLocations;
-  const remoteDetailLocations = detailLocations.filter((location) => hasRemoteLocationOption([location]));
+  const remoteDetailLocations = detailLocations.filter((location) => hasPhenomRemoteLocationOption([location]));
   return [...new Set([...feedLocations, ...remoteDetailLocations])];
+}
+
+function hasPhenomRemoteLocationOption(locations: string[]): boolean {
+  return locations.some((location) => {
+    const text = String(location ?? '').replace(/_/g, ' ').trim();
+    if (!text || explicitWorkplaceArrangement([text]) !== null) return false;
+    const verdict = evaluateLocation({ locations: [text] });
+    return verdict.remote === 'remote' && verdict.ca !== 'not_us';
+  });
 }
 
 export function phenomRemoteInfo(
@@ -71,11 +80,11 @@ export function phenomRemoteInfo(
   detailLocations: string[] = [],
 ): { isRemote: boolean | null; workplaceType: string | null } {
   const arrangement = explicitWorkplaceArrangement(detailLocations, jobLocationType);
-  if (hasRemoteLocationOption(detailLocations) || hasRemoteLocationOption(jobLocationType ? [jobLocationType] : [])) {
+  if (hasPhenomRemoteLocationOption(detailLocations) || hasPhenomRemoteLocationOption(jobLocationType ? [jobLocationType] : [])) {
     return { isRemote: true, workplaceType: 'remote' };
   }
   if (arrangement === 'hybrid') return { isRemote: false, workplaceType: arrangement };
-  if (hasRemoteLocationOption(feedLocations)) return { isRemote: true, workplaceType: 'remote' };
+  if (hasPhenomRemoteLocationOption(feedLocations)) return { isRemote: true, workplaceType: 'remote' };
   if (arrangement === 'onsite') return { isRemote: false, workplaceType: arrangement };
   if (jobLocationType) return { isRemote: false, workplaceType: jobLocationType };
   return { isRemote: null, workplaceType: null };
