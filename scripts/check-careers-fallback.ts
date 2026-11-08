@@ -5,6 +5,7 @@ import {
   sameCareersPostingSet,
   sweepCareersPostingLinks,
 } from '../server/engine/careers';
+import { normalizedCareersUrl } from './expansion-urls';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -17,6 +18,11 @@ const links = candidatePostingLinks(
 );
 check('fallback considers non-target job links', links.some((link) => link.text === 'Registered Nurse'));
 check('fallback ignores unrelated links', !links.some((link) => link.url.endsWith('/about')));
+check('careers URL keys preserve and sort query parameters',
+  normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=B&query=x')
+    === normalizedCareersUrl('https://employment.unl.edu/postings/search?query=x&campus=B')
+    && normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=A')
+      !== normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=B'));
 const sweepLinks = sweepCareersPostingLinks(
   '<a href="/jobs/req-123456">View job</a><a href="/jobs/req-123457">Apply now</a><a href="/jobs/req-123458"></a><a href="/about">Details</a><a href="/jobs/req-123459">Unrelated page</a>',
   'https://example.com/careers',
