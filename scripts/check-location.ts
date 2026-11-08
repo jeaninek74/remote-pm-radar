@@ -83,6 +83,30 @@ const explicitOnsiteWithoutLocation = evaluateLocation({
 });
 check('explicit on-site requirement without a location is onsite', explicitOnsiteWithoutLocation.remote === 'onsite');
 
+const virtualMeetingsWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Meet 2 days a week in virtual meetings',
+});
+check('virtual meetings without a location are unknown', virtualMeetingsWithoutLocation.remote === 'unknown');
+
+const officeDaysWithoutLocation = evaluateLocation({
+  locations: [],
+  description: '3 days a week in the office',
+});
+check('days in office without a location are hybrid', officeDaysWithoutLocation.remote === 'hybrid');
+
+const commuteWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Must live within 30 miles of our office',
+});
+check('commute requirement without a location is onsite', commuteWithoutLocation.remote === 'onsite');
+
+const onsiteRequirementWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'There is an on-site requirement',
+});
+check('on-site requirement without a location is onsite', onsiteRequirementWithoutLocation.remote === 'onsite');
+
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
 check(
   'US scope without remote language needs verification',
