@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 function canonicalCareersUrlObject(value: string): URL {
   const url = new URL(value);
   if (url.protocol === 'http:') url.protocol = 'https:';
@@ -25,6 +27,12 @@ export function normalizedCareersUrl(value: string): string {
 export function careersSlug(value: string): string {
   const url = canonicalCareersUrlObject(value);
   const query = sortedQuery(url);
+  const host = url.host.toLowerCase();
   const path = url.pathname === '/' ? '' : url.pathname;
-  return `${url.host.toLowerCase()}${path}${query ? `?${query}` : ''}`;
+  const slug = `${host}${path}${query ? `?${query}` : ''}`;
+  if (query && slug.length > 120) {
+    const queryHash = createHash('sha1').update(query).digest('hex').slice(0, 10);
+    return `${host}${path}?q=${queryHash}`;
+  }
+  return slug;
 }

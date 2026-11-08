@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   candidatePostingLinks,
   looksLikePostingPage,
@@ -26,6 +27,11 @@ check('careers URL keys preserve and sort query parameters',
 check('query-specific careers slugs remain distinct',
   careersSlug('https://employment.unl.edu/postings/search?campus=A')
     !== careersSlug('https://employment.unl.edu/postings/search?campus=B'));
+const longSortedQuery = `campus=${'a'.repeat(130)}&query=x`;
+const longQueryUrl = `https://employment.unl.edu/postings/search?query=x&campus=${'a'.repeat(130)}`;
+const expectedLongSlug = `employment.unl.edu/postings/search?q=${createHash('sha1').update(longSortedQuery).digest('hex').slice(0, 10)}`;
+check('long careers slugs hash the sorted query',
+  careersSlug(longQueryUrl) === expectedLongSlug && careersSlug(longQueryUrl).length <= 120);
 const sweepLinks = sweepCareersPostingLinks(
   '<a href="/jobs/req-123456">View job</a><a href="/jobs/req-123457">Apply now</a><a href="/jobs/req-123458"></a><a href="/about">Details</a><a href="/jobs/req-123459">Unrelated page</a>',
   'https://example.com/careers',
