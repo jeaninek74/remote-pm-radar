@@ -373,7 +373,10 @@ async function smartrecruiters(employer: EmployerRow, known?: Set<string>): Prom
   // The postings endpoint returns at most 100 per call and reports totalFound; large
   // employers (CACI, Expeditors) list several hundred, so one page silently dropped most.
   const all: SrPosting[] = [];
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  let truncated = false;
   for (let offset = 0; REFRESH.feedPages <= 0 || offset < 100 * REFRESH.feedPages; offset += 100) {
+    if (offset > 0 && Date.now() > deadline) { truncated = true; break; }
     const data = await fetchJson<{ content?: SrPosting[]; totalFound?: number }>(
       `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(employer.slug)}/postings?limit=100&offset=${offset}`,
     );
@@ -382,8 +385,6 @@ async function smartrecruiters(employer: EmployerRow, known?: Set<string>): Prom
     if (page.length < 100 || all.length >= (data.totalFound ?? 0)) break;
   }
   const candidates = all.filter((p) => isRoleTitle(p.name ?? '', undefined, employer));
-  const deadline = Date.now() + REFRESH.employerBudgetMs;
-  let truncated = false;
   const jobs: RawJob[] = [];
   for (const posting of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
