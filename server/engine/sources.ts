@@ -373,7 +373,7 @@ async function smartrecruiters(employer: EmployerRow, known?: Set<string>): Prom
   // The postings endpoint returns at most 100 per call and reports totalFound; large
   // employers (CACI, Expeditors) list several hundred, so one page silently dropped most.
   const all: SrPosting[] = [];
-  for (let offset = 0; offset < 100 * REFRESH.feedPages; offset += 100) {
+  for (let offset = 0; REFRESH.feedPages <= 0 || offset < 100 * REFRESH.feedPages; offset += 100) {
     const data = await fetchJson<{ content?: SrPosting[]; totalFound?: number }>(
       `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(employer.slug)}/postings?limit=100&offset=${offset}`,
     );
