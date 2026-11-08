@@ -55,7 +55,7 @@ export default function App() {
     }
     const interactionBlocked = Boolean(
       document.querySelector('[aria-modal="true"], .drawer-backdrop, .modal-backdrop')
-      || document.activeElement?.matches('input, textarea, select, [contenteditable="true"]'),
+      || document.activeElement?.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), textarea, select, [contenteditable="true"]'),
     );
     return reloadIfBuildChanged(
       previousBuildId,
