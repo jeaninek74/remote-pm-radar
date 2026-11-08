@@ -147,12 +147,12 @@ export function postingPathFromUrl(value: string): string {
 
 export function sameCareersPostingSet(leftPaths: string[] | undefined, rightPaths: string[] | undefined): boolean {
   if (!leftPaths?.length || !rightPaths?.length) return false;
-  const left = [...new Set(leftPaths)].sort();
-  const right = [...new Set(rightPaths)].sort();
-  const smaller = Math.min(left.length, right.length);
+  const left = new Set(leftPaths);
+  const right = new Set(rightPaths);
+  if (left.size === right.size && [...left].every((path) => right.has(path))) return true;
+  const smaller = Math.min(left.size, right.size);
   if (smaller < 2) return false;
-  const rightSet = new Set(right);
-  const overlap = left.filter((path) => rightSet.has(path)).length;
+  const overlap = [...left].filter((path) => right.has(path)).length;
   return overlap >= 2 && overlap / smaller >= 0.5;
 }
 

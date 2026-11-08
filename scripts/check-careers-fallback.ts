@@ -87,6 +87,18 @@ for (const postingPaths of sharedPostingSets) {
 }
 check('three hosts with the same posting path deduplicate to one insert', claimedSharedPostingSets.length === 1);
 
+const singlePostingMirrors = [
+  ['/job/12625/patient-service-specialist'],
+  ['/job/12625/patient-service-specialist'],
+];
+const claimedSinglePostingMirrors: string[][] = [];
+for (const postingPaths of singlePostingMirrors) {
+  if (!claimedSinglePostingMirrors.some((claimed) => sameCareersPostingSet(claimed, postingPaths))) {
+    claimedSinglePostingMirrors.push(postingPaths);
+  }
+}
+check('two mirrors with the same single posting deduplicate to one insert', claimedSinglePostingMirrors.length === 1);
+
 const sharedNotFirstSets = [
   ['/job/001/project-manager', '/job/200/nurse-manager', '/job/300/analyst'],
   ['/job/002/project-coordinator', '/job/200/nurse-manager', '/job/300/analyst'],
