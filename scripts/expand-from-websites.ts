@@ -21,6 +21,7 @@ interface ExpansionRecord {
 }
 
 const OUTPUT_FILE = '/home/ubuntu/expansion-results.jsonl';
+const DRY_RUN_OUTPUT_FILE = '/home/ubuntu/expansion-results-dry-run.jsonl';
 const NEON_URI_ENDPOINT =
   'https://console.neon.tech/api/v2/projects/still-cell-79180440/connection_uri' +
   '?branch_id=br-withered-wildflower-ar6s3tkz&database_name=neondb&role_name=neondb_owner&pooled=true';
@@ -155,14 +156,14 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
   return unreadable ?? lastUnknown;
 }
 
-async function loadOutput(): Promise<ExpansionRecord[]> {
+async function loadOutput(path: string): Promise<ExpansionRecord[]> {
   try {
-    const contents = await readFile(OUTPUT_FILE, 'utf8');
+    const contents = await readFile(path, 'utf8');
     return contents.split(/\r?\n/).filter(Boolean).map((line, index) => {
       try {
         return JSON.parse(line) as ExpansionRecord;
       } catch {
-        throw new Error(`invalid JSON on line ${index + 1} of ${OUTPUT_FILE}`);
+        throw new Error(`invalid JSON on line ${index + 1} of ${path}`);
       }
     });
   } catch (error) {
@@ -222,13 +223,35 @@ async function readInputs(paths: string[]): Promise<WebsiteEmployer[]> {
   return entries;
 }
 
-function parseArgs(args: string[]): { files: string[]; limit: number | null; write: boolean } {
+function parseArgs(args: string[]): {
+  files: string[];
+  limit: number | null;
+  write: boolean;
+  dryRun: boolean;
+  retryPlatform: string | null;
+  outputFile: string | null;
+} {
   const files: string[] = [];
   let limit: number | null = null;
   let write = false;
+  let dryRun = false;
+  let retryPlatform: string | null = null;
+  let outputFile: string | null = null;
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === '--write') {
       write = true;
+    } else if (args[index] === '--dry-run') {
+      dryRun = true;
+    } else if (args[index] === '--retry-platform') {
+      const value = args[index + 1]?.trim();
+      if (!value || value.startsWith('--')) throw new Error('--retry-platform requires a platform name');
+      retryPlatform = value;
+      index += 1;
+    } else if (args[index] === '--output') {
+      const value = args[index + 1]?.trim();
+      if (!value || value.startsWith('--')) throw new Error('--output requires a path');
+      outputFile = value;
+      index += 1;
     } else if (args[index] === '--limit') {
       const value = Number(args[index + 1]);
       if (!Number.isInteger(value) || value < 1) throw new Error('--limit requires a positive integer');
@@ -240,8 +263,11 @@ function parseArgs(args: string[]): { files: string[]; limit: number | null; wri
       files.push(args[index]);
     }
   }
-  if (!files.length) throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--write]');
-  return { files, limit, write };
+  if (dryRun && write) throw new Error('--dry-run cannot be combined with --write');
+  if (!files.length) {
+    throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--retry-platform NAME] [--dry-run] [--output PATH] [--write]');
+  }
+  return { files, limit, write, dryRun, retryPlatform, outputFile };
 }
 
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -255,7 +281,7 @@ async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promi
   }));
 }
 
-function printSummary(entries: WebsiteEmployer[], records: Map<string, ExpansionRecord>): void {
+function printSummary(entries: WebsiteEmployer[], records: Map<string, ExpansionRecord>, outputFile: string): void {
   const selected = entries.map((entry) => records.get(entry.name)).filter((row): row is ExpansionRecord => Boolean(row));
   const kinds = new Map<string, number>();
   const platforms = new Map<string, number>();
@@ -280,17 +306,32 @@ function printSummary(entries: WebsiteEmployer[], records: Map<string, Expansion
   for (const row of hits) {
     if (row.result.kind === 'board') console.log(`  ${row.name} | ${row.result.ats} | ${row.result.careersUrl}`);
   }
-  console.log(`[expand] results: ${OUTPUT_FILE}`);
+  console.log(`[expand] results: ${outputFile}`);
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  const outputFile = options.outputFile
+    ?? (options.retryPlatform
+      ? `/home/ubuntu/expansion-results-${options.retryPlatform.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-retry${options.write ? '' : '-dry-run'}.jsonl`
+      : options.dryRun ? DRY_RUN_OUTPUT_FILE : OUTPUT_FILE);
   const entries = await readInputs(options.files);
-  const selected = options.limit == null ? entries : entries.slice(0, options.limit);
-  const oldRecords = await loadOutput();
+  const retryNames = options.retryPlatform
+    ? new Set(
+      (await loadOutput(OUTPUT_FILE))
+        .filter((record) =>
+          record.result.kind === 'unreadable'
+          && record.result.platform.toLowerCase() === options.retryPlatform!.toLowerCase(),
+        )
+        .map((record) => normalizeName(record.name)),
+    )
+    : null;
+  const eligible = retryNames ? entries.filter((entry) => retryNames.has(normalizeName(entry.name))) : entries;
+  const selected = options.limit == null ? eligible : eligible.slice(0, options.limit);
+  const oldRecords = await loadOutput(outputFile);
   const records = new Map(oldRecords.map((record) => [record.name, record]));
-  const alreadyWritten = new Set(records.keys());
-  const toProcess = selected.filter((entry) => !alreadyWritten.has(entry.name));
+  const alreadyWritten = new Set([...records.keys()].map(normalizeName));
+  const toProcess = selected.filter((entry) => !alreadyWritten.has(normalizeName(entry.name)));
   const normalizedNames = [...new Set(toProcess.map((entry) => normalizeName(entry.name)))];
   const uri = await databaseUrl();
   process.env.PGSSLMODE = 'require';
@@ -302,7 +343,7 @@ async function main(): Promise<void> {
   });
   let appendQueue = Promise.resolve();
   const appendRecord = (record: ExpansionRecord) => {
-    appendQueue = appendQueue.then(() => appendFile(OUTPUT_FILE, `${JSON.stringify(record)}\n`, 'utf8'));
+    appendQueue = appendQueue.then(() => appendFile(outputFile, `${JSON.stringify(record)}\n`, 'utf8'));
     return appendQueue;
   };
 
@@ -319,7 +360,7 @@ async function main(): Promise<void> {
       } else {
         claimedNames.add(normalized);
         result = await resolveWebsite(entry.name, entry.website, Date.now() + 45_000);
-        if (options.write && result.kind === 'board') {
+        if (options.write && !options.dryRun && result.kind === 'board') {
           await pool.query(
             `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE)
@@ -346,7 +387,7 @@ async function main(): Promise<void> {
     await pool.end();
   }
 
-  printSummary(selected, records);
+  printSummary(selected, records, outputFile);
 }
 
 void main().catch((error) => {

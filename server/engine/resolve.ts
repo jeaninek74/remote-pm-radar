@@ -1,4 +1,6 @@
 import type { Ats } from './types';
+import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
+import { jobPostingFrom } from './careers';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -34,7 +36,6 @@ function oracleCoordinates(source: string): { host: string; site: string } | nul
 }
 
 const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
-  { platform: 'iCIMS', re: /icims\.com/i },
   { platform: 'Phenom', re: /phenompeople|phenom/i },
   { platform: 'SAP SuccessFactors', re: /successfactors|jobs\.sap\.com/i },
   { platform: 'Avature', re: /avature\.net/i },
@@ -86,6 +87,8 @@ export function namesAgree(company: string, boardName: string | null | undefined
 }
 
 export function detect(html: string, finalUrl: string): BoardDetection {
+  const finalIcimsHost = icimsHostFrom(finalUrl);
+  if (finalIcimsHost) return { kind: 'board', ats: 'icims', slug: finalIcimsHost };
   const workdayMatch = WORKDAY_URL.exec(finalUrl) ?? WORKDAY_URL.exec(html);
   if (workdayMatch) {
     const tenant = workdayMatch[1].toLowerCase();
@@ -99,6 +102,8 @@ export function detect(html: string, finalUrl: string): BoardDetection {
   }
   const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
   if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
+  const htmlIcimsHost = icimsHostFrom(html);
+  if (htmlIcimsHost) return { kind: 'board', ats: 'icims', slug: htmlIcimsHost };
   const source = `${finalUrl}\n${html}`;
   for (const signature of UNREADABLE_PLATFORMS) {
     if (signature.re.test(source)) return { kind: 'unreadable', platform: signature.platform };
@@ -222,6 +227,27 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
         total,
       };
     }
+
+    if (candidate.ats === 'icims') {
+      const host = icimsHost(candidate.slug);
+      if (!host) return { kind: 'unknown', reason: 'Invalid iCIMS employer host' };
+      const sitemap = await fetchIcimsText(`https://${host}/sitemap.xml`, host, timeoutFor(deadline));
+      const jobs = icimsSitemapJobs(sitemap, host);
+      if (!jobs.length) return { kind: 'unknown', reason: 'iCIMS sitemap has no job postings' };
+      const detail = await fetchIcimsText(icimsDetailUrl(jobs[0]), host, timeoutFor(deadline));
+      const posting = jobPostingFrom(detail);
+      const organization = typeof posting?.hiringOrganization === 'string'
+        ? posting.hiringOrganization
+        : posting?.hiringOrganization?.name;
+      if (!namesAgree(name, organization)) return { kind: 'unknown', reason: 'iCIMS hiring organization did not match employer' };
+      return {
+        kind: 'board',
+        ats: candidate.ats,
+        slug: host,
+        careersUrl: `https://${host}/jobs/search?ss=1`,
+        total: jobs.length,
+      };
+    }
   } catch (error) {
     return { kind: 'unknown', reason: `${candidate.ats} validation failed: ${(error as Error).message.slice(0, 120)}` };
   }
@@ -230,16 +256,31 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
 
 export async function resolveBoard(name: string, careersUrl: string, deadline: number): Promise<BoardResolution> {
   try {
-    const response = await fetch(careersUrl, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': BROWSER_USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(timeoutFor(deadline)),
-    });
+    let current = new URL(careersUrl);
+    let response: Response | null = null;
+    for (let redirects = 0; redirects <= 8; redirects += 1) {
+      if (
+        /(?:^|\.)icims\.com$/i.test(current.hostname)
+        && (!icimsHost(current.hostname) || forbiddenIcimsPath(current.pathname))
+      ) {
+        throw new Error('iCIMS restricted host or path');
+      }
+      response = await fetch(current, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent': BROWSER_USER_AGENT,
+          Accept: 'text/html,application/xhtml+xml',
+        },
+        signal: AbortSignal.timeout(timeoutFor(deadline)),
+      });
+      if (response.status === 304 || response.status < 300 || response.status >= 400) break;
+      const location = response.headers.get('location');
+      if (!location) throw new Error(`redirect ${response.status} had no location`);
+      current = new URL(location, current);
+    }
+    if (!response || (response.status >= 300 && response.status < 400)) throw new Error('redirect limit exceeded');
     const html = (await response.text()).slice(0, 400_000);
-    const finalUrl = response.url || careersUrl;
+    const finalUrl = current.toString();
     const detected = detect(html, finalUrl);
     if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
     if (detected.kind === 'unreadable') return detected;

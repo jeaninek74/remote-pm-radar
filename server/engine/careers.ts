@@ -21,7 +21,16 @@ const SITEMAP_TAG = /<(?:loc)>\s*([^<\s]+)\s*<\/loc>/gi;
 const ANCHOR = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const JSON_LD = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
-interface JobPostingLd {
+export interface ApplicantLocationRequirement {
+  name?: string;
+  address?: {
+    addressLocality?: string;
+    addressRegion?: string;
+    addressCountry?: string | { name?: string };
+  };
+}
+
+export interface JobPostingLd {
   '@type'?: string | string[];
   title?: string;
   datePosted?: string;
@@ -29,8 +38,9 @@ interface JobPostingLd {
   employmentType?: string | string[];
   jobLocationType?: string;
   jobLocation?: { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } } | { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } }[];
-  applicantLocationRequirements?: { name?: string } | { name?: string }[];
-  baseSalary?: { currency?: string; value?: { minValue?: number; maxValue?: number; value?: number; unitText?: string } };
+  applicantLocationRequirements?: string | ApplicantLocationRequirement | Array<string | ApplicantLocationRequirement>;
+  hiringOrganization?: { name?: string } | string;
+  baseSalary?: { currency?: string; value?: { minValue?: number | string; maxValue?: number | string; value?: number | string; unitText?: string } };
   identifier?: { value?: string } | string;
   url?: string;
 }
@@ -39,7 +49,7 @@ function asArray<T>(v: T | T[] | undefined | null): T[] {
   return v == null ? [] : Array.isArray(v) ? v : [v];
 }
 
-function jobPostingFrom(html: string): JobPostingLd | null {
+export function jobPostingFrom(html: string): JobPostingLd | null {
   for (const m of html.matchAll(JSON_LD)) {
     try {
       const parsed = JSON.parse(m[1].trim()) as JobPostingLd | JobPostingLd[] | { '@graph'?: JobPostingLd[] };
@@ -146,7 +156,9 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
       const country = typeof a.addressCountry === 'string' ? a.addressCountry : a.addressCountry?.name;
       return [a.addressLocality, a.addressRegion, country].filter(Boolean).join(', ');
     }).filter(Boolean);
-    const restrictions = asArray(ld?.applicantLocationRequirements).map((r) => r?.name ?? '').filter(Boolean);
+    const restrictions = asArray(ld?.applicantLocationRequirements)
+      .map((r) => typeof r === 'string' ? r : r?.name ?? '')
+      .filter(Boolean);
     const remote = /TELECOMMUTE/i.test(ld?.jobLocationType ?? '') ? true : null;
     const description = ld?.description ? stripHtml(ld.description) : stripHtml(html).slice(0, 25_000);
     const posted = isoDate(ld?.datePosted ?? '');

@@ -1,7 +1,8 @@
 import { fetchJson } from './http';
 import { REFRESH } from '../config';
 import { isRoleTitle, searchTerms } from './titles';
-import { fetchCareersPage } from './careers';
+import { fetchCareersPage, jobPostingFrom, type JobPostingLd } from './careers';
+import { fetchIcimsText, icimsDetailUrl, icimsHost, icimsJobUrl, icimsSitemapJobs } from './icims';
 import { isoDate, stripHtml } from './text';
 import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type ParsedSalary } from './salary';
 import type { Ats, BoardFetchResult, RawJob } from './types';
@@ -661,12 +662,193 @@ async function dayforce(employer: EmployerRow, known?: Set<string>): Promise<Boa
   return { jobs, ok: true, totalListed: data.length, truncated };
 }
 
+function elementsWithClass(html: string, className: string): string[] {
+  const contents: string[] = [];
+  const openings = /<([a-z][a-z0-9:-]*)\b([^>]*)>/gi;
+  for (const opening of html.matchAll(openings)) {
+    const classes = /\bclass\s*=\s*["']([^"']*)["']/i.exec(opening[2])?.[1]?.split(/\s+/) ?? [];
+    if (!classes.includes(className)) continue;
+    const tag = opening[1];
+    const start = (opening.index ?? 0) + opening[0].length;
+    const tags = new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi');
+    tags.lastIndex = start;
+    let depth = 1;
+    for (const token of html.matchAll(tags)) {
+      if (/^<\//.test(token[0])) depth -= 1;
+      else if (!/\/\s*>$/.test(token[0])) depth += 1;
+      if (depth === 0) {
+        contents.push(html.slice(start, token.index ?? start));
+        break;
+      }
+    }
+  }
+  return contents;
+}
+
+function icimsDescription(html: string): string {
+  const content = elementsWithClass(html, 'iCIMS_JobContent')[0];
+  return content ? clean(content) : '';
+}
+
+function icimsLocations(posting: JobPostingLd): string[] {
+  const places = posting.jobLocation == null
+    ? []
+    : Array.isArray(posting.jobLocation) ? posting.jobLocation : [posting.jobLocation];
+  return places.map((place) => {
+    const address = place.address;
+    if (!address) return '';
+    const country = typeof address.addressCountry === 'string' ? address.addressCountry : address.addressCountry?.name;
+    return [address.addressLocality, address.addressRegion, country]
+      .filter((part): part is string =>
+        typeof part === 'string' && Boolean(part.trim()) && !/^unavailable$/i.test(part.trim()),
+      )
+      .map((part) => part.trim())
+      .join(', ');
+  }).filter(Boolean);
+}
+
+function icimsRestrictions(posting: JobPostingLd): string[] {
+  const requirements = posting.applicantLocationRequirements == null
+    ? []
+    : Array.isArray(posting.applicantLocationRequirements)
+      ? posting.applicantLocationRequirements
+      : [posting.applicantLocationRequirements];
+  return requirements.map((requirement) => {
+    if (typeof requirement === 'string') return requirement.trim();
+    const address = requirement.address;
+    const country = typeof address?.addressCountry === 'string'
+      ? address.addressCountry
+      : address?.addressCountry?.name;
+    return [
+      requirement.name,
+      address?.addressLocality,
+      address?.addressRegion,
+      country,
+    ].filter((part): part is string =>
+      typeof part === 'string' && Boolean(part.trim()) && !/^unavailable$/i.test(part.trim()),
+    ).map((part) => part.trim()).join(', ');
+  }).filter((restriction) =>
+    Boolean(restriction) && !/^unavailable$/i.test(restriction.trim()),
+  );
+}
+
+function icimsBaseSalary(posting: JobPostingLd): ParsedSalary | null {
+  const baseSalary = posting.baseSalary;
+  if (!baseSalary?.value || baseSalary.currency?.toUpperCase() !== 'USD') return null;
+  const value = baseSalary.value;
+  const asAmount = (amount: number | string | undefined): number | null => {
+    if (typeof amount === 'number') return Number.isFinite(amount) ? amount : null;
+    if (typeof amount !== 'string') return null;
+    const parsed = Number(amount.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const min = asAmount(value.minValue ?? value.value);
+  const max = asAmount(value.maxValue ?? value.value) ?? min;
+  if (min == null || max == null) return null;
+  const unit = /hour/i.test(value.unitText ?? '') ? 'per hour' : 'per year';
+  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const salaryText = min === max
+    ? `USD ${format(min)} ${unit}`
+    : `USD ${format(min)} - USD ${format(max)} ${unit}`;
+  return pickSalary(salaryText, 'iCIMS base salary');
+}
+
+async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const host = icimsHost(employer.slug);
+  if (!host) return { jobs: [], ok: false, error: 'invalid iCIMS host', totalListed: 0 };
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const sitemap = await fetchIcimsText(
+    `https://${host}/sitemap.xml`,
+    host,
+    Math.min(REFRESH.timeoutMs, Math.max(1, deadline - Date.now())),
+  );
+  const all = icimsSitemapJobs(sitemap, host);
+  const source = `icims:${host}`;
+  const jobs: RawJob[] = [];
+  const candidates = all.filter((job) => isRoleTitle(job.slug.replace(/-/g, ' '), undefined, employer));
+  let truncated = false;
+
+  for (const job of candidates) {
+    if (Date.now() >= deadline) {
+      truncated = true;
+      break;
+    }
+    const applyUrl = job.url;
+    if (known?.has(`${source}:${job.id}`)) {
+      jobs.push(unchangedJob(source, 'icims', job.id, employer.name, job.slug.replace(/-/g, ' '), applyUrl));
+      continue;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, WORKDAY_PACE_MS));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      truncated = true;
+      break;
+    }
+
+    let html: string;
+    try {
+      html = await fetchIcimsText(icimsDetailUrl(job), host, Math.min(REFRESH.timeoutMs, remaining));
+    } catch (error) {
+      truncated = true;
+      console.warn(`[icims] ${host}/${job.id}: ${(error as Error).message.slice(0, 120)}`);
+      if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
+      continue;
+    }
+    const posting = jobPostingFrom(html);
+    if (!posting?.title) {
+      truncated = true;
+      continue;
+    }
+    if (!isRoleTitle(posting.title, undefined, employer)) continue;
+
+    const description = icimsDescription(html);
+    const remote = posting.jobLocationType?.toUpperCase() === 'TELECOMMUTE';
+    const salary = icimsBaseSalary(posting) ?? pickSalary(description, 'iCIMS posting');
+    const postedAt = isoDate(posting.datePosted);
+    const employmentType = Array.isArray(posting.employmentType)
+      ? posting.employmentType.join(', ')
+      : posting.employmentType ?? null;
+    const identifier = typeof posting.identifier === 'string'
+      ? posting.identifier
+      : posting.identifier?.value ?? job.id;
+
+    jobs.push({
+      source,
+      ats: 'icims',
+      board: host,
+      externalId: job.id,
+      company: employer.name,
+      title: posting.title,
+      locations: icimsLocations(posting),
+      restrictions: icimsRestrictions(posting),
+      workplaceType: remote ? 'remote' : null,
+      isRemote: remote ? true : null,
+      descriptionText: description || null,
+      applyUrl,
+      linkType: 'employer',
+      postedAt,
+      postedConfidence: postedAt ? 'confirmed' : 'unknown',
+      employmentType,
+      salary,
+      salarySource: salary ? 'Employer posting (iCIMS)' : null,
+      requisitionId: identifier,
+      industry: employer.industry,
+      companySize: employer.company_size,
+      hqState: employer.hq_state,
+    });
+  }
+
+  return { jobs, ok: true, totalListed: all.length, truncated };
+}
+
 const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Promise<BoardFetchResult>> = {
   greenhouse, lever, ashby, workable, recruitee, smartrecruiters,
   // Workday coordinates live in careers_url, so the adapter ignores the slug.
   workday: fetchWorkday,
   oracle,
   dayforce,
+  icims,
 };
 
 
