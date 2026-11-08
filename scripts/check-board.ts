@@ -17,15 +17,18 @@ function employerFor(spec: string, index: number): EmployerRow {
   const target = rest.join(':');
   const isWorkday = ats === 'workday';
   const isIcims = ats === 'icims';
-  const icimsTarget = isIcims ? target.split('|')[0] : target;
+  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors';
+  const boardTarget = target.split('|')[0];
+  const icimsTarget = isIcims ? boardTarget : target;
   const sourceName = ats === 'oracle'
     ? target.startsWith('egud.') ? 'AutoZone' : 'International Paper'
     : ats === 'dayforce' ? 'Bristol Bay Native Corporation'
-      : isIcims ? target.split('|')[1] ?? icimsTarget.replace(/^careers-/i, '').split('.')[0] : target;
+      : isIcims ? target.split('|')[1] ?? icimsTarget.replace(/^careers-/i, '').split('.')[0]
+        : isNewDirectAts ? target.split('|')[1] ?? boardTarget.split('/')[0].split('.')[0] : target;
   return {
     id: -(index + 1),
     ats: ats as Ats,
-    slug: isWorkday ? target.replace(/^https?:\/\//, '') : isIcims ? icimsTarget : target,
+    slug: isWorkday ? target.replace(/^https?:\/\//, '') : isIcims || isNewDirectAts ? boardTarget : target,
     name: isWorkday ? target.replace(/^https?:\/\/([^.]+).*/, '$1') : sourceName,
     industry: null, company_size: null, hq_state: null,
     careers_url: isWorkday ? target : null,
@@ -44,6 +47,7 @@ async function main(): Promise<void> {
   let hardFailures = 0;
   for (const [index, spec] of specs.entries()) {
     const employer = employerFor(spec, index);
+    const isNewDirectAts = ['ukg', 'taleo', 'successfactors'].includes(employer.ats);
     const started = Date.now();
     const result = await fetchBoard(employer);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -57,7 +61,7 @@ async function main(): Promise<void> {
     console.log(
       `ok   ${spec}  listed=${result.totalListed} matches=${result.jobs.length} withSalary=${withSalary} dated=${dated} truncated=${result.truncated === true}  ${seconds}s`,
     );
-    for (const job of result.jobs.slice(0, 3)) {
+    for (const job of result.jobs.slice(0, isNewDirectAts ? 2 : 3)) {
       if (employer.ats === 'icims') {
         console.log(`       sample ${JSON.stringify({
           title: job.title,
@@ -72,6 +76,20 @@ async function main(): Promise<void> {
             interval: job.salary.interval,
             hourlyRate: job.salary.hourlyRate,
           } : null,
+          applyUrl: job.applyUrl,
+        })}`);
+      } else if (isNewDirectAts) {
+        console.log(`       sample ${JSON.stringify({
+          title: job.title,
+          postedAt: job.postedAt,
+          locations: job.locations,
+          salary: job.salary ? {
+            min: job.salary.min,
+            max: job.salary.max,
+            interval: job.salary.interval,
+            hourlyRate: job.salary.hourlyRate,
+          } : null,
+          description: (job.descriptionText ?? '').slice(0, 150),
           applyUrl: job.applyUrl,
         })}`);
       } else {

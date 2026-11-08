@@ -1,11 +1,14 @@
 import type { Ats } from './types';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
+import { parseSuccessFactorsFeed } from './successfactors';
+import { stripHtml } from './text';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 const WORKDAY_URL = /https?:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^"'?#\s/]+)/i;
+const UKG_URL = /https?:\/\/(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/JobBoard\/([0-9a-f-]{36})/i;
 const ATS_PATTERNS: { ats: Exclude<Ats, 'workday' | 'recruitee'>; re: RegExp }[] = [
   { ats: 'greenhouse', re: /(?:boards|job-boards)\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9-]+)/i },
   { ats: 'lever', re: /jobs\.lever\.co\/([a-z0-9-]+)/i },
@@ -45,7 +48,7 @@ const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
   { platform: 'TalentBrew', re: /talentbrew|tbcdn/i },
   { platform: 'Paradox', re: /paradox\.ai/i },
   { platform: 'Dayforce', re: /dayforcehcm\.com/i },
-  { platform: 'UKG/UltiPro', re: /ultipro\.com|ukg/i },
+  { platform: 'UKG/UltiPro', re: /ultipro\.com|\bukg\b/i },
   { platform: 'Jobvite', re: /jobvite\.com/i },
   { platform: 'ADP Workforce Now', re: /(?:workforcenow\.adp\.com|adp\.com\/workforcenow)/i },
   { platform: 'Cornerstone OnDemand', re: /csod\.com/i },
@@ -55,7 +58,13 @@ const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
 const NAME_NOISE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|companies|group|holdings|plc|the|and|of)\b/g;
 
 export type BoardDetection =
-  | { kind: 'board'; ats: Ats; slug: string; workday?: { tenant: string; wd: string; site: string } }
+  | {
+    kind: 'board';
+    ats: Ats;
+    slug: string;
+    workday?: { tenant: string; wd: string; site: string };
+    successFactors?: { host: string; company: string };
+  }
   | { kind: 'unreadable'; platform: string }
   | { kind: 'none' };
 
@@ -86,6 +95,34 @@ export function namesAgree(company: string, boardName: string | null | undefined
   return short.every((token) => long.includes(token));
 }
 
+function taleoCoordinates(source: string): { host: string; section: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  const matches = [...normalized.matchAll(/https?:\/\/([a-z0-9-]+\.taleo\.net)\/careersection\/([^/?#"'<>\\\s]+)/gi)]
+    .map((match) => ({ host: match[1].toLowerCase(), section: match[2] }))
+    .filter(({ section }) => !/^(?:iam|rest|jsp)$/i.test(section));
+  matches.sort((a, b) => {
+    const rank = (section: string) => /^(?:ex|2|10000)$/i.test(section) || /ext/i.test(section) ? 0 : 1;
+    return rank(a.section) - rank(b.section);
+  });
+  return matches[0] ?? null;
+}
+
+function successFactorsCoordinates(source: string): { host: string; company: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  for (const match of normalized.matchAll(/https?:\/\/(career\d*\.successfactors\.(?:com|eu))[^"'<>\\\s]*/gi)) {
+    try {
+      const url = new URL(match[0]);
+      const company = url.searchParams.get('company');
+      if (company) return { host: url.hostname.toLowerCase(), company };
+    } catch { /* ignore malformed career links */ }
+  }
+  return null;
+}
+
+function rmkHost(host: string): boolean {
+  return !/\.successfactors\.(?:com|eu)$/i.test(host);
+}
+
 export function detect(html: string, finalUrl: string): BoardDetection {
   const finalIcimsHost = icimsHostFrom(finalUrl);
   if (finalIcimsHost) return { kind: 'board', ats: 'icims', slug: finalIcimsHost };
@@ -95,6 +132,22 @@ export function detect(html: string, finalUrl: string): BoardDetection {
     const wd = workdayMatch[2].toLowerCase();
     const site = workdayMatch[3];
     return { kind: 'board', ats: 'workday', slug: `${tenant}/${site}`, workday: { tenant, wd, site } };
+  }
+  const ukgMatch = UKG_URL.exec(finalUrl) ?? UKG_URL.exec(html);
+  if (ukgMatch) {
+    const host = ukgMatch[1].toLowerCase();
+    return { kind: 'board', ats: 'ukg', slug: `${host}/${ukgMatch[2]}/${ukgMatch[3]}` };
+  }
+  const taleo = taleoCoordinates(`${finalUrl}\n${html}`);
+  if (taleo) return { kind: 'board', ats: 'taleo', slug: `${taleo.host}/${taleo.section}` };
+  const successFactors = successFactorsCoordinates(`${finalUrl}\n${html}`);
+  if (successFactors) {
+    return {
+      kind: 'board',
+      ats: 'successfactors',
+      slug: successFactors.host,
+      successFactors,
+    };
   }
   for (const pattern of ATS_PATTERNS) {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
@@ -138,8 +191,239 @@ function numericTotal(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function ukgBoardName(html: string, boardGuid: string): string | null {
+  const escapedGuid = boardGuid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`"Id"\\s*:\\s*"${escapedGuid}"[\\s\\S]{0,1000}?"Name"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'i').exec(html);
+  if (match) {
+    try {
+      const name = (JSON.parse(`"${match[1]}"`) as string)
+        .replace(/\s*(?:[-–—]\s*)?(?:careers?|career opportunities|job board|opportunities)$/i, '')
+        .trim();
+      if (name) return name;
+    } catch {
+      return null;
+    }
+  }
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html)?.[1] ?? '';
+  const name = stripHtml(title)
+    .replace(/\s*(?:[-–—]\s*)?(?:careers?|career opportunities|job board|opportunities)$/i, '')
+    .trim();
+  return name && !/^(?:career opportunities|job board)$/i.test(name) ? name : null;
+}
+
+function taleoBoardName(html: string): string | null {
+  const value = (tag: string, attribute: string): string | null =>
+    new RegExp(`\\b${attribute}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(tag)?.[2] ?? null;
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html)?.[1] ?? '';
+  const metaTitles = [...html.matchAll(/<meta\b[^>]*>/gi)]
+    .map((match) => match[0])
+    .filter((tag) => /\b(?:name|property)=["'](?:title|og:title)["']/i.test(tag))
+    .map((tag) => value(tag, 'content'))
+    .filter((content): content is string => Boolean(content));
+  for (const candidate of [...metaTitles, title]) {
+    const parts = stripHtml(candidate).split(/\s*\|\s*/);
+    const branded = parts.at(-1)?.replace(/\s*[-–—:]?\s*(?:careers?|job openings|job search|jobs?)$/i, '').trim();
+    if (branded && !/^(?:careers?|job openings|job search|jobs?)$/i.test(branded)) return branded;
+  }
+  for (const tag of html.matchAll(/<img\b[^>]*>/gi)) {
+    const alt = value(tag[0], 'alt');
+    const src = value(tag[0], 'src') ?? '';
+    if (!alt || !/\blogo\b/i.test(`${alt} ${src}`)) continue;
+    const branded = stripHtml(alt).replace(/\s+logo$/i, '').trim();
+    if (branded && !/^(?:close|create an rss feed|access the online help|collapse this section|arrow icon|facebook link|instagram link|linkedin link|youtube link)$/i.test(branded)) {
+      return branded;
+    }
+  }
+  return null;
+}
+
+function successFactorsBoardName(feed: ReturnType<typeof parseSuccessFactorsFeed>): string | null {
+  return feed.items.map((item) => item.employer.trim()).find(Boolean) || feed.title.trim() || null;
+}
+
+async function validateUkgCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid UKG board coordinates' };
+  const [, host, tenant, guid] = match;
+  const boardPage = await fetch(`https://${host}/${tenant}/JobBoard/${guid}`, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!boardPage.ok) return { kind: 'unknown', reason: `UKG board page HTTP ${boardPage.status}` };
+  if (!namesAgree(name, ukgBoardName(await boardPage.text(), guid))) {
+    return { kind: 'unknown', reason: 'UKG board name did not match employer' };
+  }
+  const response = await fetch(`https://${host}/${tenant}/JobBoard/${guid}/JobBoardView/LoadSearchResults`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
+      'User-Agent': BROWSER_USER_AGENT,
+    },
+    body: JSON.stringify({
+      opportunitySearch: {
+        Top: 50,
+        Skip: 0,
+        QueryString: '',
+        OrderBy: [{ Value: 'postedDateDesc', PropertyName: 'PostedDate', Ascending: false }],
+        Filters: [4, 5, 6].map((fieldName) => ({ t: 'TermsSearchFilterDto', fieldName, extra: null, values: [] })),
+      },
+      matchCriteria: {
+        PreferredJobs: [], Educations: [], LicenseAndCertifications: [], Skills: [],
+        hasNoLicenses: false, SkippedSkills: [],
+      },
+    }),
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `UKG validation HTTP ${response.status}` };
+  const data = await response.json() as { opportunities?: unknown[]; totalCount?: unknown };
+  if (!Array.isArray(data.opportunities) || typeof data.totalCount !== 'number' || !Number.isFinite(data.totalCount)) {
+    return { kind: 'unknown', reason: 'UKG response had no opportunities or numeric totalCount' };
+  }
+  if (!data.totalCount) return { kind: 'unknown', reason: 'UKG board has no jobs' };
+  const slug = `${host.toLowerCase()}/${tenant}/${guid}`;
+  return {
+    kind: 'board',
+    ats: 'ukg',
+    slug,
+    careersUrl: `https://${host.toLowerCase()}/${tenant}/JobBoard/${guid}`,
+    total: data.totalCount,
+  };
+}
+
+function taleoPortalFromHtml(html: string): string | null {
+  return /portalNo\s*:\s*['"](\d+)['"]/i.exec(html)?.[1]
+    ?? /[?&]portal=(\d+)/i.exec(html.replace(/&amp;/gi, '&'))?.[1]
+    ?? /portal\s*=\s*['"]?(\d+)/i.exec(html)?.[1]
+    ?? null;
+}
+
+async function validateTaleoCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^([a-z0-9-]+\.taleo\.net)\/([^/?#]+)$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid Taleo board coordinates' };
+  const host = match[1].toLowerCase();
+  const section = match[2];
+  const referer = `https://${host}/careersection/${section}/jobsearch.ftl?lang=en`;
+  const page = await fetch(referer, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!page.ok) return { kind: 'unknown', reason: `Taleo portal HTTP ${page.status}` };
+  const html = await page.text();
+  const portal = taleoPortalFromHtml(html);
+  if (!portal) return { kind: 'unknown', reason: 'Taleo portal id not found' };
+  if (!namesAgree(name, taleoBoardName(html))) {
+    return { kind: 'unknown', reason: 'Taleo board name did not match employer' };
+  }
+  const headers = page.headers as Headers & { getSetCookie?: () => string[] };
+  const cookie = (headers.getSetCookie?.() ?? [page.headers.get('set-cookie') ?? ''])
+    .map((value) => value.split(';', 1)[0])
+    .filter(Boolean)
+    .join('; ');
+  const response = await fetch(`https://${host}/careersection/rest/jobboard/searchjobs?lang=en&portal=${encodeURIComponent(portal)}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      tz: 'GMT-08:00',
+      tzname: 'America/Los_Angeles',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: referer,
+      'User-Agent': BROWSER_USER_AGENT,
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+    body: JSON.stringify({
+      multilineEnabled: false,
+      sortingSelection: { sortBySelectionParam: '3', ascendingSortingOrder: 'false' },
+      fieldData: { fields: { KEYWORD: '', LOCATION: '' }, valid: true },
+      filterSelectionParam: { searchFilterSelections: [] },
+      advancedSearchFiltersSelectionParam: { searchFilterSelections: [] },
+      pageNo: 1,
+    }),
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `Taleo search HTTP ${response.status}` };
+  let data: { requisitionList?: unknown[]; pagingData?: { totalCount?: unknown } };
+  try {
+    data = await response.json() as typeof data;
+  } catch {
+    return { kind: 'unknown', reason: 'Taleo search response was not JSON' };
+  }
+  if (!Array.isArray(data.requisitionList) || typeof data.pagingData?.totalCount !== 'number') {
+    return { kind: 'unknown', reason: 'Taleo response had no requisitionList or numeric totalCount' };
+  }
+  if (!data.pagingData.totalCount) return { kind: 'unknown', reason: 'Taleo board has no jobs' };
+  return {
+    kind: 'board',
+    ats: 'taleo',
+    slug: `${host}/${section}`,
+    careersUrl: referer,
+    total: data.pagingData.totalCount,
+  };
+}
+
+async function successFactorsFeedAt(host: string, deadline: number) {
+  const response = await fetch(`https://${host}/sitemap.xml`, {
+    redirect: 'follow',
+    headers: { Accept: 'application/rss+xml,application/xml,text/xml,*/*', 'User-Agent': BROWSER_USER_AGENT },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return { host: host.toLowerCase(), feed: parseSuccessFactorsFeed(await response.text()) };
+}
+
+async function validateSuccessFactorsCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const coordinates = candidate.successFactors;
+  if (!coordinates) return { kind: 'unknown', reason: 'Missing SuccessFactors company coordinates' };
+  const careerUrl = new URL(`https://${coordinates.host}/career`);
+  careerUrl.searchParams.set('company', coordinates.company);
+  careerUrl.searchParams.set('career_ns', 'job_listing_summary');
+  careerUrl.searchParams.set('navBarLevel', 'JOB_SEARCH');
+  careerUrl.searchParams.set('lang', 'en_US');
+  const response = await fetch(careerUrl, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `SuccessFactors career page HTTP ${response.status}` };
+  const finalHost = new URL(response.url || careerUrl.toString()).hostname.toLowerCase();
+  if (!rmkHost(finalHost)) return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  try {
+    const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
+    if (!namesAgree(name, successFactorsBoardName(feed))) {
+      return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };
+    }
+    return {
+      kind: 'board',
+      ats: 'successfactors',
+      slug: host,
+      careersUrl: `https://${host}/`,
+      total: feed.items.length,
+    };
+  } catch {
+    return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  }
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
+    if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
+    if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
+    if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
@@ -283,6 +567,24 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
     const finalUrl = current.toString();
     const detected = detect(html, finalUrl);
     if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+    const finalHost = current.hostname.toLowerCase();
+    if (rmkHost(finalHost)) {
+      try {
+        const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
+        if (rmkHost(host)) {
+          if (!namesAgree(name, successFactorsBoardName(feed))) {
+            return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };
+          }
+          return {
+            kind: 'board',
+            ats: 'successfactors',
+            slug: host,
+            careersUrl: `https://${host}/`,
+            total: feed.items.length,
+          };
+        }
+      } catch { /* not an RMK RSS feed */ }
+    }
     if (detected.kind === 'unreadable') return detected;
     return {
       kind: 'unknown',

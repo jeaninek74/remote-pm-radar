@@ -7,6 +7,10 @@ import { isoDate, stripHtml } from './text';
 import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type ParsedSalary } from './salary';
 import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
+import { parseSuccessFactorsFeed } from './successfactors';
+
+const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
+const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 function unescapeHtml(value: string): string {
   return value
@@ -754,6 +758,684 @@ function icimsBaseSalary(posting: JobPostingLd): ParsedSalary | null {
   return pickSalary(salaryText, 'iCIMS base salary');
 }
 
+interface UkgOpportunity {
+  Id?: string | number;
+  Title?: string;
+  RequisitionNumber?: string | null;
+  Locations?: {
+    LocalizedDescription?: string | null;
+    Address?: {
+      City?: string | null;
+      State?: { Code?: string | null; Name?: string | null } | null;
+      Country?: { Code?: string | null; Name?: string | null } | null;
+      Line2?: string | null;
+    } | null;
+  }[] | null;
+  PostedDate?: string | null;
+  Description?: string | null;
+  CompensationAnnualMinimum?: number | string | null;
+  CompensationAnnualMaximum?: number | string | null;
+  CompensationHourlyMinimum?: number | string | null;
+  CompensationHourlyMaximum?: number | string | null;
+  CompensationCurrencyCode?: string | null;
+  PayRangeVisible?: boolean;
+  PayRange?: { PayRangeMinimum?: number | string | null; PayRangeMaximum?: number | string | null } | null;
+  PayRangeCurrencyCode?: string | null;
+}
+
+interface UkgSearchResult {
+  opportunities?: UkgOpportunity[];
+  totalCount?: number;
+}
+
+function ukgCoordinates(slug: string): { host: string; tenant: string; boardGuid: string } | null {
+  const match = /^(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(slug);
+  return match ? { host: match[1].toLowerCase(), tenant: match[2], boardGuid: match[3] } : null;
+}
+
+function budgetTimeout(deadline: number): number {
+  return Math.min(REFRESH.timeoutMs, Math.max(0, deadline - Date.now()));
+}
+
+async function directReaderPause(deadline: number): Promise<boolean> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return false;
+  if (DIRECT_READER_PACE_MS > 0) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(DIRECT_READER_PACE_MS, remaining)));
+  }
+  return Date.now() < deadline;
+}
+
+async function directReaderGet(url: string, deadline: number, headers: Record<string, string> = {}): Promise<Response> {
+  const timeoutMs = budgetTimeout(deadline);
+  if (!timeoutMs) throw new Error('employer budget exceeded');
+  const response = await fetch(url, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, ...headers },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response;
+}
+
+function ukgSearchBody(skip: number): unknown {
+  return {
+    opportunitySearch: {
+      Top: 50,
+      Skip: skip,
+      QueryString: '',
+      OrderBy: [{ Value: 'postedDateDesc', PropertyName: 'PostedDate', Ascending: false }],
+      Filters: [4, 5, 6].map((fieldName) => ({ t: 'TermsSearchFilterDto', fieldName, extra: null, values: [] })),
+    },
+    matchCriteria: {
+      PreferredJobs: [],
+      Educations: [],
+      LicenseAndCertifications: [],
+      Skills: [],
+      hasNoLicenses: false,
+      SkippedSkills: [],
+    },
+  };
+}
+
+async function ukgSearch(url: string, skip: number, deadline: number): Promise<UkgSearchResult> {
+  const timeoutMs = budgetTimeout(deadline);
+  if (!timeoutMs) throw new Error('employer budget exceeded');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
+      'User-Agent': BROWSER_USER_AGENT,
+    },
+    body: JSON.stringify(ukgSearchBody(skip)),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json() as Promise<UkgSearchResult>;
+}
+
+function ukgDetailFromHtml(html: string): UkgOpportunity | null {
+  for (const match of html.matchAll(/CandidateOpportunityDetail\s*\(/g)) {
+    const start = html.indexOf('{', match.index + match[0].length);
+    if (start < 0) continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < html.length; index += 1) {
+      const character = html[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+      } else if (character === '"') inString = true;
+      else if (character === '{') depth += 1;
+      else if (character === '}' && --depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, index + 1)) as UkgOpportunity;
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function amountNumber(value: number | string | null | undefined): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const parsed = Number(value.replace(/[$,\s]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ukgStructuredSalary(
+  minimum: number | string | null | undefined,
+  maximum: number | string | null | undefined,
+  unit: 'year' | 'hour',
+  currency: string | null | undefined,
+): ParsedSalary | null {
+  if (currency && !/^(?:USD|US\$|US DOLLARS?)$/i.test(currency.trim())) return null;
+  const min = amountNumber(minimum);
+  const max = amountNumber(maximum);
+  if (min == null && max == null) return null;
+  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const value = min != null && max != null && min !== max
+    ? `USD ${format(min)} - USD ${format(max)}`
+    : `USD ${format(min ?? max!)}`;
+  return pickSalary(`${value} per ${unit}`, 'UKG structured compensation');
+}
+
+function ukgSalary(detail: UkgOpportunity, description: string): ParsedSalary | null {
+  const visibleRange = detail.PayRangeVisible
+    ? ukgStructuredSalary(
+      detail.PayRange?.PayRangeMinimum,
+      detail.PayRange?.PayRangeMaximum,
+      amountNumber(detail.CompensationHourlyMinimum) != null || amountNumber(detail.CompensationHourlyMaximum) != null ? 'hour' : 'year',
+      detail.PayRangeCurrencyCode ?? detail.CompensationCurrencyCode,
+    )
+    : null;
+  const annual = ukgStructuredSalary(
+    detail.CompensationAnnualMinimum,
+    detail.CompensationAnnualMaximum,
+    'year',
+    detail.CompensationCurrencyCode,
+  );
+  const hourly = ukgStructuredSalary(
+    detail.CompensationHourlyMinimum,
+    detail.CompensationHourlyMaximum,
+    'hour',
+    detail.CompensationCurrencyCode,
+  );
+  return visibleRange ?? annual ?? hourly ?? pickSalary(description, 'UKG posting');
+}
+
+function ukgLocations(opportunity: UkgOpportunity): string[] {
+  const locations: string[] = [];
+  let remote = /\bremote\b/i.test(opportunity.Title ?? '');
+  for (const location of opportunity.Locations ?? []) {
+    const address = location.Address;
+    const city = address?.City?.trim();
+    const state = address?.State?.Code?.trim() || address?.State?.Name?.trim();
+    const country = address?.Country?.Name?.trim() || address?.Country?.Code?.trim();
+    const formatted = [city, state, country].filter(Boolean).join(', ');
+    if (formatted) locations.push(formatted);
+    remote ||= /\bremote\b/i.test(`${address?.Line2 ?? ''} ${location.LocalizedDescription ?? ''}`);
+  }
+  if (remote) locations.push('Remote');
+  return [...new Set(locations)];
+}
+
+async function ukg(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const coordinates = ukgCoordinates(employer.slug);
+  if (!coordinates) return { jobs: [], ok: false, error: 'invalid UKG board slug', totalListed: 0 };
+  const { host, tenant, boardGuid } = coordinates;
+  const boardPath = `https://${host}/${tenant}/JobBoard/${boardGuid}`;
+  const listUrl = `${boardPath}/JobBoardView/LoadSearchResults`;
+  const all: UkgOpportunity[] = [];
+  let totalCount = 0;
+  let skip = 0;
+  let truncated = false;
+
+  while (skip === 0 || skip < totalCount) {
+    if (Date.now() >= deadline) {
+      truncated = true;
+      break;
+    }
+    let data: UkgSearchResult;
+    try {
+      data = await ukgSearch(listUrl, skip, deadline);
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        truncated = true;
+        break;
+      }
+      throw error;
+    }
+    if (!Array.isArray(data.opportunities) || typeof data.totalCount !== 'number' || !Number.isFinite(data.totalCount)) {
+      throw new Error('UKG search response had no opportunities or numeric totalCount');
+    }
+    if (skip === 0) totalCount = data.totalCount;
+    if (!data.opportunities.length && skip < totalCount) {
+      truncated = true;
+      break;
+    }
+    all.push(...data.opportunities);
+    skip += 50;
+    if (skip < totalCount && !await directReaderPause(deadline)) {
+      truncated = true;
+      break;
+    }
+  }
+
+  const source = `ukg:${host}/${tenant}/${boardGuid}`;
+  const candidates = all.filter((opportunity) => isRoleTitle(opportunity.Title ?? '', undefined, employer));
+  const jobs: RawJob[] = [];
+  for (const listing of candidates) {
+    if (Date.now() >= deadline) {
+      truncated = true;
+      break;
+    }
+    const id = String(listing.Id ?? '');
+    if (!id) continue;
+    const applyUrl = `${boardPath}/OpportunityDetail?opportunityId=${encodeURIComponent(id)}`;
+    if (known?.has(`${source}:${id}`)) {
+      jobs.push(unchangedJob(source, 'ukg', id, employer.name, listing.Title ?? '', applyUrl));
+      continue;
+    }
+    if (!await directReaderPause(deadline)) {
+      truncated = true;
+      break;
+    }
+    try {
+      const response = await directReaderGet(applyUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+      const detail = ukgDetailFromHtml(await response.text());
+      if (!detail?.Title) continue;
+      if (!isRoleTitle(detail.Title, undefined, employer)) continue;
+      const description = clean(detail.Description);
+      const salary = ukgSalary(detail, description);
+      const postedAt = isoDate(detail.PostedDate ?? listing.PostedDate);
+      jobs.push({
+        source,
+        ats: 'ukg',
+        board: `${host}/${tenant}/${boardGuid}`,
+        externalId: id,
+        company: employer.name,
+        title: detail.Title,
+        locations: ukgLocations({ ...detail, Title: detail.Title, Locations: detail.Locations ?? listing.Locations }),
+        descriptionText: description || null,
+        applyUrl,
+        linkType: 'employer',
+        postedAt,
+        postedConfidence: postedAt ? 'confirmed' : 'unknown',
+        salary,
+        salarySource: salary ? 'Employer posting (UKG)' : null,
+        requisitionId: detail.RequisitionNumber ?? listing.RequisitionNumber ?? id,
+        industry: employer.industry,
+        companySize: employer.company_size,
+        hqState: employer.hq_state,
+      });
+    } catch (error) {
+      if (Date.now() >= deadline) truncated = true;
+      console.warn(`[ukg] ${host}/${tenant}/${id}: ${(error as Error).message.slice(0, 120)}`);
+      if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
+    }
+  }
+  return { jobs, ok: true, totalListed: totalCount, truncated };
+}
+
+interface TaleoJob {
+  jobId?: string | number;
+  contestNo?: string | number;
+  column?: unknown[];
+  linkedColumn?: number | string;
+  locationsColumns?: (number | string)[];
+}
+
+interface TaleoSearchResult {
+  requisitionList?: TaleoJob[];
+  pagingData?: { pageSize?: number; totalCount?: number };
+}
+
+function taleoCoordinates(slug: string): { host: string; section: string } | null {
+  const match = /^([a-z0-9-]+\.taleo\.net)\/([^/?#]+)$/i.exec(slug);
+  return match ? { host: match[1].toLowerCase(), section: match[2] } : null;
+}
+
+function taleoCookies(response: Response): string {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+  const values = headers.getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
+  return values.map((value) => value.split(';', 1)[0]).filter(Boolean).join('; ');
+}
+
+function taleoPortal(html: string): string | null {
+  return /portalNo\s*:\s*['"](\d+)['"]/i.exec(html)?.[1]
+    ?? /[?&]portal=(\d+)/i.exec(html.replace(/&amp;/gi, '&'))?.[1]
+    ?? /portal\s*=\s*['"]?(\d+)/i.exec(html)?.[1]
+    ?? null;
+}
+
+function taleoSearchBody(pageNo: number, ascendingSortingOrder: 'false' | 'true'): unknown {
+  return {
+    multilineEnabled: false,
+    sortingSelection: { sortBySelectionParam: '3', ascendingSortingOrder },
+    fieldData: { fields: { KEYWORD: '', LOCATION: '' }, valid: true },
+    filterSelectionParam: { searchFilterSelections: [] },
+    advancedSearchFiltersSelectionParam: { searchFilterSelections: [] },
+    pageNo,
+  };
+}
+
+async function taleoSearch(
+  url: string,
+  referer: string,
+  cookies: string,
+  pageNo: number,
+  deadline: number,
+  ascendingSortingOrder: 'false' | 'true',
+): Promise<TaleoSearchResult> {
+  const timeoutMs = budgetTimeout(deadline);
+  if (!timeoutMs) throw new Error('employer budget exceeded');
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    tz: 'GMT-08:00',
+    tzname: 'America/Los_Angeles',
+    'X-Requested-With': 'XMLHttpRequest',
+    Referer: referer,
+    'User-Agent': BROWSER_USER_AGENT,
+  };
+  if (cookies) headers.Cookie = cookies;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(taleoSearchBody(pageNo, ascendingSortingOrder)),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  try {
+    return await response.json() as TaleoSearchResult;
+  } catch {
+    throw new Error('Taleo search response was not JSON');
+  }
+}
+
+function taleoTitle(job: TaleoJob): string {
+  const index = Number(job.linkedColumn);
+  const value = Number.isInteger(index) ? job.column?.[index] : undefined;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function taleoLocations(job: TaleoJob): string[] {
+  const locations: string[] = [];
+  for (const columnIndex of job.locationsColumns ?? []) {
+    const index = Number(columnIndex);
+    const raw = Number.isInteger(index) ? job.column?.[index] : undefined;
+    if (typeof raw !== 'string') continue;
+    let values: unknown = raw;
+    try {
+      values = JSON.parse(raw) as unknown;
+    } catch { /* keep a plain location string */ }
+    const entries = Array.isArray(values) ? values : [values];
+    for (const entry of entries) {
+      if (typeof entry !== 'string' || !entry.trim()) continue;
+      const parts = entry.trim().split('-');
+      locations.push(parts.length >= 3 ? `${parts.slice(2).join('-')}, ${parts[1]}, ${parts[0]}` : entry.trim());
+    }
+  }
+  return [...new Set(locations)];
+}
+
+function taleoPostedAt(job: TaleoJob): string | null {
+  for (const value of job.column ?? []) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (!/^(?:\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})$/i.test(text)) continue;
+    const date = isoDate(text);
+    if (date) return date;
+  }
+  return null;
+}
+
+function taleoInitialHistory(html: string): string {
+  const input = [...html.matchAll(/<input\b[^>]*>/gi)]
+    .map((match) => match[0])
+    .find((tag) => /\b(?:name|id)=["']initialHistory["']/i.test(tag));
+  const value = input ? /\bvalue=["']([^"']*)["']/i.exec(input)?.[1] : null;
+  if (!value) return '';
+  let decoded = value.replace(/&amp;/gi, '&').replace(/&#39;|&apos;/gi, "'");
+  for (let pass = 0; pass < 2; pass += 1) {
+    decoded = decoded.replace(/(?:%[0-9a-f]{2})+/gi, (sequence) => {
+      try {
+        return decodeURIComponent(sequence);
+      } catch {
+        return sequence;
+      }
+    });
+  }
+  return unescapeHtml(decoded);
+}
+
+function taleoDescription(html: string): string {
+  const state = taleoInitialHistory(html);
+  const marker = 'requisitionDescriptionInterface!|!descRequisition!|!';
+  const markerIndex = state.indexOf(marker);
+  if (markerIndex < 0) return '';
+  const tail = state.slice(markerIndex + marker.length);
+  const payloadStart = tail.indexOf('!!*!');
+  if (payloadStart >= 0) {
+    const payload = tail.slice(payloadStart + 4);
+    const end = payload.indexOf('!|!');
+    const encoded = payload.slice(0, end < 0 ? undefined : end);
+    const decoded = encoded.replace(/(?:%[0-9a-f]{2})+/gi, (sequence) => {
+      try {
+        return decodeURIComponent(sequence);
+      } catch {
+        return sequence;
+      }
+    });
+    return clean(decoded.replace(/\\([:;,])/g, '$1'));
+  }
+  const start = tail.search(/<(?=(?:p|div|ul|ol|h[1-6]|table|span)\b)/i);
+  if (start < 0) return '';
+  const end = tail.indexOf('!|!', start);
+  const payload = tail.slice(start, end < 0 ? undefined : end).replace(/\\([:;,])/g, '$1');
+  return clean(payload);
+}
+
+function taleoDetailPostedAt(html: string): string | null {
+  const visible = /id=["'][^"']*(?:reqPostingDate|datePosted)[^"']*["'][^>]*>([^<]*)/i.exec(html)?.[1]?.trim();
+  if (visible) {
+    const date = isoDate(visible);
+    if (date) return date;
+  }
+  const state = taleoInitialHistory(html);
+  const datePattern = /^(?:\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})(?=$|[,\s])/i;
+  const dateSuffix = /^(?:,\s*|\s+)\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M$/i;
+  const firstDate = state.split('!|!').map((field) => field.replace(/\\([:,])/g, '$1').trim()).map((field) => {
+    const match = datePattern.exec(field);
+    if (!match) return null;
+    const suffix = field.slice(match[0].length);
+    return !suffix || dateSuffix.test(suffix) ? match[0] : null;
+  }).find((date): date is string => Boolean(date));
+  return firstDate ? isoDate(firstDate) : null;
+}
+
+async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const coordinates = taleoCoordinates(employer.slug);
+  if (!coordinates) return { jobs: [], ok: false, error: 'invalid Taleo board slug', totalListed: 0 };
+  const { host, section } = coordinates;
+  const referer = `https://${host}/careersection/${section}/jobsearch.ftl?lang=en`;
+  const listUrl = `https://${host}/careersection/rest/jobboard/searchjobs?lang=en&portal=`;
+  const page = await directReaderGet(referer, deadline, { Accept: 'text/html,application/xhtml+xml' });
+  const cookies = taleoCookies(page);
+  const portal = taleoPortal(await page.text());
+  if (!portal) return { jobs: [], ok: false, error: 'Taleo portal id not found', totalListed: 0 };
+  const all = new Map<string, TaleoJob>();
+  let totalCount = 0;
+  let truncated = false;
+
+  const readPass = async (
+    ascendingSortingOrder: 'false' | 'true',
+    primary = false,
+  ): Promise<{ rowsRead: number; addedIds: number }> => {
+    let pageNo = 1;
+    let rowsRead = 0;
+    let addedIds = 0;
+    let passTotalCount: number | null = null;
+    while (true) {
+      if (!await directReaderPause(deadline)) {
+        truncated = true;
+        return { rowsRead, addedIds };
+      }
+      let data: TaleoSearchResult;
+      try {
+        data = await taleoSearch(
+          `${listUrl}${encodeURIComponent(portal)}`,
+          referer,
+          cookies,
+          pageNo,
+          deadline,
+          ascendingSortingOrder,
+        );
+      } catch (error) {
+        if (Date.now() >= deadline) {
+          truncated = true;
+          return { rowsRead, addedIds };
+        }
+        throw error;
+      }
+      if (!Array.isArray(data.requisitionList) || !data.pagingData || typeof data.pagingData.totalCount !== 'number') {
+        throw new Error('Taleo search response had no requisitionList or numeric totalCount');
+      }
+      if (pageNo === 1) {
+        passTotalCount = data.pagingData.totalCount;
+        if (primary) totalCount = passTotalCount;
+      }
+      if (!data.requisitionList.length) return { rowsRead, addedIds };
+      rowsRead += data.requisitionList.length;
+      for (const job of data.requisitionList) {
+        const key = job.jobId != null
+          ? `job:${String(job.jobId)}`
+          : job.contestNo != null ? `contest:${String(job.contestNo)}` : null;
+        if (key && !all.has(key)) {
+          all.set(key, job);
+          addedIds += 1;
+        }
+      }
+      if (passTotalCount !== null && rowsRead >= passTotalCount) return { rowsRead, addedIds };
+      pageNo += 1;
+    }
+  };
+
+  const normalPass = await readPass('false', true);
+  if (normalPass.rowsRead < totalCount && !truncated) {
+    const ascendingPass = await readPass('true');
+    if (!truncated && ascendingPass.addedIds > 0 && all.size < totalCount) truncated = true;
+  }
+
+  const source = `taleo:${host}/${section}`;
+  const candidates = [...all.values()].filter((job) => isRoleTitle(taleoTitle(job), undefined, employer));
+  const jobs: RawJob[] = [];
+  for (const listing of candidates) {
+    if (Date.now() >= deadline) {
+      truncated = true;
+      break;
+    }
+    const jobId = String(listing.jobId ?? '');
+    const contestNo = String(listing.contestNo ?? listing.jobId ?? '');
+    const detailKey = contestNo || jobId;
+    const applyUrl = `https://${host}/careersection/${section}/jobdetail.ftl?job=${encodeURIComponent(detailKey)}&lang=en`;
+    const title = taleoTitle(listing);
+    if (known?.has(`${source}:${jobId || contestNo}`)) {
+      jobs.push(unchangedJob(source, 'taleo', jobId || contestNo, employer.name, title, applyUrl));
+      continue;
+    }
+    if (!await directReaderPause(deadline)) {
+      truncated = true;
+      break;
+    }
+    try {
+      const response = await directReaderGet(applyUrl, deadline, {
+        Accept: 'text/html,application/xhtml+xml',
+        Referer: referer,
+      });
+      const html = await response.text();
+      const description = taleoDescription(html);
+      const postedAt = taleoPostedAt(listing) ?? taleoDetailPostedAt(html);
+      const salary = pickSalary(description, 'Taleo posting');
+      if (!isRoleTitle(title, undefined, employer)) continue;
+      jobs.push({
+        source,
+        ats: 'taleo',
+        board: `${host}/${section}`,
+        externalId: jobId || contestNo,
+        company: employer.name,
+        title,
+        locations: taleoLocations(listing),
+        descriptionText: description || null,
+        applyUrl,
+        linkType: 'employer',
+        postedAt,
+        postedConfidence: postedAt ? 'confirmed' : 'unknown',
+        salary,
+        salarySource: salary ? 'Employer posting (Taleo)' : null,
+        requisitionId: contestNo || jobId,
+        industry: employer.industry,
+        companySize: employer.company_size,
+        hqState: employer.hq_state,
+      });
+    } catch (error) {
+      if (Date.now() >= deadline) truncated = true;
+      console.warn(`[taleo] ${host}/${section}/${detailKey}: ${(error as Error).message.slice(0, 120)}`);
+      if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
+    }
+  }
+  return { jobs, ok: true, totalListed: all.size, truncated };
+}
+
+function successFactorsHost(slug: string): string | null {
+  const host = slug.replace(/^https?:\/\//i, '').split(/[/?#]/, 1)[0].toLowerCase();
+  return /^[a-z0-9.-]+$/.test(host) ? host : null;
+}
+
+function successFactorsDatePosted(html: string): string | null {
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    if (!/\bitemprop=["']datePosted["']/i.test(tag)) continue;
+    const content = /\bcontent=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (content) return isoDate(content);
+  }
+  return null;
+}
+
+async function successfactors(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const host = successFactorsHost(employer.slug);
+  if (!host) return { jobs: [], ok: false, error: 'invalid SuccessFactors RMK host', totalListed: 0 };
+  let feed: ReturnType<typeof parseSuccessFactorsFeed>;
+  try {
+    const response = await directReaderGet(`https://${host}/sitemap.xml`, deadline, { Accept: 'application/rss+xml,application/xml,text/xml,*/*' });
+    feed = parseSuccessFactorsFeed(await response.text());
+  } catch (error) {
+    if (Date.now() >= deadline) return { jobs: [], ok: true, totalListed: 0, truncated: true };
+    throw error;
+  }
+
+  const source = `successfactors:${host}`;
+  const candidates = feed.items.filter((item) => isRoleTitle(item.title, undefined, employer));
+  const jobs: RawJob[] = [];
+  let truncated = false;
+  for (const item of candidates) {
+    if (Date.now() >= deadline) {
+      truncated = true;
+      break;
+    }
+    const applyUrl = item.link;
+    if (known?.has(`${source}:${item.id}`)) {
+      jobs.push(unchangedJob(source, 'successfactors', item.id, employer.name, item.title, applyUrl));
+      continue;
+    }
+    if (!await directReaderPause(deadline)) {
+      truncated = true;
+      break;
+    }
+    try {
+      const response = await directReaderGet(applyUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
+      const datePosted = successFactorsDatePosted(await response.text());
+      const description = clean(item.description);
+      const salary = pickSalary(description, 'SAP SuccessFactors posting');
+      jobs.push({
+        source,
+        ats: 'successfactors',
+        board: host,
+        externalId: item.id,
+        company: employer.name,
+        title: item.title,
+        locations: item.location ? [item.location] : [],
+        descriptionText: description || null,
+        applyUrl,
+        linkType: 'employer',
+        postedAt: datePosted,
+        postedConfidence: datePosted ? 'confirmed' : 'unknown',
+        salary,
+        salarySource: salary ? 'Employer posting (SAP SuccessFactors)' : null,
+        requisitionId: item.id,
+        industry: employer.industry,
+        companySize: employer.company_size,
+        hqState: employer.hq_state,
+      });
+    } catch (error) {
+      if (Date.now() >= deadline) truncated = true;
+      console.warn(`[successfactors] ${host}/${item.id}: ${(error as Error).message.slice(0, 120)}`);
+      if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
+    }
+  }
+  return { jobs, ok: true, totalListed: feed.items.length, truncated };
+}
+
 async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const host = icimsHost(employer.slug);
   if (!host) return { jobs: [], ok: false, error: 'invalid iCIMS host', totalListed: 0 };
@@ -850,6 +1532,9 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Prom
   oracle,
   dayforce,
   icims,
+  ukg,
+  taleo,
+  successfactors,
 };
 
 
