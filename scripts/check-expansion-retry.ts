@@ -1,4 +1,4 @@
-import { matchesRetryResult } from './expansion-retry';
+import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -11,3 +11,7 @@ check('retry platform selects matching unreadable records',
   matchesRetryResult({ kind: 'unreadable', platform: 'Phenom' }, 'phenom'));
 check('retry platform skips other unreadable platforms',
   !matchesRetryResult({ kind: 'unreadable', platform: 'Avature' }, 'phenom'));
+check('same-output unknown records are not counted as already written during retry',
+  !isAlreadyWrittenResult({ kind: 'unknown' }, true, null));
+check('resolved records remain already written during retry',
+  isAlreadyWrittenResult({ kind: 'board' }, true, null));

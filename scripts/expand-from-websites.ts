@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import { inspectCareersPage, sameCareersPostingSet } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
 import { careersSlug, normalizedCareersUrl } from './expansion-urls';
-import { matchesRetryResult } from './expansion-retry';
+import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
 
 interface WebsiteEmployer {
   name: string;
@@ -522,7 +522,7 @@ async function main(): Promise<void> {
   const oldRecords = await loadOutput(outputFile);
   const records = new Map(oldRecords.map((record) => [record.name, record]));
   const alreadyWritten = new Set([...records.values()]
-    .filter((record) => !retryRecords || !matchesRetryResult(record.result, options.retryPlatform))
+    .filter((record) => isAlreadyWrittenResult(record.result, retryRecords !== null, options.retryPlatform))
     .map((record) => normalizeName(record.name)));
   const toProcess = selected.filter((entry) => !alreadyWritten.has(normalizeName(entry.name)));
   const normalizedNames = [...new Set(toProcess.map((entry) => normalizeName(entry.name)))];

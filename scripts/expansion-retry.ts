@@ -8,3 +8,7 @@ export function matchesRetryResult(result: RetryResult, retryPlatform: string | 
     ? result.kind === 'unreadable' && result.platform?.toLowerCase() === retryPlatform.toLowerCase()
     : result.kind === 'unknown';
 }
+
+export function isAlreadyWrittenResult(result: RetryResult, retrying: boolean, retryPlatform: string | null): boolean {
+  return !retrying || !matchesRetryResult(result, retryPlatform);
+}
