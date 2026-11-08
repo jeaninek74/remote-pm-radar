@@ -1,4 +1,4 @@
-import { detect, namesAgree, resolveBoard } from '../server/engine/resolve';
+import { detect, namesAgree, neogovVerbiageMatches, resolveBoard } from '../server/engine/resolve';
 
 let failures = 0;
 
@@ -86,6 +86,14 @@ async function main(): Promise<void> {
   );
   const neogovHome = detect('', 'https://www.governmentjobs.com/careers/home');
   check('keep NEOGOV home URL unreadable', neogovHome.kind === 'unreadable' && neogovHome.platform === 'NEOGOV');
+  check(
+    'NEOGOV verbiage matches a contiguous agency name',
+    neogovVerbiageMatches('Lehigh Carbon Community College', 'Find current opportunities at Lehigh Carbon Community College.'),
+  );
+  check(
+    'NEOGOV verbiage does not match separated employer tokens',
+    !neogovVerbiageMatches('Lehigh Valley Hospital', 'The Lehigh Valley has many hospital partners.'),
+  );
 
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');

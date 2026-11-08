@@ -136,7 +136,7 @@ function neogovCoordinates(source: string): { host: string; folder: string } | n
   return null;
 }
 
-function neogovAgencyNames(html: string): string[] {
+function neogovAgencyNames(html: string): { names: string[]; verbiage: string | null } {
   const names: string[] = [];
   const add = (value: string | undefined) => {
     if (!value) return;
@@ -154,8 +154,17 @@ function neogovAgencyNames(html: string): string[] {
     for (const part of title.split('|')) add(part);
   }
   const verbiage = /<div\b(?=[^>]*\bclass\s*=\s*["'][^"']*\bverbiage\b[^"']*["'])[^>]*>([\s\S]*?)<\/div\s*>/i.exec(html)?.[1];
-  if (verbiage) add(verbiage.slice(0, 1200));
-  return names;
+  const verbiageText = verbiage ? stripHtml(verbiage.slice(0, 1200)).replace(/\s+/g, ' ').trim() : '';
+  return { names, verbiage: verbiageText || null };
+}
+
+export function neogovVerbiageMatches(name: string, verbiage: string): boolean {
+  const nameSequence = nameTokens(name);
+  const verbiageTokens = nameTokens(verbiage);
+  if (!nameSequence.length || nameSequence.length > verbiageTokens.length) return false;
+  return verbiageTokens.some((_, index) =>
+    nameSequence.every((token, offset) => verbiageTokens[index + offset] === token),
+  );
 }
 
 function rmkHost(host: string): boolean {
@@ -488,11 +497,13 @@ async function validateNeogovCandidate(
     return { kind: 'unreadable', platform: 'NEOGOV' };
   }
   const finalFolder = /^\/careers\/([A-Za-z0-9_-]+)/i.exec(finalUrl.pathname)?.[1] ?? folder;
-  const agencyNames = neogovAgencyNames(await response.text());
-  if (!agencyNames.some((agencyName) => namesAgree(name, agencyName))) {
+  const agencyIdentity = neogovAgencyNames(await response.text());
+  const nameMatches = agencyIdentity.names.some((agencyName) => namesAgree(name, agencyName))
+    || (agencyIdentity.verbiage !== null && neogovVerbiageMatches(name, agencyIdentity.verbiage));
+  if (!nameMatches) {
     return {
       kind: 'unknown',
-      reason: `NEOGOV agency name did not match employer: ${(agencyNames[0] ?? 'not found').slice(0, 120)}`,
+      reason: `NEOGOV agency name did not match employer: ${(agencyIdentity.names[0] ?? agencyIdentity.verbiage ?? 'not found').slice(0, 120)}`,
     };
   }
 
