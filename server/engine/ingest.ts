@@ -343,7 +343,9 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
         match_reasons = EXCLUDED.match_reasons,
         gaps = EXCLUDED.gaps,
         urgency = CASE WHEN jobs.urgency = 'High' THEN jobs.urgency ELSE EXCLUDED.urgency END,
-        urgency_evidence = COALESCE(jobs.urgency_evidence, EXCLUDED.urgency_evidence),
+        urgency_evidence = CASE WHEN EXCLUDED.urgency = 'High' AND jobs.urgency IS DISTINCT FROM 'High'
+                                THEN EXCLUDED.urgency_evidence
+                                ELSE COALESCE(jobs.urgency_evidence, EXCLUDED.urgency_evidence) END,
         black_owned_verification = EXCLUDED.black_owned_verification,
         ownership_source = EXCLUDED.ownership_source,
         apply_url = EXCLUDED.apply_url,
