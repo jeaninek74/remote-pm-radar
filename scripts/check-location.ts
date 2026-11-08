@@ -59,6 +59,24 @@ const inPersonUs = evaluateLocation({
 });
 check('explicit in-person US role is not queued as unknown', inPersonUs.remote === 'onsite');
 
+const nationwideResidency = evaluateLocation({
+  locations: ['United States'],
+  description: 'Fully remote; applicants must live within the United States',
+});
+check(
+  'US residency eligibility does not count as an on-site requirement',
+  nationwideResidency.remote === 'remote' && nationwideResidency.ca === 'us_wide',
+);
+
+const commuteRequirement = evaluateLocation({
+  locations: ['USA'],
+  description: 'must live within commuting distance of our Austin office',
+});
+check(
+  'commuting-distance requirement is not queued as remote',
+  commuteRequirement.remote === 'onsite' && commuteRequirement.ca === 'unknown',
+);
+
 const occasionalOnsiteVisits = evaluateLocation({
   locations: ['USA'],
   description: 'This role is fully remote with occasional onsite client visits',
