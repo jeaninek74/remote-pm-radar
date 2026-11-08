@@ -1659,6 +1659,37 @@ function phenomJobLocations(posting: JobPostingLd | null): string[] {
   }).filter(Boolean);
 }
 
+function phenomSalary(posting: JobPostingLd | null, description: string): ParsedSalary | null {
+  const baseSalary = posting?.baseSalary;
+  const value = baseSalary?.value;
+  if (baseSalary && value && (!baseSalary.currency || /^USD$/i.test(baseSalary.currency))) {
+    const number = (input: string | number | undefined) => {
+      if (input === undefined) return null;
+      const parsed = Number(String(input).replace(/,/g, ''));
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const minimum = number(value.minValue ?? value.value);
+    const maximum = number(value.maxValue ?? value.value);
+    const unit = value.unitText?.toLowerCase() ?? 'year';
+    const factor = /month/.test(unit) ? 12 : 1;
+    const isHourly = /hour/.test(unit);
+    const min = minimum === null ? null : Math.round(minimum * factor);
+    const max = maximum === null ? null : Math.round(maximum * factor);
+    const format = (amount: number) => amount.toLocaleString('en-US');
+    if (min !== null || max !== null) {
+      const low = min ?? max!;
+      const high = max ?? min!;
+      const amount = low === high ? format(low) : `${format(low)} - ${format(high)}`;
+      const structured = parseSalaryFromText(
+        `Base salary USD ${amount} per ${isHourly ? 'hour' : 'year'}`,
+        'Phenom structured baseSalary',
+      );
+      if (structured) return structured;
+    }
+  }
+  return pickSalary(description, 'Phenom posting');
+}
+
 function phenomRestrictions(posting: JobPostingLd | null): string[] {
   const requirements = posting?.applicantLocationRequirements;
   const values = Array.isArray(requirements) ? requirements : requirements ? [requirements] : [];
@@ -1739,6 +1770,7 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
           if (Date.now() >= deadline) detailsTruncated = true;
         }
         const description = detail?.description ? clean(detail.description) : clean(item.description);
+        const salary = phenomSalary(detail, description);
         const structuredLocations = phenomJobLocations(detail);
         const jobLocationType = detail?.jobLocationType ?? null;
         const isRemote = /TELECOMMUTE/i.test(jobLocationType ?? '') ? true : null;
@@ -1755,6 +1787,8 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
           descriptionHtml: detail?.description ?? null,
           descriptionText: description || null,
           applyUrl: ownUrl, linkType: 'employer',
+          salary,
+          salarySource: salary ? 'Employer posting (Phenom)' : null,
         });
       }
       from += parsed.itemsCount;
