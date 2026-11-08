@@ -40,6 +40,10 @@ function oracleCoordinates(source: string): { host: string; site: string } | nul
 
 const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
   { platform: 'Phenom', re: /phenompeople|phenom/i },
+  { platform: 'UKG Ready', re: /entertimeonline\.com/i },
+  { platform: 'PeopleAdmin', re: /peopleadmin\.com/i },
+  { platform: 'NEOGOV', re: /(?:governmentjobs|schooljobs)\.com/i },
+  { platform: 'Frontline/AppliTrack', re: /applitrack\.com/i },
   { platform: 'SAP SuccessFactors', re: /successfactors|jobs\.sap\.com/i },
   { platform: 'Avature', re: /avature\.net/i },
   { platform: 'Oracle Cloud HCM', re: /oraclecloud\.com/i },
