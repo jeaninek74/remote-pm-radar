@@ -78,6 +78,10 @@ const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) 
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
 
+export function hasRemoteLocationOption(locations: string[]): boolean {
+  return locations.some((location) => REMOTE_MARKERS.test(String(location ?? '').replace(/_/g, ' ')));
+}
+
 export function explicitWorkplaceArrangement(
   locations: string[],
   workplaceType?: string | null,

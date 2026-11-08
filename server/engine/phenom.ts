@@ -1,5 +1,5 @@
 import { RULES } from '../config';
-import { explicitWorkplaceArrangement } from './location';
+import { explicitWorkplaceArrangement, hasRemoteLocationOption } from './location';
 import type { ParsedSalary } from './salary';
 
 export interface PhenomConfig {
@@ -60,7 +60,9 @@ export function phenomDetailRedirectTarget(
 }
 
 export function phenomPrimaryLocations(feedLocations: string[], detailLocations: string[]): string[] {
-  return feedLocations.length ? feedLocations : detailLocations;
+  if (!feedLocations.length) return detailLocations;
+  const remoteDetailLocations = detailLocations.filter((location) => hasRemoteLocationOption([location]));
+  return [...new Set([...feedLocations, ...remoteDetailLocations])];
 }
 
 export function phenomRemoteInfo(
@@ -69,13 +71,14 @@ export function phenomRemoteInfo(
   detailLocations: string[] = [],
 ): { isRemote: boolean | null; workplaceType: string | null } {
   const arrangement = explicitWorkplaceArrangement(detailLocations, jobLocationType);
-  if (arrangement) return { isRemote: false, workplaceType: arrangement };
-  if (jobLocationType) {
-    const isRemote = /TELECOMMUTE/i.test(jobLocationType);
-    return { isRemote, workplaceType: isRemote ? 'remote' : jobLocationType };
+  if (hasRemoteLocationOption(detailLocations) || hasRemoteLocationOption(jobLocationType ? [jobLocationType] : [])) {
+    return { isRemote: true, workplaceType: 'remote' };
   }
-  const isRemote = feedLocations.some((location) => /\bremote\b/i.test(location));
-  return { isRemote: isRemote ? true : null, workplaceType: isRemote ? 'remote' : null };
+  if (arrangement === 'hybrid') return { isRemote: false, workplaceType: arrangement };
+  if (hasRemoteLocationOption(feedLocations)) return { isRemote: true, workplaceType: 'remote' };
+  if (arrangement === 'onsite') return { isRemote: false, workplaceType: arrangement };
+  if (jobLocationType) return { isRemote: false, workplaceType: jobLocationType };
+  return { isRemote: null, workplaceType: null };
 }
 
 export function phenomJobUrl(path: string, baseUrl: string): string {

@@ -43,6 +43,17 @@ const hybridDetailVerdict = evaluateLocation({
 });
 check('Phenom hybrid detail location excludes the remote feed posting',
   hybridDetailRemote.workplaceType === 'hybrid' && hybridDetailVerdict.remote === 'hybrid');
+const mixedDetailLocations = ['Remote, US', 'Hybrid - Boston, MA'];
+const mixedDetailRemote = phenomRemoteInfo([], null, mixedDetailLocations);
+const mixedDetailPrimaryLocations = phenomPrimaryLocations([], mixedDetailLocations);
+const mixedDetailVerdict = evaluateLocation({
+  locations: mixedDetailPrimaryLocations,
+  workplaceType: mixedDetailRemote.workplaceType,
+  isRemote: mixedDetailRemote.isRemote,
+});
+check('Phenom mixed remote and hybrid detail locations remain remote-eligible',
+  mixedDetailRemote.isRemote === true && mixedDetailRemote.workplaceType === 'remote'
+    && mixedDetailPrimaryLocations.includes('Remote, US') && mixedDetailVerdict.remote === 'remote');
 
 const config = parsePhenomConfig(
   '<title>Careers at Acme Corp</title><script>phApp.phAppConfig={"widgetApiEndpoint":"https://jobs.acme.com/widgets","refNum":"ACMEUS","locale":"en_us","siteType":"external","baseUrl":"https://jobs.acme.com/us/en/","pageName":"home"};</script>',
