@@ -176,7 +176,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   ) {
     remote = 'unknown';
   } else if (!locations.length && !restrictions.length) {
-    remote = 'unknown';
+    remote = HYBRID_DESCRIPTION_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)
+      ? 'hybrid'
+      : EXPLICIT_ONSITE_MARKERS.test(descLower) ? 'onsite' : 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
     remote = 'hybrid';
   } else {

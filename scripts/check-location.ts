@@ -32,6 +32,33 @@ const hybrid = evaluateLocation({
 });
 check('hybrid schedule is not remote', hybrid.remote !== 'remote');
 
+const hybridWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is a hybrid role, 3 days in office',
+});
+check('hybrid description without a location is hybrid', hybridWithoutLocation.remote === 'hybrid');
+
+const onsiteWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is an on-site role at our facility',
+});
+check('on-site description without a location is onsite', onsiteWithoutLocation.remote === 'onsite');
+
+const occasionalOnsiteTraining = evaluateLocation({
+  locations: [],
+  description: 'Includes occasional on-site training',
+});
+check('occasional on-site training without a location is unknown', occasionalOnsiteTraining.remote === 'unknown');
+
+const fullyRemoteHybridTeams = evaluateLocation({
+  locations: [],
+  description: 'Fully remote; hybrid teams across time zones',
+});
+check('fully remote hybrid-team description without a location is unknown', fullyRemoteHybridTeams.remote === 'unknown');
+
+const noLocationOrDescription = evaluateLocation({ locations: [] });
+check('no location or description remains unknown', noLocationOrDescription.remote === 'unknown');
+
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
 check(
   'US scope without remote language needs verification',
