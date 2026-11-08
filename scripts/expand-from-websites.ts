@@ -2,7 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { inspectCareersPage, sameCareersPostingSet } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
-import { careersSlug, normalizedCareersUrl } from './expansion-urls';
+import { canonicalCareersUrl, careersSlug, normalizedCareersUrl } from './expansion-urls';
 import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
 
 interface WebsiteEmployer {
