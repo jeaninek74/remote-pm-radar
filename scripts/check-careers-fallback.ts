@@ -5,7 +5,7 @@ import {
   sameCareersPostingSet,
   sweepCareersPostingLinks,
 } from '../server/engine/careers';
-import { normalizedCareersUrl } from './expansion-urls';
+import { careersSlug, normalizedCareersUrl } from './expansion-urls';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -23,6 +23,9 @@ check('careers URL keys preserve and sort query parameters',
     === normalizedCareersUrl('https://employment.unl.edu/postings/search?query=x&campus=B')
     && normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=A')
       !== normalizedCareersUrl('https://employment.unl.edu/postings/search?campus=B'));
+check('query-specific careers slugs remain distinct',
+  careersSlug('https://employment.unl.edu/postings/search?campus=A')
+    !== careersSlug('https://employment.unl.edu/postings/search?campus=B'));
 const sweepLinks = sweepCareersPostingLinks(
   '<a href="/jobs/req-123456">View job</a><a href="/jobs/req-123457">Apply now</a><a href="/jobs/req-123458"></a><a href="/about">Details</a><a href="/jobs/req-123459">Unrelated page</a>',
   'https://example.com/careers',

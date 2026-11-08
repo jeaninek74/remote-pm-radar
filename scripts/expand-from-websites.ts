@@ -2,7 +2,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { inspectCareersPage, sameCareersPostingSet } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
-import { normalizedCareersUrl } from './expansion-urls';
+import { careersSlug, normalizedCareersUrl } from './expansion-urls';
 import { matchesRetryResult } from './expansion-retry';
 
 interface WebsiteEmployer {
@@ -71,18 +71,6 @@ const ATS_HOSTS = [
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
-}
-
-function canonicalCareersUrl(value: string): string {
-  const url = new URL(value);
-  if (url.protocol === 'http:') url.protocol = 'https:';
-  url.pathname = url.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
-  return url.toString();
-}
-
-function careersSlug(value: string): string {
-  const url = new URL(canonicalCareersUrl(value));
-  return `${url.host.toLowerCase()}${url.pathname === '/' ? '' : url.pathname}`;
 }
 
 function normalizeWebsite(website: string): string {
