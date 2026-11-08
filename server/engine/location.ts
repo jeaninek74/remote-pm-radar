@@ -94,6 +94,21 @@ function detectStates(text: string): string[] {
   return [...found];
 }
 
+function parseRestrictionStates(restrictions: string[]) {
+  const excluded = new Set<string>();
+  const includedText = restrictions.map((restriction) =>
+    restriction.replace(
+      /\b(?:except|excluding|other than|not (?:available|eligible) in|with the exception of)\b[^;]*/gi,
+      (clause) => {
+        for (const state of detectStates(`${clause} |`)) excluded.add(state);
+        return ' ';
+      },
+    ),
+  ).join(' | ');
+  const included = detectStates(`${includedText} |`).filter((state) => !excluded.has(state));
+  return { includedText, included, excluded };
+}
+
 function residencyRestriction(description: string): string[] {
   const matches = description.match(
     /(?:must|required to|need to|have to)\s+(?:be\s+)?(?:reside|live|be located|be based)\s+in\s+([A-Z][A-Za-z .]{2,28})/g,
@@ -116,6 +131,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const restrictions = (input.restrictions ?? []).map((r) => String(r ?? '').trim()).filter(Boolean);
   const locText = locations.join(' | ');
   const restrictionText = restrictions.join(' | ');
+  const restrictionStateInfo = parseRestrictionStates(restrictions);
   const scopeText = `${locText} | ${restrictionText}`;
   const nationwideUsOnly = locations.length > 0
     && locations.every((location) =>
@@ -182,10 +198,21 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   }
 
   // --- California eligibility ----------------------------------------------
-  const listedStates = detectStates(scopeText);
-  const restrictionStates = detectStates(restrictionText);
+  const listedStates = detectStates(`${locText} | ${restrictionStateInfo.includedText} |`);
+  const restrictionStates = restrictionStateInfo.included;
   const residencyStates = residencyRestriction(description);
-  const allStates = [...new Set([...listedStates, ...residencyStates])];
+  const allStates = [...new Set([...listedStates, ...residencyStates])]
+    .filter((state) => !restrictionStateInfo.excluded.has(state));
+
+  if (restrictionStateInfo.excluded.has('CA')) {
+    return {
+      remote,
+      ca: 'state_restricted',
+      note: 'Posting excludes California from eligible locations.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
 
   if (restrictionStates.length && !restrictionStates.includes('CA')) {
     return {

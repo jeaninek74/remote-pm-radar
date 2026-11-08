@@ -173,6 +173,41 @@ check(
   countryOnly.remote === 'remote' && countryOnly.ca === 'us_wide',
 );
 
+const countryExceptTexas = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except Texas'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'excluded Texas does not become a state restriction',
+  countryExceptTexas.remote === 'remote' && countryExceptTexas.ca === 'us_wide' && !countryExceptTexas.states.includes('TX'),
+);
+
+const countryExceptCalifornia = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except California'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'excluded California is not CA-eligible',
+  countryExceptCalifornia.remote === 'remote' && countryExceptCalifornia.ca === 'state_restricted',
+);
+
+const countryExceptTexasIncludingCalifornia = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except Texas; California'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'state after exclusion semicolon remains eligible',
+  countryExceptTexasIncludingCalifornia.remote === 'remote'
+    && countryExceptTexasIncludingCalifornia.ca === 'confirmed'
+    && countryExceptTexasIncludingCalifornia.states.includes('CA'),
+);
+
 if (failures) {
   console.error(`${failures} location check(s) failed`);
   process.exit(1);
