@@ -199,6 +199,22 @@ export default function App() {
     }
   }, [jobs, notify]);
 
+  /** Board checkboxes: an Applied check also stamps today's date so the export keeps "Applied On". */
+  const handleTrack = useCallback(async (id: number, status: string) => {
+    const patch: Record<string, string | null> = { appStatus: status };
+    if (status === 'Applied') patch.appliedAt = new Date().toISOString().slice(0, 10);
+    if (status === 'Not Applied' || status === 'Viewed') patch.appliedAt = null;
+    const previous = jobs;
+    setJobs((current) => current.map((job) => (job.id === id ? { ...job, appStatus: status, appliedAt: patch.appliedAt ?? null } : job)));
+    try {
+      const result = await saveTracking(id, patch);
+      setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
+    } catch {
+      setJobs(previous);
+      notify('Could not save that — try again.', true);
+    }
+  }, [jobs, notify]);
+
   const handleUpdated = useCallback((updated: Job) => {
     setJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)));
   }, []);
@@ -329,6 +345,7 @@ export default function App() {
           onRefresh={triggerRefresh}
           onAdvanced={() => setSimple(false)}
           onOpen={(id) => { setSimple(false); setSelectedId(id); }}
+          onTrack={handleTrack}
         />
         {toast ? <div className={`toast${toast.error ? ' error' : ''}`}>{toast.text}</div> : null}
       </>

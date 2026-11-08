@@ -4,7 +4,7 @@ import {
   ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound, salaryLabel, salarySubLabel,
 } from '../lib';
 
-type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay';
+type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay' | 'tracked';
 type Category = 'all' | 'Nontechnical' | 'Technical' | 'Hybrid';
 
 const TABS: { key: BoardTab; name: string; range: string }[] = [
@@ -12,7 +12,18 @@ const TABS: { key: BoardTab; name: string; range: string }[] = [
   { key: 'tab1', name: 'Tab 2', range: '$110K–$130K' },
   { key: 'tab2', name: 'Tab 3', range: '$150K+' },
   { key: 'nopay', name: 'Pay not published', range: 'remote, CA-eligible, no salary stated' },
+  { key: 'tracked', name: 'Viewed / Applied', range: 'roles you checked off' },
 ];
+
+/** A role leaves the search tabs once it has any status other than "Not Applied". */
+function isTracked(job: Job): boolean {
+  return Boolean(job.appStatus) && job.appStatus !== 'Not Applied';
+}
+
+/** Statuses at or past "Applied" keep the Applied box checked. */
+const APPLIED_OR_LATER = new Set([
+  'Applied', 'Recruiter Contacted', 'Interview Scheduled', 'Interview Completed', 'Offer Received', 'Rejected',
+]);
 
 const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'all', label: 'All roles' },
@@ -41,6 +52,7 @@ interface Props {
   onRefresh: () => void;
   onAdvanced: () => void;
   onOpen: (id: number) => void;
+  onTrack: (id: number, status: string) => void;
 }
 
 /** Splits a board name so the last word can be accented, e.g. "Remote PM Radar". */
@@ -51,19 +63,21 @@ function splitTitle(name: string) {
   return <>{parts.join(' ')} <span>{last}</span></>;
 }
 
-export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen }: Props) {
+export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, onRefresh, onAdvanced, onOpen, onTrack }: Props) {
   const [tab, setTab] = useState<BoardTab>('tab1');
   const [category, setCategory] = useState<Category>('all');
   const [q, setQ] = useState('');
 
-  const tab0 = useMemo(() => jobs.filter((job) => job.bucket === 'tab0'), [jobs]);
-  const tab1 = useMemo(() => jobs.filter((job) => job.bucket === 'tab1'), [jobs]);
-  const tab2 = useMemo(() => jobs.filter((job) => job.bucket === 'tab2'), [jobs]);
+  const open = useMemo(() => jobs.filter((job) => !isTracked(job)), [jobs]);
+  const tracked = useMemo(() => jobs.filter(isTracked), [jobs]);
+  const tab0 = useMemo(() => open.filter((job) => job.bucket === 'tab0'), [open]);
+  const tab1 = useMemo(() => open.filter((job) => job.bucket === 'tab1'), [open]);
+  const tab2 = useMemo(() => open.filter((job) => job.bucket === 'tab2'), [open]);
   const nopay = useMemo(
-    () => jobs.filter((job) => job.bucket === 'unsalaried' || (job.bucket === 'queue' && isPayOnlyBlocker(job))),
-    [jobs],
+    () => open.filter((job) => job.bucket === 'unsalaried' || (job.bucket === 'queue' && isPayOnlyBlocker(job))),
+    [open],
   );
-  const active = tab === 'tab0' ? tab0 : tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : nopay;
+  const active = tab === 'tab0' ? tab0 : tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : tab === 'nopay' ? nopay : tracked;
 
   const [urgentOnly, setUrgentOnly] = useState(false);
   /**
@@ -109,11 +123,14 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
    * actually seen, newest first, so the page always reflects real postings rather than
    * a blank panel.
    */
-  const fallback = useMemo(() => jobs.filter((job) => job.bucket === 'queue'), [jobs]);
+  const fallback = useMemo(
+    () => (tab === 'tracked' ? [] : open.filter((job) => job.bucket === 'queue')),
+    [open, tab],
+  );
   const current = TABS.find((item) => item.key === tab)!;
 
   const tabCount = (key: BoardTab): number =>
-    key === 'tab0' ? tab0.length : key === 'tab1' ? tab1.length : key === 'tab2' ? tab2.length : nopay.length;
+    key === 'tab0' ? tab0.length : key === 'tab1' ? tab1.length : key === 'tab2' ? tab2.length : key === 'nopay' ? nopay.length : tracked.length;
 
   return (
     <div className="simple-shell">
@@ -145,7 +162,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
             key={item.key}
             role="tab"
             aria-selected={tab === item.key}
-            className={`tab${tab === item.key ? ' on' : ''}${item.key === 'nopay' ? ' mute' : ''}`}
+            className={`tab${tab === item.key ? ' on' : ''}${item.key === 'nopay' || item.key === 'tracked' ? ' mute' : ''}`}
             onClick={() => { setTab(item.key); setCategory('all'); setQ(''); }}
           >
             <span className="tab-name">{item.name}</span>
@@ -176,7 +193,9 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
           ? 'Roles whose published starting salary is between $110,000 and $130,000.'
           : tab === 'tab2'
             ? 'Roles whose published starting salary is $150,000 or more — no upper cap.'
-            : 'Fully remote, California-eligible project and program roles where the employer published no base salary. The pay is unknown, not estimated — open the posting to check before applying.'}
+            : tab === 'nopay'
+              ? 'Fully remote, California-eligible project and program roles where the employer published no base salary. The pay is unknown, not estimated — open the posting to check before applying.'
+              : 'Roles you checked as Viewed or Applied. They stay here after every sweep, even once the posting closes. Uncheck a box to send a role back to its tab.'}
       </p>
 
       <div className="simple-controls">
@@ -207,7 +226,12 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         </p>
       ) : null}
 
-      {shown.length === 0 && fallback.length === 0 ? (
+      {shown.length === 0 && tab === 'tracked' ? (
+        <div className="simple-empty">
+          <p>No roles checked yet.</p>
+          <p className="muted">Tick “Viewed” or “Applied” on any role and it moves here.</p>
+        </div>
+      ) : shown.length === 0 && fallback.length === 0 ? (
         <div className="simple-empty">
           <p>The first sweep is still running.</p>
           <p className="muted">
@@ -257,6 +281,26 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
                   <div className="jobrow-links">
                     <a href={job.applyUrl} target="_blank" rel="noreferrer" className="apply-link">View job ↗</a>
                     <button className="detail-link" onClick={() => onOpen(job.id)}>Details</button>
+                  </div>
+                  <div className="jobrow-track">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={isTracked(job)}
+                        onChange={(event) => onTrack(job.id, event.target.checked ? 'Viewed' : 'Not Applied')}
+                      />
+                      Viewed
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={APPLIED_OR_LATER.has(job.appStatus)}
+                        onChange={(event) => onTrack(job.id, event.target.checked ? 'Applied' : 'Viewed')}
+                      />
+                      Applied
+                    </label>
+                    {isTracked(job) && !APPLIED_OR_LATER.has(job.appStatus) && job.appStatus !== 'Viewed'
+                      ? <span className="dim">{job.appStatus}</span> : null}
                   </div>
                 </div>
               </li>

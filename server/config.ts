@@ -87,6 +87,7 @@ export const USER_AGENT =
 export const APP_STATUSES = [
   'Not Applied',
   'Interested',
+  'Viewed',
   'Applied',
   'Recruiter Contacted',
   'Interview Scheduled',
