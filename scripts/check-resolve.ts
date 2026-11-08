@@ -114,6 +114,17 @@ async function main(): Promise<void> {
     const result = await resolveBoard(name, url, Date.now() + 20_000);
     console.log(`[live] ${name} ${url} -> ${JSON.stringify(result)}`);
   }
+
+  const mismatchedSuccessFactors = await resolveBoard(
+    'Definitely Unrelated Employer',
+    'https://jobs.halliburton.com/',
+    Date.now() + 30_000,
+  );
+  check(
+    'reject SuccessFactors feed with mismatched g:employer',
+    mismatchedSuccessFactors.kind === 'unknown'
+      && mismatchedSuccessFactors.reason === 'SuccessFactors board name did not match employer',
+  );
 }
 
 void main().catch((error) => {

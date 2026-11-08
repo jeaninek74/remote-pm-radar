@@ -2,6 +2,7 @@ import type { Ats } from './types';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
+import { stripHtml } from './text';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -190,10 +191,73 @@ function numericTotal(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-async function validateUkgCandidate(candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
+function ukgBoardName(html: string, boardGuid: string): string | null {
+  const escapedGuid = boardGuid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`"Id"\\s*:\\s*"${escapedGuid}"[\\s\\S]{0,1000}?"Name"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'i').exec(html);
+  if (match) {
+    try {
+      const name = (JSON.parse(`"${match[1]}"`) as string)
+        .replace(/\s*(?:[-–—]\s*)?(?:careers?|career opportunities|job board|opportunities)$/i, '')
+        .trim();
+      if (name) return name;
+    } catch {
+      return null;
+    }
+  }
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html)?.[1] ?? '';
+  const name = stripHtml(title)
+    .replace(/\s*(?:[-–—]\s*)?(?:careers?|career opportunities|job board|opportunities)$/i, '')
+    .trim();
+  return name && !/^(?:career opportunities|job board)$/i.test(name) ? name : null;
+}
+
+function taleoBoardName(html: string): string | null {
+  const value = (tag: string, attribute: string): string | null =>
+    new RegExp(`\\b${attribute}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(tag)?.[2] ?? null;
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html)?.[1] ?? '';
+  const metaTitles = [...html.matchAll(/<meta\b[^>]*>/gi)]
+    .map((match) => match[0])
+    .filter((tag) => /\b(?:name|property)=["'](?:title|og:title)["']/i.test(tag))
+    .map((tag) => value(tag, 'content'))
+    .filter((content): content is string => Boolean(content));
+  for (const candidate of [...metaTitles, title]) {
+    const parts = stripHtml(candidate).split(/\s*\|\s*/);
+    const branded = parts.at(-1)?.replace(/\s*[-–—:]?\s*(?:careers?|job openings|job search|jobs?)$/i, '').trim();
+    if (branded && !/^(?:careers?|job openings|job search|jobs?)$/i.test(branded)) return branded;
+  }
+  for (const tag of html.matchAll(/<img\b[^>]*>/gi)) {
+    const alt = value(tag[0], 'alt');
+    const src = value(tag[0], 'src') ?? '';
+    if (!alt || !/\blogo\b/i.test(`${alt} ${src}`)) continue;
+    const branded = stripHtml(alt).replace(/\s+logo$/i, '').trim();
+    if (branded && !/^(?:close|create an rss feed|access the online help|collapse this section|arrow icon|facebook link|instagram link|linkedin link|youtube link)$/i.test(branded)) {
+      return branded;
+    }
+  }
+  return null;
+}
+
+function successFactorsBoardName(feed: ReturnType<typeof parseSuccessFactorsFeed>): string | null {
+  return feed.items.map((item) => item.employer.trim()).find(Boolean) || feed.title.trim() || null;
+}
+
+async function validateUkgCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
   const match = /^(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(candidate.slug);
   if (!match) return { kind: 'unknown', reason: 'Invalid UKG board coordinates' };
   const [, host, tenant, guid] = match;
+  const boardPage = await fetch(`https://${host}/${tenant}/JobBoard/${guid}`, {
+    redirect: 'follow',
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!boardPage.ok) return { kind: 'unknown', reason: `UKG board page HTTP ${boardPage.status}` };
+  if (!namesAgree(name, ukgBoardName(await boardPage.text(), guid))) {
+    return { kind: 'unknown', reason: 'UKG board name did not match employer' };
+  }
   const response = await fetch(`https://${host}/${tenant}/JobBoard/${guid}/JobBoardView/LoadSearchResults`, {
     method: 'POST',
     headers: {
@@ -232,14 +296,18 @@ async function validateUkgCandidate(candidate: Extract<BoardDetection, { kind: '
   };
 }
 
-function taleoPortalFromHtml(html: string): string {
+function taleoPortalFromHtml(html: string): string | null {
   return /portalNo\s*:\s*['"](\d+)['"]/i.exec(html)?.[1]
     ?? /[?&]portal=(\d+)/i.exec(html.replace(/&amp;/gi, '&'))?.[1]
     ?? /portal\s*=\s*['"]?(\d+)/i.exec(html)?.[1]
-    ?? '101430233';
+    ?? null;
 }
 
-async function validateTaleoCandidate(candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
+async function validateTaleoCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
   const match = /^([a-z0-9-]+\.taleo\.net)\/([^/?#]+)$/i.exec(candidate.slug);
   if (!match) return { kind: 'unknown', reason: 'Invalid Taleo board coordinates' };
   const host = match[1].toLowerCase();
@@ -252,12 +320,17 @@ async function validateTaleoCandidate(candidate: Extract<BoardDetection, { kind:
   });
   if (!page.ok) return { kind: 'unknown', reason: `Taleo portal HTTP ${page.status}` };
   const html = await page.text();
+  const portal = taleoPortalFromHtml(html);
+  if (!portal) return { kind: 'unknown', reason: 'Taleo portal id not found' };
+  if (!namesAgree(name, taleoBoardName(html))) {
+    return { kind: 'unknown', reason: 'Taleo board name did not match employer' };
+  }
   const headers = page.headers as Headers & { getSetCookie?: () => string[] };
   const cookie = (headers.getSetCookie?.() ?? [page.headers.get('set-cookie') ?? ''])
     .map((value) => value.split(';', 1)[0])
     .filter(Boolean)
     .join('; ');
-  const response = await fetch(`https://${host}/careersection/rest/jobboard/searchjobs?lang=en&portal=${encodeURIComponent(taleoPortalFromHtml(html))}`, {
+  const response = await fetch(`https://${host}/careersection/rest/jobboard/searchjobs?lang=en&portal=${encodeURIComponent(portal)}`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -310,6 +383,7 @@ async function successFactorsFeedAt(host: string, deadline: number) {
 }
 
 async function validateSuccessFactorsCandidate(
+  name: string,
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
 ): Promise<BoardResolution> {
@@ -330,6 +404,9 @@ async function validateSuccessFactorsCandidate(
   if (!rmkHost(finalHost)) return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
   try {
     const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
+    if (!namesAgree(name, successFactorsBoardName(feed))) {
+      return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };
+    }
     return {
       kind: 'board',
       ats: 'successfactors',
@@ -344,9 +421,9 @@ async function validateSuccessFactorsCandidate(
 
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
-    if (candidate.ats === 'ukg') return await validateUkgCandidate(candidate, deadline);
-    if (candidate.ats === 'taleo') return await validateTaleoCandidate(candidate, deadline);
-    if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(candidate, deadline);
+    if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
+    if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
+    if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
@@ -495,6 +572,9 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       try {
         const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
         if (rmkHost(host)) {
+          if (!namesAgree(name, successFactorsBoardName(feed))) {
+            return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };
+          }
           return {
             kind: 'board',
             ats: 'successfactors',

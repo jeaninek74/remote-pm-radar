@@ -998,10 +998,7 @@ async function ukg(employer: EmployerRow, known?: Set<string>): Promise<BoardFet
       break;
     }
     const id = String(listing.Id ?? '');
-    if (!id) {
-      truncated = true;
-      continue;
-    }
+    if (!id) continue;
     const applyUrl = `${boardPath}/OpportunityDetail?opportunityId=${encodeURIComponent(id)}`;
     if (known?.has(`${source}:${id}`)) {
       jobs.push(unchangedJob(source, 'ukg', id, employer.name, listing.Title ?? '', applyUrl));
@@ -1014,10 +1011,7 @@ async function ukg(employer: EmployerRow, known?: Set<string>): Promise<BoardFet
     try {
       const response = await directReaderGet(applyUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
       const detail = ukgDetailFromHtml(await response.text());
-      if (!detail?.Title) {
-        truncated = true;
-        continue;
-      }
+      if (!detail?.Title) continue;
       if (!isRoleTitle(detail.Title, undefined, employer)) continue;
       const description = clean(detail.Description);
       const salary = ukgSalary(detail, description);
@@ -1043,7 +1037,7 @@ async function ukg(employer: EmployerRow, known?: Set<string>): Promise<BoardFet
         hqState: employer.hq_state,
       });
     } catch (error) {
-      truncated = true;
+      if (Date.now() >= deadline) truncated = true;
       console.warn(`[ukg] ${host}/${tenant}/${id}: ${(error as Error).message.slice(0, 120)}`);
       if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
     }
@@ -1075,18 +1069,18 @@ function taleoCookies(response: Response): string {
   return values.map((value) => value.split(';', 1)[0]).filter(Boolean).join('; ');
 }
 
-function taleoPortal(html: string): string {
+function taleoPortal(html: string): string | null {
   return /portalNo\s*:\s*['"](\d+)['"]/i.exec(html)?.[1]
     ?? /[?&]portal=(\d+)/i.exec(html.replace(/&amp;/gi, '&'))?.[1]
     ?? /portal\s*=\s*['"]?(\d+)/i.exec(html)?.[1]
-    ?? '101430233';
+    ?? null;
 }
 
-function taleoSearchBody(pageNo: number, ascendingSortingOrder: 'false' | 'true', keyword: string): unknown {
+function taleoSearchBody(pageNo: number, ascendingSortingOrder: 'false' | 'true'): unknown {
   return {
     multilineEnabled: false,
     sortingSelection: { sortBySelectionParam: '3', ascendingSortingOrder },
-    fieldData: { fields: { KEYWORD: keyword, LOCATION: '' }, valid: true },
+    fieldData: { fields: { KEYWORD: '', LOCATION: '' }, valid: true },
     filterSelectionParam: { searchFilterSelections: [] },
     advancedSearchFiltersSelectionParam: { searchFilterSelections: [] },
     pageNo,
@@ -1100,7 +1094,6 @@ async function taleoSearch(
   pageNo: number,
   deadline: number,
   ascendingSortingOrder: 'false' | 'true',
-  keyword: string,
 ): Promise<TaleoSearchResult> {
   const timeoutMs = budgetTimeout(deadline);
   if (!timeoutMs) throw new Error('employer budget exceeded');
@@ -1117,7 +1110,7 @@ async function taleoSearch(
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify(taleoSearchBody(pageNo, ascendingSortingOrder, keyword)),
+    body: JSON.stringify(taleoSearchBody(pageNo, ascendingSortingOrder)),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1239,18 +1232,23 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
   const page = await directReaderGet(referer, deadline, { Accept: 'text/html,application/xhtml+xml' });
   const cookies = taleoCookies(page);
   const portal = taleoPortal(await page.text());
+  if (!portal) return { jobs: [], ok: false, error: 'Taleo portal id not found', totalListed: 0 };
   const all = new Map<string, TaleoJob>();
   let totalCount = 0;
   let truncated = false;
 
-  const readPass = async (ascendingSortingOrder: 'false' | 'true', keyword: string, primary = false): Promise<boolean> => {
+  const readPass = async (
+    ascendingSortingOrder: 'false' | 'true',
+    primary = false,
+  ): Promise<{ rowsRead: number; addedIds: number }> => {
     let pageNo = 1;
     let rowsRead = 0;
+    let addedIds = 0;
     let passTotalCount: number | null = null;
     while (true) {
       if (!await directReaderPause(deadline)) {
         truncated = true;
-        return false;
+        return { rowsRead, addedIds };
       }
       let data: TaleoSearchResult;
       try {
@@ -1261,12 +1259,11 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
           pageNo,
           deadline,
           ascendingSortingOrder,
-          keyword,
         );
       } catch (error) {
         if (Date.now() >= deadline) {
           truncated = true;
-          return false;
+          return { rowsRead, addedIds };
         }
         throw error;
       }
@@ -1277,30 +1274,27 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
         passTotalCount = data.pagingData.totalCount;
         if (primary) totalCount = passTotalCount;
       }
-      if (!data.requisitionList.length) return passTotalCount !== null && rowsRead >= passTotalCount;
+      if (!data.requisitionList.length) return { rowsRead, addedIds };
       rowsRead += data.requisitionList.length;
       for (const job of data.requisitionList) {
         const key = job.jobId != null
           ? `job:${String(job.jobId)}`
           : job.contestNo != null ? `contest:${String(job.contestNo)}` : null;
-        if (key && !all.has(key)) all.set(key, job);
+        if (key && !all.has(key)) {
+          all.set(key, job);
+          addedIds += 1;
+        }
       }
-      if (passTotalCount !== null && rowsRead >= passTotalCount) return true;
+      if (passTotalCount !== null && rowsRead >= passTotalCount) return { rowsRead, addedIds };
       pageNo += 1;
     }
   };
 
-  const normalPassComplete = await readPass('false', '', true);
-  if (!normalPassComplete && !truncated) {
-    await readPass('true', '');
-    if (!truncated && all.size < totalCount) {
-      for (const keyword of searchTerms()) {
-        if (all.size >= totalCount || truncated) break;
-        await readPass('false', keyword);
-      }
-    }
+  const normalPass = await readPass('false', true);
+  if (normalPass.rowsRead < totalCount && !truncated) {
+    const ascendingPass = await readPass('true');
+    if (!truncated && ascendingPass.addedIds > 0 && all.size < totalCount) truncated = true;
   }
-  if (all.size < totalCount) truncated = true;
 
   const source = `taleo:${host}/${section}`;
   const candidates = [...all.values()].filter((job) => isRoleTitle(taleoTitle(job), undefined, employer));
@@ -1312,10 +1306,6 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
     }
     const jobId = String(listing.jobId ?? '');
     const contestNo = String(listing.contestNo ?? listing.jobId ?? '');
-    if (!jobId && !contestNo) {
-      truncated = true;
-      continue;
-    }
     const detailKey = contestNo || jobId;
     const applyUrl = `https://${host}/careersection/${section}/jobdetail.ftl?job=${encodeURIComponent(detailKey)}&lang=en`;
     const title = taleoTitle(listing);
@@ -1334,7 +1324,6 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
       });
       const html = await response.text();
       const description = taleoDescription(html);
-      if (!description) truncated = true;
       const postedAt = taleoPostedAt(listing) ?? taleoDetailPostedAt(html);
       const salary = pickSalary(description, 'Taleo posting');
       if (!isRoleTitle(title, undefined, employer)) continue;
@@ -1359,7 +1348,7 @@ async function taleo(employer: EmployerRow, known?: Set<string>): Promise<BoardF
         hqState: employer.hq_state,
       });
     } catch (error) {
-      truncated = true;
+      if (Date.now() >= deadline) truncated = true;
       console.warn(`[taleo] ${host}/${section}/${detailKey}: ${(error as Error).message.slice(0, 120)}`);
       if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
     }
@@ -1417,7 +1406,6 @@ async function successfactors(employer: EmployerRow, known?: Set<string>): Promi
       const response = await directReaderGet(applyUrl, deadline, { Accept: 'text/html,application/xhtml+xml' });
       const datePosted = successFactorsDatePosted(await response.text());
       const description = clean(item.description);
-      if (!description) truncated = true;
       const salary = pickSalary(description, 'SAP SuccessFactors posting');
       jobs.push({
         source,
@@ -1440,7 +1428,7 @@ async function successfactors(employer: EmployerRow, known?: Set<string>): Promi
         hqState: employer.hq_state,
       });
     } catch (error) {
-      truncated = true;
+      if (Date.now() >= deadline) truncated = true;
       console.warn(`[successfactors] ${host}/${item.id}: ${(error as Error).message.slice(0, 120)}`);
       if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
     }
