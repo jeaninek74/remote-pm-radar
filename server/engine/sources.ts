@@ -1508,7 +1508,7 @@ async function neogov(employer: EmployerRow, known?: Set<string>): Promise<Board
       externalId: item.jobId,
       company: employer.name,
       title: item.title,
-      locations: [item.location, item.employerZipcode].filter(Boolean),
+      locations: item.location ? [item.location] : [],
       descriptionText: description || null,
       applyUrl: item.link,
       linkType: 'employer',
