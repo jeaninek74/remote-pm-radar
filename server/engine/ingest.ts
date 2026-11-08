@@ -981,11 +981,19 @@ export function sharedBoardPostingKey(
   jobKey: string,
   requisitionId?: string | null,
   title?: string | null,
+  postedAt?: string | null,
 ): string | null {
   const match = jobKey.match(/^oracle:([^/]+)\/[^:]+:(.+)$/);
   if (match) return `oracle-posting:${match[1].toLowerCase()}:${match[2]}`;
-  if (/^phenom:/i.test(jobKey) && requisitionId?.trim() && title?.trim()) {
-    return `phenom-posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}`;
+  const postedDate = postedAt?.slice(0, 10);
+  if (
+    /^phenom:/i.test(jobKey)
+    && requisitionId?.trim()
+    && title?.trim()
+    && postedDate
+    && /^\d{4}-\d{2}-\d{2}$/.test(postedDate)
+  ) {
+    return `phenom-posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}:${postedDate}`;
   }
   return null;
 }
@@ -1010,7 +1018,7 @@ async function dedupeJobs(): Promise<number> {
   for (const row of rows) {
     const keys = [
       `${companyKey(row.company)}::${titleKey(row.title)}`,
-      sharedBoardPostingKey(row.job_key, row.requisition_id, row.title),
+      sharedBoardPostingKey(row.job_key, row.requisition_id, row.title, row.posted_at),
     ].filter((key): key is string => key !== null);
     let winner: { id: number; company: string; title: string } | undefined;
     for (const key of keys) {

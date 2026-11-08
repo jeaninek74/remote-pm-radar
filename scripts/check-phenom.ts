@@ -203,19 +203,36 @@ const bonSecoursPostingKey = sharedBoardPostingKey(
   'Phenom:careers.bonsecours.com/us/en:BSMBSZUSR289400EXTERNALENUS',
   'R289400',
   sharedPhenomTitle,
+  '2026-11-01',
 );
 const mercyPostingKey = sharedBoardPostingKey(
   'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
   'R289400',
   sharedPhenomTitle,
+  '2026-11-01',
 );
-check('Phenom shared requisition IDs deduplicate across tenant prefixes',
+check('Phenom shared requisition IDs and dates deduplicate across tenant prefixes',
   bonSecoursPostingKey !== null && bonSecoursPostingKey === mercyPostingKey);
+check('Phenom shared requisition IDs with different dates stay distinct',
+  bonSecoursPostingKey !== sharedBoardPostingKey(
+    'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'R289400',
+    sharedPhenomTitle,
+    '2026-11-02',
+  ));
+check('Phenom posting without a date has no shared key',
+  sharedBoardPostingKey(
+    'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'R289400',
+    sharedPhenomTitle,
+    null,
+  ) === null);
 check('Phenom shared requisition keys retain title identity',
   sharedBoardPostingKey(
     'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
     'R289400',
     'Different Program Manager Role',
+    '2026-11-01',
   ) !== bonSecoursPostingKey);
 
 if (failures) throw new Error(`${failures} Phenom parser check(s) failed`);
