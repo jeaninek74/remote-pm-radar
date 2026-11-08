@@ -8,9 +8,10 @@ import {
   phenomJobUrl,
   phenomPrimaryLocations,
   phenomRemoteInfo,
+  selectPhenomSalary,
 } from '../server/engine/phenom';
 import { evaluateLocation } from '../server/engine/location';
-import { classifySalary } from '../server/engine/salary';
+import { classifySalary, parseSalaryFromText } from '../server/engine/salary';
 
 let failures = 0;
 
@@ -85,6 +86,25 @@ const hourlySalary = parsePhenomBaseSalary({
 });
 check('Phenom hourly salary annualizes before rounding',
   hourlySalary?.min === 130000 && hourlySalary.max === null && hourlySalary.hourlyRate === 62.5);
+const descriptionRangeSalary = parseSalaryFromText('Base salary range is $100,000 - $120,000 per year', 'Phenom description');
+check('Phenom description salary fixture parses a range',
+  descriptionRangeSalary?.min === 100000 && descriptionRangeSalary.max === 120000);
+check('Phenom description range supersedes max-only structured salary',
+  selectPhenomSalary(maxOnlySalary, descriptionRangeSalary) === descriptionRangeSalary);
+const invalidCurrencySalary = parsePhenomBaseSalary({
+  currency: 'CAD',
+  value: { minValue: '95000', unitText: 'YEAR' },
+});
+check('Phenom description range replaces invalid-currency structured salary',
+  invalidCurrencySalary === null && selectPhenomSalary(invalidCurrencySalary, descriptionRangeSalary) === descriptionRangeSalary);
+const invalidUnitSalary = parsePhenomBaseSalary({
+  currency: 'USD',
+  value: { minValue: '95000', unitText: 'FORTNIGHT' },
+});
+check('Phenom invalid-unit structured salary falls back to description',
+  invalidUnitSalary === null && selectPhenomSalary(invalidUnitSalary, descriptionRangeSalary) === descriptionRangeSalary);
+check('Phenom max-only structured salary remains when description has no minimum',
+  selectPhenomSalary(maxOnlySalary, null) === maxOnlySalary);
 check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')
   === 'https://jobs.acme.com/us/en/job/123');
 

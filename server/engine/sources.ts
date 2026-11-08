@@ -18,6 +18,7 @@ import {
   phenomJobUrl,
   phenomPrimaryLocations,
   phenomRemoteInfo,
+  selectPhenomSalary,
 } from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
@@ -1691,10 +1692,8 @@ function phenomJobLocations(posting: JobPostingLd | null): string[] {
 
 function phenomSalary(posting: JobPostingLd | null, description: string): ParsedSalary | null {
   const structured = parsePhenomBaseSalary(posting?.baseSalary);
-  if (structured) return structured;
-  const salaryValue = posting?.baseSalary?.value;
-  if (salaryValue?.maxValue != null && salaryValue.minValue == null && salaryValue.value == null) return null;
-  return pickSalary(description, 'Phenom posting');
+  if (structured && structured.min !== null) return structured;
+  return selectPhenomSalary(structured, pickSalary(description, 'Phenom posting'));
 }
 
 function phenomRestrictions(posting: JobPostingLd | null): string[] {

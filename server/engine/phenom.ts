@@ -96,7 +96,7 @@ export interface PhenomBaseSalary {
 
 export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined): ParsedSalary | null {
   const value = baseSalary?.value;
-  if (!baseSalary || !value || (baseSalary.currency && !/^USD$/i.test(baseSalary.currency))) return null;
+  if (!baseSalary || !value || !/^USD$/i.test(baseSalary.currency ?? '')) return null;
   const amount = (input: number | string | undefined): number | null => {
     if (input === undefined) return null;
     const parsed = Number(String(input).replace(/[,$\s]/g, ''));
@@ -106,7 +106,7 @@ export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined):
   const rawMaximum = value.maxValue;
   const minimum = amount(rawMinimum);
   const maximum = amount(rawMaximum);
-  if (rawMinimum != null && minimum === null || rawMaximum != null && maximum === null) return null;
+  if ((rawMinimum != null && minimum === null) || (rawMaximum != null && maximum === null)) return null;
   if (minimum === null && maximum === null) return null;
 
   const unit = value.unitText?.toLowerCase().trim() ?? '';
@@ -115,7 +115,7 @@ export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined):
     ? RULES.hoursPerYear
     : /week/.test(unit) ? 52
       : /month/.test(unit) ? 12
-        : !unit || /year|annual|annum/.test(unit) ? 1 : null;
+        : /year|annual|annum/.test(unit) ? 1 : null;
   if (factor === null) return null;
   const min = minimum === null ? null : Math.round(minimum * factor);
   const max = maximum === null ? null : Math.round(maximum * factor);
@@ -132,6 +132,15 @@ export function parsePhenomBaseSalary(baseSalary: PhenomBaseSalary | undefined):
     isOTE: false,
     evidence: `Phenom structured baseSalary: ${amountText}${hourly ? ' hourly, annualised at 2,080 hours' : ''}`,
   };
+}
+
+export function selectPhenomSalary(
+  structured: ParsedSalary | null,
+  description: ParsedSalary | null,
+): ParsedSalary | null {
+  if (structured && structured.min !== null) return structured;
+  if (description && description.min !== null) return description;
+  return structured?.min === null ? structured : description;
 }
 
 
