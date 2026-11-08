@@ -10,7 +10,7 @@ import { JobDrawer } from './components/JobDrawer';
 import { EmployersTab } from './components/EmployersTab';
 import { RunsTab } from './components/RunsTab';
 import { HowTo } from './components/HowTo';
-import { reloadIfBuildChanged } from './buildVersion';
+import { buildIdFromDocument, reloadIfBuildChanged } from './buildVersion';
 
 type TabKey = 'tab0' | 'tab1' | 'tab2' | 'queue' | 'archive' | 'employers' | 'history';
 
@@ -45,6 +45,7 @@ export default function App() {
   const lastLoadAtRef = useRef(0);
   const lastRunKeyRef = useRef<string | null>(null);
   const buildIdRef = useRef<string | null>(null);
+  if (buildIdRef.current === null) buildIdRef.current = buildIdFromDocument(document);
 
   const checkBuildId = useCallback((nextBuildId: string | null | undefined) => {
     if (!nextBuildId) return false;

@@ -27,6 +27,19 @@ export function buildIdFromHtml(html: string): string | null {
   return buildIdFromAssetUrls(urls);
 }
 
+export function buildIdFromDocument(document: Pick<Document, 'querySelectorAll'>): string | null {
+  const urls: string[] = [];
+  for (const script of document.querySelectorAll('script[src]')) {
+    const src = script.getAttribute('src');
+    if (src && /\.js(?:[?#]|$)/i.test(src)) urls.push(src);
+  }
+  for (const link of document.querySelectorAll('link[rel="stylesheet"][href]')) {
+    const href = link.getAttribute('href');
+    if (href && /\.css(?:[?#]|$)/i.test(href)) urls.push(href);
+  }
+  return buildIdFromAssetUrls(urls);
+}
+
 export function reloadIfBuildChanged(
   previous: string | null,
   next: string | null | undefined,

@@ -1,4 +1,4 @@
-import { buildIdFromHtml, reloadIfBuildChanged } from '../client/src/buildVersion';
+import { buildIdFromDocument, buildIdFromHtml, reloadIfBuildChanged } from '../client/src/buildVersion';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -8,8 +8,20 @@ function check(name: string, condition: boolean): void {
 const sampleHtml = '<script src="/assets/main-a.js"></script>'
   + '<script src="/assets/app-b.js"></script>'
   + '<link rel="stylesheet" href="/assets/screen-c.css">';
+const sampleDocument = {
+  querySelectorAll(selector: string) {
+    const urls = selector === 'script[src]'
+      ? ['/assets/main-a.js', '/assets/app-b.js']
+      : ['/assets/screen-c.css'];
+    return urls.map((url) => ({ getAttribute: () => url }));
+  },
+} as unknown as Document;
 check('server build id includes sorted JavaScript and CSS asset basenames',
   buildIdFromHtml(sampleHtml) === 'app-b.js+main-a.js+screen-c.css');
+check('client document build id matches the server HTML build id',
+  buildIdFromDocument(sampleDocument) === buildIdFromHtml(sampleHtml));
+check('client document has no build id when no assets are present',
+  buildIdFromDocument({ querySelectorAll: () => [] } as unknown as Document) === null);
 
 let reloads = 0;
 const reload = () => { reloads += 1; };
