@@ -91,12 +91,15 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
     [tab0, tab1, tab2, nopay],
   );
 
-  const counts = useMemo(() => ({
-    all: active.length,
-    Nontechnical: active.filter((job) => job.category === 'Nontechnical').length,
-    Technical: active.filter((job) => job.category === 'Technical').length,
-    Hybrid: active.filter((job) => job.category === 'Hybrid').length,
-  }), [active]);
+  const counts = useMemo(() => {
+    const listed = urgentOnly ? urgent : active;
+    return {
+      all: listed.length,
+      Nontechnical: listed.filter((job) => job.category === 'Nontechnical').length,
+      Technical: listed.filter((job) => job.category === 'Technical').length,
+      Hybrid: listed.filter((job) => job.category === 'Hybrid').length,
+    };
+  }, [active, urgent, urgentOnly]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
