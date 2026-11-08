@@ -145,6 +145,13 @@ const californiaExclusion = careersLocationFields(
 );
 check('string applicant location requirements preserve US state exclusions',
   californiaExclusion.restrictions[0] === 'United States except California');
+const canadaPostingOpenToUsApplicants = careersLocationFields(
+  [{ address: { addressLocality: 'Toronto', addressCountry: 'Canada' } }],
+  ['US'],
+  'https://jobs.example.com/careers/example-role',
+);
+check('Canada posting preserves a US applicant restriction',
+  canadaPostingOpenToUsApplicants.restrictions[0] === 'US');
 const guestyUsaPath = careersLocationFields(
   [{ address: { addressRegion: 'CA' } }],
   ['CA'],

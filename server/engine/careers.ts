@@ -157,7 +157,12 @@ export function careersLocationFields(
 
   const restrictions = asArray(applicantLocationRequirements).map((requirement) => {
     if (typeof requirement === 'string') {
-      if (country && !country.isUs && /^[A-Z]{2}$/i.test(requirement.trim())) return country.name;
+      if (
+        country
+        && !country.isUs
+        && /^[A-Z]{2}$/i.test(requirement.trim())
+        && requirement.trim().toUpperCase() !== 'US'
+      ) return country.name;
       return requirement;
     }
     const requirementCountry = countryFromJsonLd(addressCountry(requirement)) ?? countryFromLabel(requirement.name ?? '');
