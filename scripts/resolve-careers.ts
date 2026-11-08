@@ -19,6 +19,7 @@ const TIMEOUT_MS = 20_000;
 const CONCURRENCY = 12;
 
 const WORKDAY_URL = /https?:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^"'?#\s/]+)/i;
+const NEOGOV_URL = /https?:\/\/((?:www\.)?(?:governmentjobs|schooljobs)\.com)\/careers\/(?!home(?:\/|[?#"'<>\\\s]|$))([A-Za-z0-9_-]+)/i;
 const ATS_PATTERNS: { ats: string; re: RegExp }[] = [
   { ats: 'greenhouse', re: /(?:boards|job-boards)\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9-]+)/i },
   { ats: 'lever', re: /jobs\.lever\.co\/([a-z0-9-]+)/i },
@@ -50,6 +51,15 @@ function detect(html: string, finalUrl: string): Pick<Resolution, 'workday' | 'a
       ats: 'workday',
       slug: `${workdayMatch[1].toLowerCase()}/${workdayMatch[3]}`,
       note: 'Workday board detected — searchable by the refresh cycle.',
+    };
+  }
+  const neogovMatch = NEOGOV_URL.exec(finalUrl) ?? NEOGOV_URL.exec(html);
+  if (neogovMatch) {
+    return {
+      workday: null,
+      ats: 'neogov',
+      slug: `${neogovMatch[1].toLowerCase()}/${neogovMatch[2]}`,
+      note: 'NEOGOV agency feed detected.',
     };
   }
   for (const pattern of ATS_PATTERNS) {

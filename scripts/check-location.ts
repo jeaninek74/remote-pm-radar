@@ -32,6 +32,99 @@ const hybrid = evaluateLocation({
 });
 check('hybrid schedule is not remote', hybrid.remote !== 'remote');
 
+const hybridWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is a hybrid role, 3 days in office',
+});
+check('hybrid description without a location is hybrid', hybridWithoutLocation.remote === 'hybrid');
+
+const onsiteWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is an on-site role at our facility',
+});
+check('on-site description without a location is onsite', onsiteWithoutLocation.remote === 'onsite');
+
+const occasionalOnsiteTraining = evaluateLocation({
+  locations: [],
+  description: 'Includes occasional on-site training',
+});
+check('occasional on-site training without a location is unknown', occasionalOnsiteTraining.remote === 'unknown');
+
+const fullyRemoteHybridTeams = evaluateLocation({
+  locations: [],
+  description: 'Fully remote; hybrid teams across time zones',
+});
+check('fully remote hybrid-team description without a location is unknown', fullyRemoteHybridTeams.remote === 'unknown');
+
+const noLocationOrDescription = evaluateLocation({ locations: [] });
+check('no location or description remains unknown', noLocationOrDescription.remote === 'unknown');
+
+const hybridCloudWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Experience with hybrid cloud and multi-cloud environments',
+});
+check('hybrid cloud wording without a location is unknown', hybridCloudWithoutLocation.remote === 'unknown');
+
+const occasionalOnsiteFacilityTraining = evaluateLocation({
+  locations: [],
+  description: 'Occasional on-site at our facility for training',
+});
+check('occasional on-site facility training without a location is unknown', occasionalOnsiteFacilityTraining.remote === 'unknown');
+
+const hybridScheduleWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This position is hybrid, 2 days a week in office',
+});
+check('hybrid schedule without a location is hybrid', hybridScheduleWithoutLocation.remote === 'hybrid');
+
+const explicitOnsiteWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Candidates must work on-site in Chicago',
+});
+check('explicit on-site requirement without a location is onsite', explicitOnsiteWithoutLocation.remote === 'onsite');
+
+const virtualMeetingsWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Meet 2 days a week in virtual meetings',
+});
+check('virtual meetings without a location are unknown', virtualMeetingsWithoutLocation.remote === 'unknown');
+
+const officeDaysWithoutLocation = evaluateLocation({
+  locations: [],
+  description: '3 days a week in the office',
+});
+check('days in office without a location are hybrid', officeDaysWithoutLocation.remote === 'hybrid');
+
+const commuteWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Must live within 30 miles of our office',
+});
+check('commute requirement without a location is onsite', commuteWithoutLocation.remote === 'onsite');
+
+const onsiteRequirementWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'There is an on-site requirement',
+});
+check('on-site requirement without a location is onsite', onsiteRequirementWithoutLocation.remote === 'onsite');
+
+const negatedOnsiteRequirementWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'There is no on-site requirement',
+});
+check('negated on-site requirement without a location is unknown', negatedOnsiteRequirementWithoutLocation.remote === 'unknown');
+
+const negatedHybridRoleWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'This is not a hybrid role',
+});
+check('negated hybrid role without a location is unknown', negatedHybridRoleWithoutLocation.remote === 'unknown');
+
+const inPersonDaysWithoutLocation = evaluateLocation({
+  locations: [],
+  description: 'Required 2 days a week in person',
+});
+check('days in person without a location is hybrid', inPersonDaysWithoutLocation.remote === 'hybrid');
+
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
 check(
   'US scope without remote language needs verification',

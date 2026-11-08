@@ -1,5 +1,5 @@
 import { fetchJson } from './http';
-import { REFRESH } from '../config';
+import { REFRESH, RULES } from '../config';
 import { isRoleTitle, searchTerms } from './titles';
 import { fetchCareersPage, jobPostingFrom, type JobPostingLd } from './careers';
 import { fetchIcimsText, icimsDetailUrl, icimsHost, icimsJobUrl, icimsSitemapJobs } from './icims';
@@ -8,6 +8,7 @@ import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type P
 import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
 import { parseSuccessFactorsFeed } from './successfactors';
+import { parseNeogovFeed, type NeogovFeedItem } from './neogov';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -1436,6 +1437,95 @@ async function successfactors(employer: EmployerRow, known?: Set<string>): Promi
   return { jobs, ok: true, totalListed: feed.items.length, truncated };
 }
 
+function neogovCoordinates(slug: string): { host: string; folder: string } | null {
+  const match = /^((?:www\.)?(?:governmentjobs|schooljobs)\.com)\/([A-Za-z0-9_-]+)$/i.exec(slug.trim());
+  return match ? { host: match[1].toLowerCase(), folder: match[2] } : null;
+}
+
+function neogovSalary(item: NeogovFeedItem): ParsedSalary | null {
+  const currency = item.salaryCurrency.trim().toUpperCase();
+  if (currency && !/^(?:USD|US\$|US DOLLARS?)$/.test(currency)) return null;
+  const minimum = item.minimumSalary.trim() ? amountNumber(item.minimumSalary) : null;
+  const maximum = item.maximumSalary.trim() ? amountNumber(item.maximumSalary) : null;
+  if (minimum === null && maximum === null) return null;
+  if ([minimum, maximum].some((amount) => amount !== null && (!Number.isFinite(amount) || amount <= 0))) return null;
+  if (minimum !== null && maximum !== null && maximum < minimum) return null;
+
+  const interval = item.salaryInterval.toLowerCase().replace(/[^a-z]/g, '');
+  const multiplier = interval === 'year' || interval === 'annual' || interval === 'yearly'
+    ? 1
+    : interval === 'hour' || interval === 'hourly'
+      ? RULES.hoursPerYear
+      : interval === 'month' || interval === 'monthly'
+        ? 12
+        : interval === 'biweekly' || interval === 'biweek'
+          ? 26
+          : null;
+  if (multiplier === null) return null;
+  const hourly = multiplier === RULES.hoursPerYear;
+  return {
+    min: minimum === null ? null : Math.round(minimum * multiplier),
+    max: maximum === null ? null : Math.round(maximum * multiplier),
+    interval: hourly ? 'hour' : 'year',
+    hourlyRate: hourly ? minimum : null,
+    isOTE: false,
+    evidence: `NEOGOV structured salary fields (${item.salaryInterval}${currency ? ` ${currency}` : ''})`,
+  };
+}
+
+async function neogov(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const coordinates = neogovCoordinates(employer.slug);
+  if (!coordinates) return { jobs: [], ok: false, error: 'invalid NEOGOV agency slug', totalListed: 0 };
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const feedUrl = `https://${coordinates.host}/SearchEngine/JobsFeed?agency=${encodeURIComponent(coordinates.folder)}`;
+  let items: ReturnType<typeof parseNeogovFeed>;
+  try {
+    const response = await directReaderGet(feedUrl, deadline, { Accept: 'application/rss+xml,application/xml,text/xml,*/*' });
+    items = parseNeogovFeed(await response.text());
+  } catch (error) {
+    if (Date.now() >= deadline) return { jobs: [], ok: true, totalListed: 0, truncated: true };
+    throw error;
+  }
+
+  const source = `neogov:${coordinates.host}/${coordinates.folder}`;
+  const candidates = items.filter((item) => isRoleTitle(item.title, undefined, employer));
+  const jobs: RawJob[] = candidates.map((item) => {
+    if (known?.has(`${source}:${item.jobId}`)) {
+      return unchangedJob(source, 'neogov', item.jobId, employer.name, item.title, item.link);
+    }
+    const description = clean([
+      item.description,
+      item.examplesOfDuties,
+      item.qualifications,
+      item.supplementalInformation,
+    ].filter(Boolean).join('\n\n'));
+    const salary = neogovSalary(item);
+    const postedAt = isoDate(item.advertiseFromDateUTC.replace(/:0$/, '')) ?? isoDate(item.pubDate);
+    return {
+      source,
+      ats: 'neogov',
+      board: `${coordinates.host}/${coordinates.folder}`,
+      externalId: item.jobId,
+      company: employer.name,
+      title: item.title,
+      locations: item.location ? [item.location] : [],
+      descriptionText: description || null,
+      applyUrl: item.link,
+      linkType: 'employer',
+      postedAt,
+      postedConfidence: 'confirmed',
+      employmentType: item.jobType || null,
+      salary,
+      salarySource: salary ? `Employer posting (NEOGOV structured ${item.salaryInterval} fields)` : null,
+      requisitionId: item.jobNumberSingle || null,
+      industry: employer.industry,
+      companySize: employer.company_size,
+      hqState: employer.hq_state,
+    };
+  });
+  return { jobs, ok: true, totalListed: items.length };
+}
+
 async function icims(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const host = icimsHost(employer.slug);
   if (!host) return { jobs: [], ok: false, error: 'invalid iCIMS host', totalListed: 0 };
@@ -1535,6 +1625,7 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Prom
   ukg,
   taleo,
   successfactors,
+  neogov,
 };
 
 

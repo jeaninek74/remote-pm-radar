@@ -3,7 +3,8 @@
  *
  *   npx tsx scripts/check-board.ts greenhouse:stripe smartrecruiters:caci \
  *       workday:https://accenture.wd103.myworkdayjobs.com/AccentureCareers \
- *       'icims:careers-peraton.icims.com|Peraton'
+ *       'icims:careers-peraton.icims.com|Peraton' \
+ *       'neogov:www.schooljobs.com/hawaiiedu|University of Hawaiʻi'
  *
  * Prints postings listed, role-family matches, and the time taken, so pagination and the
  * per-employer budget can be proven against live boards instead of inferred from a run.
@@ -17,14 +18,15 @@ function employerFor(spec: string, index: number): EmployerRow {
   const target = rest.join(':');
   const isWorkday = ats === 'workday';
   const isIcims = ats === 'icims';
-  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors';
+  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors' || ats === 'neogov';
   const boardTarget = target.split('|')[0];
   const icimsTarget = isIcims ? boardTarget : target;
   const sourceName = ats === 'oracle'
     ? target.startsWith('egud.') ? 'AutoZone' : 'International Paper'
     : ats === 'dayforce' ? 'Bristol Bay Native Corporation'
       : isIcims ? target.split('|')[1] ?? icimsTarget.replace(/^careers-/i, '').split('.')[0]
-        : isNewDirectAts ? target.split('|')[1] ?? boardTarget.split('/')[0].split('.')[0] : target;
+        : ats === 'neogov' ? target.split('|')[1] ?? boardTarget.split('/')[1] ?? target
+          : isNewDirectAts ? target.split('|')[1] ?? boardTarget.split('/')[0].split('.')[0] : target;
   return {
     id: -(index + 1),
     ats: ats as Ats,
@@ -47,7 +49,7 @@ async function main(): Promise<void> {
   let hardFailures = 0;
   for (const [index, spec] of specs.entries()) {
     const employer = employerFor(spec, index);
-    const isNewDirectAts = ['ukg', 'taleo', 'successfactors'].includes(employer.ats);
+    const isNewDirectAts = ['ukg', 'taleo', 'successfactors', 'neogov'].includes(employer.ats);
     const started = Date.now();
     const result = await fetchBoard(employer);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);

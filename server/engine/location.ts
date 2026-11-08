@@ -72,9 +72,16 @@ const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united 
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
 const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
 const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in[- ]person\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|on[- ]?site\s+(?:role|position|work|requirement)\b|on[- ]?site\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|willing(?:ness)? to|expected to|need to) relocate|relocation (?:is )?required)\b/i;
+const LOCATIONLESS_HYBRID = /\b(?:hybrid\s+(?:role|position|schedule|work\s+(?:schedule|model|arrangement)|model|arrangement|opportunity)|(?:this|the)\s+(?:role|position|job)\s+is\s+hybrid|partially remote|part[- ]remote|\d\s*days?\s+(?:a|per)\s+week\s+(?:in[- ]office|in\s+(?:the\s+|our\s+)?office|on[- ]?site|in[- ]person|at\s+(?:the|our)\s+office))\b/i;
+const LOCATIONLESS_ONSITE = /\b(?:(?:on[- ]?site|in[- ]person|office[- ]based)\s+(?:role|position|job)|on[- ]?site\s+requirement|(?:must|required to)\s+(?:work|report)\s+(?:on[- ]?site|in[- ]person|in\s+(?:the|our)\s+office)|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|expected to|need to)\s+relocate|relocation (?:is )?required)\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
+
+function affirmativeMatch(pattern: RegExp, text: string): boolean {
+  const match = pattern.exec(text);
+  return !!match && !/\b(?:no|not|without|never)\s+(?:an?\s+)?$/.test(text.slice(Math.max(0, match.index - 15), match.index));
+}
 
 function detectStates(text: string): string[] {
   const found = new Set<string>();
@@ -176,7 +183,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   ) {
     remote = 'unknown';
   } else if (!locations.length && !restrictions.length) {
-    remote = 'unknown';
+    remote = affirmativeMatch(LOCATIONLESS_HYBRID, descLower) && !/fully remote|100% remote/i.test(descLower)
+      ? 'hybrid'
+      : affirmativeMatch(LOCATIONLESS_ONSITE, descLower) ? 'onsite' : 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
     remote = 'hybrid';
   } else {

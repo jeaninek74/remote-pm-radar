@@ -125,6 +125,10 @@ export function careersUrlFor(ats: string, slug: string): string {
       return host && section ? `https://${host}/careersection/${section}/jobsearch.ftl?lang=en` : '';
     }
     case 'successfactors': return `https://${slug}/`;
+    case 'neogov': {
+      const [host, folder] = slug.split('/');
+      return host && folder ? `https://${host}/careers/${folder}` : '';
+    }
     default: return '';
   }
 }

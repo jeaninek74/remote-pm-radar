@@ -309,6 +309,7 @@ function parseArgs(args: string[]): {
   write: boolean;
   dryRun: boolean;
   retryPlatform: string | null;
+  retryFrom: string[];
   outputFile: string | null;
 } {
   const files: string[] = [];
@@ -316,6 +317,7 @@ function parseArgs(args: string[]): {
   let write = false;
   let dryRun = false;
   let retryPlatform: string | null = null;
+  const retryFrom: string[] = [];
   let outputFile: string | null = null;
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === '--write') {
@@ -326,6 +328,11 @@ function parseArgs(args: string[]): {
       const value = args[index + 1]?.trim();
       if (!value || value.startsWith('--')) throw new Error('--retry-platform requires a platform name');
       retryPlatform = value;
+      index += 1;
+    } else if (args[index] === '--retry-from') {
+      const value = args[index + 1]?.trim();
+      if (!value || value.startsWith('--')) throw new Error('--retry-from requires a results JSONL path');
+      retryFrom.push(value);
       index += 1;
     } else if (args[index] === '--output') {
       const value = args[index + 1]?.trim();
@@ -345,9 +352,9 @@ function parseArgs(args: string[]): {
   }
   if (dryRun && write) throw new Error('--dry-run cannot be combined with --write');
   if (!files.length) {
-    throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--retry-platform NAME] [--dry-run] [--output PATH] [--write]');
+    throw new Error('usage: npx tsx scripts/expand-from-websites.ts <input.json> [...] [--limit N] [--retry-platform NAME] [--retry-from results.jsonl] [...] [--dry-run] [--output PATH] [--write]');
   }
-  return { files, limit, write, dryRun, retryPlatform, outputFile };
+  return { files, limit, write, dryRun, retryPlatform, retryFrom, outputFile };
 }
 
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -398,7 +405,7 @@ async function main(): Promise<void> {
   const entries = await readInputs(options.files);
   const retryNames = options.retryPlatform
     ? new Set(
-      (await loadOutput(OUTPUT_FILE))
+      (await Promise.all((options.retryFrom.length ? options.retryFrom : [OUTPUT_FILE]).map(loadOutput))).flat()
         .filter((record) =>
           record.result.kind === 'unreadable'
           && record.result.platform.toLowerCase() === options.retryPlatform!.toLowerCase(),
