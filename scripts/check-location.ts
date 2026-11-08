@@ -33,8 +33,25 @@ const hybrid = evaluateLocation({
 check('hybrid schedule is not remote', hybrid.remote !== 'remote');
 
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
-console.log(`Master baseline for US scope without remote language: ${noRemoteDescription.remote}/${noRemoteDescription.ca}`);
-check('US scope without remote language preserves master result', noRemoteDescription.remote === 'onsite' && noRemoteDescription.ca === 'unknown');
+check(
+  'US scope without remote language needs verification',
+  noRemoteDescription.remote === 'unknown' && noRemoteDescription.ca === 'us_wide',
+);
+
+const cityStateLocation = evaluateLocation({
+  locations: ['USA - South San Francisco, CA'],
+  description: 'Join our team.',
+});
+check(
+  'US location with a city and state remains unchanged',
+  cityStateLocation.remote === 'onsite' && cityStateLocation.ca === 'unknown',
+);
+
+const usOnsite = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role requires working on-site in our Boston office',
+});
+check('explicit on-site US role is not queued as unknown', usOnsite.remote !== 'remote' && usOnsite.remote !== 'unknown');
 
 const cityLocation = evaluateLocation({ locations: ['San Francisco, CA'], description: 'fully remote' });
 console.log(`Master baseline for city location with remote description: ${cityLocation.remote}/${cityLocation.ca}`);

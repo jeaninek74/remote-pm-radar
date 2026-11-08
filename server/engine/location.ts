@@ -119,7 +119,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     && locations.every((location) =>
       US_MARKERS.test(location) || /^(?:united states|us|usa|united states of america)$/i.test(location),
     )
-    && detectStates(locText).length === 0
+    && detectStates(`${locText.toUpperCase()} |`).length === 0
     && !REGION_MARKERS.test(locText);
   const workplace = String(input.workplaceType ?? '').toLowerCase();
   const description = (input.description ?? '').slice(0, 25_000);
@@ -149,6 +149,12 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
   ) {
     remote = 'remote';
+  } else if (
+    nationwideUsOnly
+    && !HYBRID_MARKERS.test(descLower)
+    && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
+  ) {
+    remote = 'unknown';
   } else if (!locations.length && !restrictions.length) {
     remote = 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
@@ -157,7 +163,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     remote = 'onsite';
   }
 
-  if (remote !== 'remote') {
+  if (remote !== 'remote' && !(remote === 'unknown' && nationwideUsOnly)) {
     return {
       remote,
       ca: 'unknown',
@@ -219,7 +225,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     return {
       remote,
       ca: 'us_wide',
-      note: US_MARKERS.test(scopeText)
+      note: remote === 'unknown'
+        ? 'Nationwide US location, but remote work arrangement needs verification.'
+        : US_MARKERS.test(scopeText)
         ? 'US-wide remote posting with no state restriction stated; California residents may apply.'
         : 'Posting states US-only eligibility and names no excluded states; California residents may apply.',
       states: allStates,
