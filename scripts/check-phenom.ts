@@ -3,6 +3,7 @@ import {
   parsePhenomConfig,
   parsePhenomResponse,
   phenomEndpointMatchesPageHost,
+  phenomJobUrl,
 } from '../server/engine/phenom';
 
 let failures = 0;
@@ -36,5 +37,7 @@ const crossHostConfig = parsePhenomConfig(
 );
 check('Phenom cross-host widget endpoint is rejected', !!crossHostConfig
   && !phenomEndpointMatchesPageHost(crossHostConfig.widgetApiEndpoint, crossHostConfig.pageHost));
+check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://jobs.acme.com/us/en')
+  === 'https://jobs.acme.com/us/en/job/123');
 
 if (failures) throw new Error(`${failures} Phenom parser check(s) failed`);

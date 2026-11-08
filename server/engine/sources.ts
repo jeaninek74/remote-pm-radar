@@ -13,6 +13,7 @@ import {
   parsePhenomConfig,
   parsePhenomResponse,
   phenomEndpointMatchesPageHost,
+  phenomJobUrl,
 } from './phenom';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
@@ -1750,14 +1751,14 @@ async function phenom(employer: EmployerRow, known?: Set<string>): Promise<Board
         let candidateUrl: URL | null = null;
         if (item.jobUrl) {
           try {
-            candidateUrl = new URL(item.jobUrl, config.baseUrl);
+            candidateUrl = new URL(phenomJobUrl(item.jobUrl, config.baseUrl));
           } catch {
             candidateUrl = null;
           }
         }
         const ownUrl = candidateUrl?.hostname === boardUrl.hostname
           ? candidateUrl.toString()
-          : new URL(`job/${encodeURIComponent(externalId)}`, config.baseUrl).toString();
+          : phenomJobUrl(`job/${encodeURIComponent(externalId)}`, config.baseUrl);
         if (known?.has(`${source}:${externalId}`)) {
           jobs.push(unchangedJob(source, 'phenom', externalId, employer.name, item.title, ownUrl));
           continue;

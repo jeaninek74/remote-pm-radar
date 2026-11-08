@@ -37,6 +37,12 @@ export function phenomEndpointMatchesPageHost(endpoint: string, pageHost: string
   }
 }
 
+export function phenomJobUrl(path: string, baseUrl: string): string {
+  const base = new URL(baseUrl);
+  if (!base.pathname.endsWith('/')) base.pathname += '/';
+  return new URL(path, base).toString();
+}
+
 function stringField(source: string, field: string): string {
   const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`["']${escaped}["']\\s*:\\s*["']([^"']*)["']`, 'i').exec(source)?.[1] ?? '';
