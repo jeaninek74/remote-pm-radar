@@ -43,6 +43,15 @@ const hybridDetailVerdict = evaluateLocation({
 });
 check('Phenom hybrid detail location excludes the remote feed posting',
   hybridDetailRemote.workplaceType === 'hybrid' && hybridDetailVerdict.remote === 'hybrid');
+const remoteHybridLocations = ['Remote/Hybrid'];
+const remoteHybridRemote = phenomRemoteInfo(['Remote, US'], null, remoteHybridLocations);
+const remoteHybridVerdict = evaluateLocation({
+  locations: phenomPrimaryLocations(['Remote, US'], remoteHybridLocations),
+  workplaceType: remoteHybridRemote.workplaceType,
+  isRemote: remoteHybridRemote.isRemote,
+});
+check('Phenom Remote/Hybrid detail option excludes the remote feed posting',
+  remoteHybridRemote.workplaceType === 'hybrid' && remoteHybridVerdict.remote === 'hybrid');
 const mixedDetailLocations = ['Remote, US', 'Hybrid - Boston, MA'];
 const mixedDetailRemote = phenomRemoteInfo([], null, mixedDetailLocations);
 const mixedDetailPrimaryLocations = phenomPrimaryLocations([], mixedDetailLocations);
