@@ -56,10 +56,14 @@ function bucketLabel(bucket: string): string {
   }
 }
 
-function caLabel(value: string): string {
-  switch (value) {
+function caLabel(job: JobRow): string {
+  switch (job.caEligibility) {
     case 'confirmed': return 'CA confirmed';
-    case 'us_wide': return 'US-wide remote';
+    case 'us_wide':
+      return job.caNote.toLowerCase().includes('remote work arrangement needs verification')
+        || job.bucketReason?.startsWith('Work arrangement not confirmed remote')
+        ? 'US-wide — remote not confirmed'
+        : 'US-wide remote';
     case 'state_restricted': return 'State-restricted';
     case 'not_us': return 'Non-US';
     default: return 'Unverified';
@@ -70,7 +74,7 @@ function valueFor(job: JobRow, key: keyof JobRow): string | number | null {
   switch (key) {
     case 'matchReasons': return job.matchReasons.join(' | ');
     case 'gaps': return job.gaps.join(' | ');
-    case 'caEligibility': return caLabel(job.caEligibility);
+    case 'caEligibility': return caLabel(job);
     case 'bucket': return bucketLabel(job.bucket);
     case 'category': return job.category === 'Hybrid' ? 'Business-tech' : job.category;
     case 'firstSeenAt': return job.firstSeenAt?.slice(0, 10) ?? '';

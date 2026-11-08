@@ -70,6 +70,8 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
+const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
+const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in[- ]person\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|on[- ]?site\s+(?:role|position|work|requirement)\b|on[- ]?site\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|willing(?:ness)? to|expected to|need to) relocate|relocation (?:is )?required)\b/i;
 const REMOTE_MARKERS = /\b(remote|anywhere|distributed|work(?:ing)? (?:from|at) home|wfh|telecommut\w*|virtual|home[- ]based)\b/i;
 const REMOTE_DESCRIPTION = /(?:\b(fully remote|100% remote|remote[- ]first|(?:this|the) (?:is a |role is |position is )?(?:fully )?remote (?:role|position|opportunity|job)|work (?:fully )?remotely|remote (?:team|environment|work environment|(?:[\w/-]+\s+){1,3}team))\b|#LI-Remote\b)/i;
 const TEXAS_HQ_TRAP = /austin|dallas|houston/i;
@@ -90,6 +92,21 @@ function detectStates(text: string): string[] {
     }
   }
   return [...found];
+}
+
+function parseRestrictionStates(restrictions: string[]) {
+  const excluded = new Set<string>();
+  const includedText = restrictions.map((restriction) =>
+    restriction.replace(
+      /\b(?:except|excluding|other than|not (?:available|eligible) in|with the exception of)\b[^;]*/gi,
+      (clause) => {
+        for (const state of detectStates(`${clause} |`)) excluded.add(state);
+        return ' ';
+      },
+    ),
+  ).join(' | ');
+  const included = detectStates(`${includedText} |`).filter((state) => !excluded.has(state));
+  return { includedText, included, excluded };
 }
 
 function residencyRestriction(description: string): string[] {
@@ -114,12 +131,13 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const restrictions = (input.restrictions ?? []).map((r) => String(r ?? '').trim()).filter(Boolean);
   const locText = locations.join(' | ');
   const restrictionText = restrictions.join(' | ');
+  const restrictionStateInfo = parseRestrictionStates(restrictions);
   const scopeText = `${locText} | ${restrictionText}`;
   const nationwideUsOnly = locations.length > 0
     && locations.every((location) =>
       US_MARKERS.test(location) || /^(?:united states|us|usa|united states of america)$/i.test(location),
     )
-    && detectStates(locText).length === 0
+    && detectStates(`${locText.toUpperCase()} |`).length === 0
     && !REGION_MARKERS.test(locText);
   const workplace = String(input.workplaceType ?? '').toLowerCase();
   const description = (input.description ?? '').slice(0, 25_000);
@@ -145,10 +163,18 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   } else if (
     nationwideUsOnly
     && REMOTE_DESCRIPTION.test(descLower)
-    && !HYBRID_MARKERS.test(descLower)
+    && !HYBRID_DESCRIPTION_MARKERS.test(descLower)
+    && !EXPLICIT_ONSITE_MARKERS.test(descLower)
     && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
   ) {
     remote = 'remote';
+  } else if (
+    nationwideUsOnly
+    && !HYBRID_DESCRIPTION_MARKERS.test(descLower)
+    && !EXPLICIT_ONSITE_MARKERS.test(descLower)
+    && !/\b\d\s*days? (?:a|per) week\b/.test(descLower)
+  ) {
+    remote = 'unknown';
   } else if (!locations.length && !restrictions.length) {
     remote = 'unknown';
   } else if (HYBRID_MARKERS.test(descLower) && !/fully remote|100% remote/i.test(descLower)) {
@@ -157,7 +183,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     remote = 'onsite';
   }
 
-  if (remote !== 'remote') {
+  if (remote !== 'remote' && !(remote === 'unknown' && nationwideUsOnly)) {
     return {
       remote,
       ca: 'unknown',
@@ -172,9 +198,31 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   }
 
   // --- California eligibility ----------------------------------------------
-  const listedStates = detectStates(scopeText);
+  const listedStates = detectStates(`${locText} | ${restrictionStateInfo.includedText} |`);
+  const restrictionStates = restrictionStateInfo.included;
   const residencyStates = residencyRestriction(description);
-  const allStates = [...new Set([...listedStates, ...residencyStates])];
+  const allStates = [...new Set([...listedStates, ...residencyStates])]
+    .filter((state) => !restrictionStateInfo.excluded.has(state));
+
+  if (restrictionStateInfo.excluded.has('CA')) {
+    return {
+      remote,
+      ca: 'state_restricted',
+      note: 'Posting excludes California from eligible locations.',
+      states: allStates,
+      remoteLabel: labels,
+    };
+  }
+
+  if (restrictionStates.length && !restrictionStates.includes('CA')) {
+    return {
+      remote,
+      ca: 'state_restricted',
+      note: `Posting restricts work to ${restrictionStates.join(', ')} — California not eligible.`,
+      states: restrictionStates,
+      remoteLabel: labels,
+    };
+  }
 
   if (allStates.includes('CA')) {
     return {
@@ -219,7 +267,9 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     return {
       remote,
       ca: 'us_wide',
-      note: US_MARKERS.test(scopeText)
+      note: remote === 'unknown'
+        ? 'Nationwide US location, but remote work arrangement needs verification.'
+        : US_MARKERS.test(scopeText)
         ? 'US-wide remote posting with no state restriction stated; California residents may apply.'
         : 'Posting states US-only eligibility and names no excluded states; California residents may apply.',
       states: allStates,

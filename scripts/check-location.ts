@@ -33,8 +33,91 @@ const hybrid = evaluateLocation({
 check('hybrid schedule is not remote', hybrid.remote !== 'remote');
 
 const noRemoteDescription = evaluateLocation({ locations: ['United States'], description: 'Join our team.' });
-console.log(`Master baseline for US scope without remote language: ${noRemoteDescription.remote}/${noRemoteDescription.ca}`);
-check('US scope without remote language preserves master result', noRemoteDescription.remote === 'onsite' && noRemoteDescription.ca === 'unknown');
+check(
+  'US scope without remote language needs verification',
+  noRemoteDescription.remote === 'unknown' && noRemoteDescription.ca === 'us_wide',
+);
+
+const cityStateLocation = evaluateLocation({
+  locations: ['USA - South San Francisco, CA'],
+  description: 'Join our team.',
+});
+check(
+  'US location with a city and state remains unchanged',
+  cityStateLocation.remote === 'onsite' && cityStateLocation.ca === 'unknown',
+);
+
+const usOnsite = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role requires working on-site in our Boston office',
+});
+check('explicit on-site US role is not queued as unknown', usOnsite.remote !== 'remote' && usOnsite.remote !== 'unknown');
+
+const inPersonUs = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role is in-person at our Austin headquarters',
+});
+check('explicit in-person US role is not queued as unknown', inPersonUs.remote === 'onsite');
+
+const nationwideResidency = evaluateLocation({
+  locations: ['United States'],
+  description: 'Fully remote; applicants must live within the United States',
+});
+check(
+  'US residency eligibility does not count as an on-site requirement',
+  nationwideResidency.remote === 'remote' && nationwideResidency.ca === 'us_wide',
+);
+
+const commuteRequirement = evaluateLocation({
+  locations: ['USA'],
+  description: 'must live within commuting distance of our Austin office',
+});
+check(
+  'commuting-distance requirement is not queued as remote',
+  commuteRequirement.remote === 'onsite' && commuteRequirement.ca === 'unknown',
+);
+
+const relocationAssistance = evaluateLocation({
+  locations: ['United States'],
+  description: 'Fully remote. Relocation assistance available.',
+});
+check(
+  'relocation assistance alone does not exclude a remote role',
+  relocationAssistance.remote === 'remote' && relocationAssistance.ca === 'us_wide',
+);
+
+const relocationRequired = evaluateLocation({
+  locations: ['USA'],
+  description: 'Applicants must relocate to Austin.',
+});
+check('explicit relocation requirement is not queued as remote', relocationRequired.remote === 'onsite');
+
+const occasionalOnsiteVisits = evaluateLocation({
+  locations: ['USA'],
+  description: 'This role is fully remote with occasional onsite client visits',
+});
+check(
+  'occasional onsite client visits do not override fully remote',
+  occasionalOnsiteVisits.remote === 'remote' && occasionalOnsiteVisits.ca === 'us_wide',
+);
+
+const occasionalInPersonMeetings = evaluateLocation({
+  locations: ['USA'],
+  description: 'This is a remote-first role that may require travel to Boston for occasional in-person team meetings and company events.',
+});
+check(
+  'occasional in-person meetings do not negate remote-first',
+  occasionalInPersonMeetings.remote === 'remote' && occasionalInPersonMeetings.ca === 'us_wide',
+);
+
+const clientOnboardingTravel = evaluateLocation({
+  locations: ['USA'],
+  description: 'Travel up to 25% of the time to onboard main clients in person and support go-live.',
+});
+check(
+  'client onboarding travel does not make the role explicitly on-site',
+  clientOnboardingTravel.remote === 'unknown' && clientOnboardingTravel.ca === 'us_wide',
+);
 
 const cityLocation = evaluateLocation({ locations: ['San Francisco, CA'], description: 'fully remote' });
 console.log(`Master baseline for city location with remote description: ${cityLocation.remote}/${cityLocation.ca}`);
@@ -45,6 +128,85 @@ check('non-US location is not remote or US-wide', nonUs.remote !== 'remote' && n
 
 const usAlias = evaluateLocation({ locations: ['US'], description: 'Fully remote role' });
 check('US alias is remote and US-wide', usAlias.remote === 'remote' && usAlias.ca === 'us_wide');
+
+const texasWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['Texas, United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'Texas restriction takes precedence over spelled-out country',
+  texasWithCountry.remote === 'remote' && texasWithCountry.ca === 'state_restricted' && texasWithCountry.states.includes('TX'),
+);
+
+const splitTexasWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['Texas', 'United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'separate Texas and country restrictions remain state-restricted',
+  splitTexasWithCountry.remote === 'remote' && splitTexasWithCountry.ca === 'state_restricted' && splitTexasWithCountry.states.includes('TX'),
+);
+
+const californiaWithCountry = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['California, United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'California restriction with country remains CA-eligible',
+  californiaWithCountry.remote === 'remote' && californiaWithCountry.ca === 'confirmed' && californiaWithCountry.states.includes('CA'),
+);
+
+const countryOnly = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'bare country restriction remains US-wide',
+  countryOnly.remote === 'remote' && countryOnly.ca === 'us_wide',
+);
+
+const countryExceptTexas = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except Texas'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'excluded Texas does not become a state restriction',
+  countryExceptTexas.remote === 'remote' && countryExceptTexas.ca === 'us_wide' && !countryExceptTexas.states.includes('TX'),
+);
+
+const countryExceptCalifornia = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except California'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'excluded California is not CA-eligible',
+  countryExceptCalifornia.remote === 'remote' && countryExceptCalifornia.ca === 'state_restricted',
+);
+
+const countryExceptTexasIncludingCalifornia = evaluateLocation({
+  locations: ['Remote'],
+  restrictions: ['United States except Texas; California'],
+  workplaceType: 'remote',
+  description: 'remote',
+});
+check(
+  'state after exclusion semicolon remains eligible',
+  countryExceptTexasIncludingCalifornia.remote === 'remote'
+    && countryExceptTexasIncludingCalifornia.ca === 'confirmed'
+    && countryExceptTexasIncludingCalifornia.states.includes('CA'),
+);
 
 if (failures) {
   console.error(`${failures} location check(s) failed`);

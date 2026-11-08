@@ -186,7 +186,14 @@ export function urgencyClass(urgency: string): string {
 export function caBadge(job: Job): { label: string; cls: string; title: string } {
   switch (job.caEligibility) {
     case 'confirmed': return { label: 'CA confirmed', cls: 'ca', title: job.caNote };
-    case 'us_wide': return { label: 'US-wide', cls: 'ca', title: job.caNote };
+    case 'us_wide': return {
+      label: job.caNote.toLowerCase().includes('remote work arrangement needs verification')
+        || job.bucketReason?.startsWith('Work arrangement not confirmed remote')
+        ? 'US-wide — remote not confirmed'
+        : 'US-wide',
+      cls: 'ca',
+      title: job.caNote,
+    };
     case 'state_restricted': return { label: 'State-restricted', cls: 'warn', title: job.caNote };
     case 'not_us': return { label: 'Non-US', cls: 'warn', title: job.caNote };
     default: return { label: 'CA not stated', cls: 'warn', title: job.caNote };
