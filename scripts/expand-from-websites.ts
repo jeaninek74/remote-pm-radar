@@ -135,9 +135,13 @@ async function careersLinks(pageUrl: string, deadline: number): Promise<string[]
           const url = target.toString();
           if (seen.has(url)) continue;
           seen.add(url);
-          const priority = isAtsHost(target.hostname)
-            ? 0
-            : STRONG_CAREERS_LINK.test(`${href}\n${text}`) ? 1 : 2;
+          const studentOnly = (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
+            && !STAFF_CAREERS_LINK.test(`${href}\n${text}`);
+          const priority = studentOnly
+            ? 3
+            : isAtsHost(target.hostname)
+              ? 0
+              : STRONG_CAREERS_LINK.test(`${href}\n${text}`) ? 1 : 2;
           links.push({ url, priority, order: links.length });
         }
       } catch {
