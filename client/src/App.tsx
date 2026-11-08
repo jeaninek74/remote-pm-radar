@@ -199,20 +199,31 @@ export default function App() {
     }
   }, [jobs, notify]);
 
-  /** Board checkboxes: an Applied check also stamps today's date so the export keeps "Applied On". */
-  const handleTrack = useCallback(async (id: number, status: string) => {
+  /**
+   * Board checkboxes: an Applied check stamps today's local date. Saves for one role run in order and
+   * only the newest response is applied, so a quick Viewed→Applied can't be undone by a late reply.
+   */
+  const trackChain = useRef(new Map<number, { seq: number; tail: Promise<unknown> }>());
+  const handleTrack = useCallback((id: number, status: string) => {
     const patch: Record<string, string | null> = { appStatus: status };
-    if (status === 'Applied') patch.appliedAt = new Date().toISOString().slice(0, 10);
+    if (status === 'Applied') patch.appliedAt = new Date().toLocaleDateString('en-CA');
     if (status === 'Not Applied' || status === 'Viewed') patch.appliedAt = null;
-    const previous = jobs;
+    const before = jobs.find((job) => job.id === id);
     setJobs((current) => current.map((job) => (job.id === id ? { ...job, appStatus: status, appliedAt: patch.appliedAt ?? null } : job)));
-    try {
-      const result = await saveTracking(id, patch);
-      setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
-    } catch {
-      setJobs(previous);
-      notify('Could not save that — try again.', true);
-    }
+    const entry = trackChain.current.get(id) ?? { seq: 0, tail: Promise.resolve() };
+    const seq = entry.seq + 1;
+    const tail = entry.tail.then(() => saveTracking(id, patch)).then(
+      (result) => {
+        if (trackChain.current.get(id)?.seq !== seq) return;
+        setJobs((current) => current.map((job) => (job.id === id ? result.job : job)));
+      },
+      () => {
+        if (trackChain.current.get(id)?.seq !== seq) return;
+        if (before) setJobs((current) => current.map((job) => (job.id === id ? before : job)));
+        notify('Could not save that — try again.', true);
+      },
+    );
+    trackChain.current.set(id, { seq, tail });
   }, [jobs, notify]);
 
   const handleUpdated = useCallback((updated: Job) => {
