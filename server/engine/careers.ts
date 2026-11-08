@@ -21,7 +21,7 @@ const SITEMAP_TAG = /<(?:loc)>\s*([^<\s]+)\s*<\/loc>/gi;
 const ANCHOR = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const JSON_LD = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
 
-interface JobPostingLd {
+export interface JobPostingLd {
   '@type'?: string | string[];
   title?: string;
   datePosted?: string;
@@ -30,7 +30,8 @@ interface JobPostingLd {
   jobLocationType?: string;
   jobLocation?: { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } } | { address?: { addressLocality?: string; addressRegion?: string; addressCountry?: string | { name?: string } } }[];
   applicantLocationRequirements?: { name?: string } | { name?: string }[];
-  baseSalary?: { currency?: string; value?: { minValue?: number; maxValue?: number; value?: number; unitText?: string } };
+  hiringOrganization?: { name?: string } | string;
+  baseSalary?: { currency?: string; value?: { minValue?: number | string; maxValue?: number | string; value?: number | string; unitText?: string } };
   identifier?: { value?: string } | string;
   url?: string;
 }
@@ -39,7 +40,7 @@ function asArray<T>(v: T | T[] | undefined | null): T[] {
   return v == null ? [] : Array.isArray(v) ? v : [v];
 }
 
-function jobPostingFrom(html: string): JobPostingLd | null {
+export function jobPostingFrom(html: string): JobPostingLd | null {
   for (const m of html.matchAll(JSON_LD)) {
     try {
       const parsed = JSON.parse(m[1].trim()) as JobPostingLd | JobPostingLd[] | { '@graph'?: JobPostingLd[] };

@@ -24,8 +24,14 @@ async function main(): Promise<void> {
   );
   check('detect Greenhouse URL', greenhouse.kind === 'board' && greenhouse.ats === 'greenhouse' && greenhouse.slug === 'stripe');
 
-  const icims = detect('<iframe src="https://jobs.icims.com/jobs/search"></iframe>', 'https://employer.example/jobs');
-  check('detect iCIMS signature', icims.kind === 'unreadable' && icims.platform === 'iCIMS');
+  const icims = detect('<iframe src="https://careers-peraton.icims.com/jobs/search"></iframe>', 'https://employer.example/jobs');
+  check('detect iCIMS host in HTML', icims.kind === 'board' && icims.ats === 'icims' && icims.slug === 'careers-peraton.icims.com');
+
+  const icimsFinal = detect('<main>Current openings</main>', 'https://careers-peraton.icims.com/jobs/search');
+  check('detect iCIMS host in final URL', icimsFinal.kind === 'board' && icimsFinal.ats === 'icims' && icimsFinal.slug === 'careers-peraton.icims.com');
+
+  const icimsSharedHost = detect('<script src="https://cdn.icims.com/widget.js"></script>', 'https://employer.example/jobs');
+  check('ignore shared iCIMS CDN host', icimsSharedHost.kind === 'none');
 
   const phenom = detect('<script src="https://careers.phenompeople.com/widget.js"></script>', 'https://employer.example/jobs');
   check('detect Phenom signature', phenom.kind === 'unreadable' && phenom.platform === 'Phenom');
