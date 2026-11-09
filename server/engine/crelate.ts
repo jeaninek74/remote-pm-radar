@@ -1,6 +1,6 @@
 import { REFRESH } from '../config';
 import { fetchJson, fetchText } from './http';
-import { parseSalaryFromText } from './salary';
+import { maximumOnlySalary, parseSalaryFromText } from './salary';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -93,6 +93,14 @@ function formatAmount(value: number): string {
 export function crelateSalary(job: Pick<CrelateJob, 'Compensation' | 'CompensationMinimum' | 'CompensationMaximum'>) {
   const minimum = amount(job.CompensationMinimum);
   const maximum = amount(job.CompensationMaximum);
+  if (minimum === null && maximum !== null) {
+    const interval = maximum < 1000 ? 'hour' : 'year';
+    return maximumOnlySalary(
+      maximum,
+      interval,
+      `Crelate compensation: "Up to USD ${formatAmount(maximum)} per ${interval}"`,
+    );
+  }
   const range = [minimum, maximum].filter((value): value is number => value !== null);
   if (range.length) {
     const unit = range.every((value) => value < 1000) ? 'hour' : 'year';

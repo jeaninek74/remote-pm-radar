@@ -1,7 +1,7 @@
 import { REFRESH, USER_AGENT } from '../config';
 import { fetchJson, mapLimit } from './http';
 import { detectStates } from './location';
-import { parseSalaryFromText } from './salary';
+import { maximumOnlySalary, parseSalaryFromText } from './salary';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -114,9 +114,19 @@ export function avionteSalary(post: Pick<AvionteJobPost, 'pay' | 'payMin' | 'pay
     return parseSalaryFromText(`USD ${format(min)} - USD ${format(max)} per ${unit}`, 'Avionté posting');
   }
   const pay = positive(post.pay);
-  if (pay === null) return null;
-  const unit = pay < 1000 ? 'hour' : 'year';
-  return parseSalaryFromText(`USD ${format(pay)} per ${unit}`, 'Avionté posting');
+  if (pay !== null) {
+    const unit = pay < 1000 ? 'hour' : 'year';
+    return parseSalaryFromText(`USD ${format(pay)} per ${unit}`, 'Avionté posting');
+  }
+  if (min !== null) {
+    const unit = min < 1000 ? 'hour' : 'year';
+    return parseSalaryFromText(`USD ${format(min)} per ${unit}`, 'Avionté posting');
+  }
+  if (max !== null) {
+    const unit = max < 1000 ? 'hour' : 'year';
+    return maximumOnlySalary(max, unit, `Avionté posting: "Up to USD ${format(max)} per ${unit}"`);
+  }
+  return null;
 }
 
 export function avionteLocations(location?: string, zip?: string): string[] {

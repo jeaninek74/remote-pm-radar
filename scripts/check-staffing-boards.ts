@@ -170,10 +170,16 @@ async function main(): Promise<void> {
       && nonUsCrelateVerdict.ca === 'not_us');
   const crelateAnnualSalary = crelateSalary({ CompensationMinimum: 85000, CompensationMaximum: 95000 });
   const crelateHourlySalary = crelateSalary({ CompensationMinimum: 20, CompensationMaximum: 25 });
+  const crelateMaxOnlyAnnual = crelateSalary({ CompensationMaximum: 125000 });
+  const crelateMaxOnlyHourly = crelateSalary({ CompensationMaximum: 25 });
   check('Crelate numeric salary uses annual and hourly thresholds',
     crelateAnnualSalary?.min === 85000 && crelateAnnualSalary.max === 95000 && crelateAnnualSalary.interval === 'year'
       && crelateHourlySalary?.hourlyRate === 20 && crelateHourlySalary.min === 41600
       && crelateHourlySalary.max === 52000 && crelateHourlySalary.interval === 'hour');
+  check('Crelate maximum-only pay retains a null minimum',
+    crelateMaxOnlyAnnual?.min === null && crelateMaxOnlyAnnual.max === 125000
+      && crelateMaxOnlyHourly?.min === null && crelateMaxOnlyHourly.max === 52000
+      && crelateMaxOnlyHourly.interval === 'hour' && crelateMaxOnlyHourly.hourlyRate === 25);
   const avionteDictPosts = parseAvionteJobPosts({
     jobPosts: { dictId: { jobTitle: 'Project Manager' } },
   });
@@ -185,11 +191,17 @@ async function main(): Promise<void> {
   const avionteHourlySalary = avionteSalary({ pay: 23 });
   const avionteAnnualSalary = avionteSalary({ pay: 75000 });
   const avionteRangeSalary = avionteSalary({ pay: 0, payMin: 50000, payMax: 70000 });
+  const avionteMaxOnlyAnnual = avionteSalary({ pay: 0, payMin: 0, payMax: 90000 });
+  const avionteMaxOnlyHourly = avionteSalary({ pay: 0, payMin: 0, payMax: 25 });
   check('Avionté interprets hourly and annual pay without a list cap',
     avionteHourlySalary?.hourlyRate === 23 && avionteHourlySalary.min === 47840
       && avionteHourlySalary.interval === 'hour'
       && avionteAnnualSalary?.min === 75000 && avionteAnnualSalary.interval === 'year'
       && avionteRangeSalary?.min === 50000 && avionteRangeSalary.max === 70000);
+  check('Avionté maximum-only pay retains a null minimum',
+    avionteMaxOnlyAnnual?.min === null && avionteMaxOnlyAnnual.max === 90000
+      && avionteMaxOnlyHourly?.min === null && avionteMaxOnlyHourly.max === 52000
+      && avionteMaxOnlyHourly.interval === 'hour' && avionteMaxOnlyHourly.hourlyRate === 25);
   const avionteAppUrl = 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY//';
   const avionteAppDetection = detect('', avionteAppUrl);
   check('Avionté app URL yields board coordinates',

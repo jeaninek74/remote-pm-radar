@@ -13,6 +13,24 @@ export interface ParsedSalary {
   evidence: string;
 }
 
+export function maximumOnlySalary(
+  amount: number,
+  interval: SalaryInterval,
+  evidence: string,
+): ParsedSalary {
+  const annualized = interval === 'hour' ? Math.round(amount * 2080) : amount;
+  return {
+    min: null,
+    max: annualized,
+    interval,
+    hourlyRate: interval === 'hour' ? amount : null,
+    isOTE: false,
+    evidence: interval === 'hour'
+      ? `${evidence} (hourly $${amount.toLocaleString('en-US')}/hr annualised at 2080 hrs)`
+      : evidence,
+  };
+}
+
 const AMT = String.raw`(\d{1,3}(?:,\d{3})+|\d{1,3}(?:\.\d+)?\s?[kK]|\d{1,3}(?:\.\d+)?)`;
 const DASH = String.raw`\s*(?:-|\u2013|\u2014|to|through|until)\s*`;
 
