@@ -5,6 +5,8 @@ import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed } from './neogov';
 import { parsePhenomConfig, parsePhenomResponse, phenomEndpointMatchesPageHost } from './phenom';
 import { stripHtml } from './text';
+import { haleySitemapJobs } from './haley';
+import { parseZenopleJson, zenopleJobPortalUrl } from './zenople';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -173,6 +175,45 @@ function rmkHost(host: string): boolean {
   return !/\.successfactors\.(?:com|eu)$/i.test(host);
 }
 
+function haleyCoordinates(html: string, finalUrl: string): string | null {
+  const normalized = html.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  let page: URL;
+  try {
+    page = new URL(finalUrl);
+  } catch {
+    return null;
+  }
+
+  const jobHost = (host: string) => /(?:^|[.-])(?:jobs?|careers?|employment)(?:[.-]|$)/i.test(host);
+  const linkedUrls = [...normalized.matchAll(/\b(?:href|src)\s*=\s*["']([^"']+)["']/gi)]
+    .map((match) => match[1]);
+  for (const href of linkedUrls) {
+    try {
+      const url = new URL(href, page);
+      if (/index\.smpl/i.test(url.pathname)) return url.hostname.toLowerCase();
+    } catch { /* ignore malformed links */ }
+  }
+  if (/index\.smpl/i.test(page.pathname)) return page.hostname.toLowerCase();
+
+  for (const href of linkedUrls) {
+    try {
+      const url = new URL(href, page);
+      const host = url.hostname.toLowerCase();
+      if (host !== page.hostname.toLowerCase() && host !== 'cdn.haleymarketing.com' && jobHost(host)) return host;
+    } catch { /* ignore malformed links */ }
+  }
+  return /cdn\.haleymarketing\.com/i.test(normalized) && jobHost(page.hostname)
+    ? page.hostname.toLowerCase()
+    : null;
+}
+
+function zenopleCoordinates(source: string): { tenant: string; organization: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  const match = /https?:\/\/([a-z0-9-]+)\.zenople\.com\/(?:job-portal|apply|login)\/([A-Za-z0-9]+)(?=[/?#"'<>\\\s]|$)/i.exec(normalized);
+  if (!match) return null;
+  return { tenant: match[1].toLowerCase(), organization: match[2].toUpperCase() };
+}
+
 export function detect(html: string, finalUrl: string): BoardDetection {
   const finalIcimsHost = icimsHostFrom(finalUrl);
   if (finalIcimsHost) return { kind: 'board', ats: 'icims', slug: finalIcimsHost };
@@ -210,6 +251,12 @@ export function detect(html: string, finalUrl: string): BoardDetection {
       slug: `${base.host}${base.pathname.replace(/\/$/, '')}`,
       phenom,
     };
+  }
+  const haleyHost = haleyCoordinates(html, finalUrl);
+  if (haleyHost) return { kind: 'board', ats: 'haley', slug: haleyHost };
+  const zenople = zenopleCoordinates(`${finalUrl}\n${html}`);
+  if (zenople) {
+    return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
   }
   for (const pattern of ATS_PATTERNS) {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
@@ -580,6 +627,52 @@ async function validatePhenomCandidate(
   }
 }
 
+async function validateHaleyCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const host = candidate.slug.toLowerCase();
+  if (!/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(host) || /(?:^|\.)haleymarketing\.com$/i.test(host)) {
+    return { kind: 'unknown', reason: 'Invalid Haley Marketing board host' };
+  }
+  const { urls } = await haleySitemapJobs(host, deadline);
+  if (!urls.length) return { kind: 'unknown', reason: 'Haley Marketing sitemap has no job postings' };
+  return {
+    kind: 'board',
+    ats: 'haley',
+    slug: host,
+    careersUrl: `https://${host}/`,
+    total: urls.length,
+  };
+}
+
+async function validateZenopleCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^([a-z0-9-]+)\/([a-z0-9]+)$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid Zenople tenant/organization coordinates' };
+  const tenant = match[1].toLowerCase();
+  const organization = match[2].toUpperCase();
+  const response = await fetch(zenopleJobPortalUrl(tenant, organization, 1), {
+    headers: { Accept: 'application/json', 'User-Agent': BROWSER_USER_AGENT },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `Zenople JobPortal HTTP ${response.status}` };
+  const data = parseZenopleJson(await response.json()) as { TotalCount?: unknown } | null;
+  const total = Number(data?.TotalCount);
+  if (!Number.isFinite(total) || total < 0) {
+    return { kind: 'unknown', reason: 'Zenople JobPortal response had no parseable TotalCount' };
+  }
+  return {
+    kind: 'board',
+    ats: 'zenople',
+    slug: `${tenant}/${organization}`,
+    careersUrl: `https://${tenant}.zenople.com/job-portal/${organization}`,
+    total,
+  };
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
@@ -587,6 +680,8 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
     if (candidate.ats === 'neogov') return await validateNeogovCandidate(name, candidate, deadline);
     if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline);
+    if (candidate.ats === 'haley') return await validateHaleyCandidate(candidate, deadline);
+    if (candidate.ats === 'zenople') return await validateZenopleCandidate(candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
@@ -726,9 +821,14 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       current = new URL(location, current);
     }
     if (!response || (response.status >= 300 && response.status < 400)) throw new Error('redirect limit exceeded');
-    const html = (await response.text()).slice(0, 400_000);
+    const fullHtml = await response.text();
+    let html = fullHtml.slice(0, 400_000);
     const finalUrl = current.toString();
-    const detected = detect(html, finalUrl);
+    let detected = detect(html, finalUrl);
+    if (detected.kind === 'none' && html.length < fullHtml.length) {
+      html = fullHtml;
+      detected = detect(html, finalUrl);
+    }
     if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
     const finalHost = current.hostname.toLowerCase();
     if (rmkHost(finalHost)) {
