@@ -1,0 +1,44 @@
+name: Pull browser-rendered employer postings
+
+on:
+  schedule:
+    - cron: '20,50 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: browser-pull
+  cancel-in-progress: false
+
+jobs:
+  browser-pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Wake the service
+        run: |
+          url="https://remote-pm-radar.onrender.com/api/health"
+          for attempt in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "$url" || true)
+            echo "attempt $attempt -> $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "service did not wake in time"
+          exit 1
+
+      - name: Pull browser-rendered postings
+        env:
+          BROWSER_INGEST_TOKEN: ${{ secrets.BROWSER_INGEST_TOKEN }}
+          RADAR_URL: https://remote-pm-radar.onrender.com
+        run: npx tsx scripts/browser-pull.ts
