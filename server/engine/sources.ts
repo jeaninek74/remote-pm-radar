@@ -2131,6 +2131,15 @@ function unchangedJob(
 
 /** `known` holds the job keys (`source:externalId`) already stored for this employer. */
 export async function fetchBoard(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  if (employer.ats === 'browser') {
+    return {
+      jobs: [],
+      ok: false,
+      error: 'browser employer: read by browser pull',
+      retryable: true,
+      totalListed: 0,
+    };
+  }
   if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer, known);
   if (employer.ats === 'manual') return fetchCareersPage(employer, known).catch((err) => ({ jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 }));
   const adapter = ADAPTERS[employer.ats];

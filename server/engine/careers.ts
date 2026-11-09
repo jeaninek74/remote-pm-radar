@@ -281,6 +281,65 @@ export function sweepCareersPostingLinks(html: string, base: string): { url: str
     || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && (JOB_URL.test(url) || POSTING_ID.test(url))));
 }
 
+export function careersExternalId(origin: string, url: string): string {
+  try {
+    if (new URL(url).origin === new URL(origin).origin) return url.replace(origin, '').slice(0, 180);
+  } catch {
+    return url.slice(0, 180);
+  }
+  return url.slice(0, 180);
+}
+
+export function rawJobFromCareersPage(
+  employer: EmployerRow,
+  source: string,
+  origin: string,
+  url: string,
+  linkText: string,
+  html: string,
+): RawJob | null {
+  if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(linkText)) return null;
+  const posting = jobPostingFrom(html);
+  if (!posting && !looksLikePostingPage(url, linkText)) return null;
+  const title = (posting?.title ?? linkText ?? '').trim();
+  if (!title || !isRoleTitle(title, undefined, employer)) return null;
+  const { locations, restrictions } = careersLocationFields(
+    posting?.jobLocation,
+    posting?.applicantLocationRequirements,
+    url,
+    linkText,
+  );
+  const remote = /TELECOMMUTE/i.test(posting?.jobLocationType ?? '') ? true : null;
+  const description = posting?.description
+    ? stripHtml(posting.description)
+    : stripHtml(html).slice(0, 25_000);
+  const posted = isoDate(posting?.datePosted ?? '');
+  const identifier = typeof posting?.identifier === 'string'
+    ? posting.identifier
+    : posting?.identifier?.value;
+  return {
+    source,
+    externalId: careersExternalId(origin, url),
+    company: employer.name,
+    title,
+    locations,
+    restrictions,
+    workplaceType: remote ? 'remote' : null,
+    isRemote: remote,
+    descriptionHtml: posting?.description ?? null,
+    descriptionText: description,
+    applyUrl: posting?.url || url,
+    linkType: 'employer',
+    postedAt: posted,
+    postedConfidence: posted ? 'confirmed' : 'unknown',
+    employmentType: asArray(posting?.employmentType).join(', ') || null,
+    requisitionId: identifier ?? null,
+    industry: employer.industry,
+    companySize: employer.company_size,
+    hqState: employer.hq_state,
+  };
+}
+
 export interface CareersPageProbe {
   postings: number;
   matching: number;
@@ -436,43 +495,15 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
   for (const [url, text] of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
     if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(text)) continue;
-    const externalId = url.replace(origin, '').slice(0, 180);
+    const externalId = careersExternalId(origin, url);
     if (known?.has(`${source}:${externalId}`)) {
       jobs.push({ source, externalId, company: employer.name, title: text, locations: [], applyUrl: url, linkType: 'employer', unchanged: true });
       continue;
     }
     let html = '';
     try { html = await fetchText(url, 20_000); } catch { continue; }
-    const ld = jobPostingFrom(html);
-    if (!ld && !looksLikePostingPage(url, text)) continue;
-    const title = (ld?.title ?? text ?? '').trim();
-    if (!title || !isRoleTitle(title, undefined, employer)) continue;
-    const { locations, restrictions } = careersLocationFields(ld?.jobLocation, ld?.applicantLocationRequirements, url, text);
-    const remote = /TELECOMMUTE/i.test(ld?.jobLocationType ?? '') ? true : null;
-    const description = ld?.description ? stripHtml(ld.description) : stripHtml(html).slice(0, 25_000);
-    const posted = isoDate(ld?.datePosted ?? '');
-    const identifier = typeof ld?.identifier === 'string' ? ld.identifier : ld?.identifier?.value;
-    jobs.push({
-      source,
-      externalId,
-      company: employer.name,
-      title,
-      locations,
-      restrictions,
-      workplaceType: remote ? 'remote' : null,
-      isRemote: remote,
-      descriptionHtml: ld?.description ?? null,
-      descriptionText: description,
-      applyUrl: ld?.url || url,
-      linkType: 'employer',
-      postedAt: posted,
-      postedConfidence: posted ? 'confirmed' : 'unknown',
-      employmentType: asArray(ld?.employmentType).join(', ') || null,
-      requisitionId: identifier ?? null,
-      industry: employer.industry,
-      companySize: employer.company_size,
-      hqState: employer.hq_state,
-    });
+    const rawJob = rawJobFromCareersPage(employer, source, origin, url, text, html);
+    if (rawJob) jobs.push(rawJob);
   }
   return { jobs, ok: true, totalListed: candidates.size, truncated };
 }
