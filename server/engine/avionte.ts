@@ -160,14 +160,18 @@ async function fetchDescription(
       signal: AbortSignal.timeout(Math.min(20_000, Math.max(1, deadline - Date.now()))),
     });
     if (!response.ok || Date.now() >= deadline) return { ok: false };
-    const data = await response.json() as AvionteDescriptionResponse | null;
-    if (
-      !data
-      || typeof data !== 'object'
-      || typeof data.description !== 'string'
-      || Date.now() >= deadline
-    ) return { ok: false };
-    return { ok: true, html: data.description.trim() ? data.description : null };
+    const data = await response.json() as unknown;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || Date.now() >= deadline) {
+      return { ok: false };
+    }
+    const description = (data as AvionteDescriptionResponse).description;
+    if (description !== undefined && description !== null && typeof description !== 'string') {
+      return { ok: false };
+    }
+    return {
+      ok: true,
+      html: typeof description === 'string' && description.trim() ? description : null,
+    };
   } catch {
     return { ok: false };
   }

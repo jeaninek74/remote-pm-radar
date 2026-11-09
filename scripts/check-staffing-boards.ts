@@ -324,7 +324,7 @@ async function main(): Promise<void> {
   const originalFetch = globalThis.fetch;
   let avionteDescriptionRequests = 0;
   let avionteDescriptionHeadersOk = false;
-  let avionteDescriptionMode: 'content' | 'failure' | 'empty' = 'content';
+  let avionteDescriptionMode: 'content' | 'failure' | 'empty' | 'null' | 'missing' | 'bare-empty-string' = 'content';
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     if (url.hostname === 'hire.myavionte.com' && url.pathname === '/app/careers/') {
@@ -362,13 +362,23 @@ async function main(): Promise<void> {
       if (avionteDescriptionMode === 'failure') {
         return new Response('Unavailable', { status: 503 });
       }
-      return new Response(JSON.stringify({
-        description: avionteDescriptionMode === 'empty'
-          ? ''
-          : avionteDescriptionHeadersOk
-            ? '<p>Fully remote project manager role in the United States.</p>'
-            : '',
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (avionteDescriptionMode === 'bare-empty-string') {
+        return new Response('""', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      const description = avionteDescriptionMode === 'empty'
+        ? ''
+        : avionteDescriptionMode === 'null'
+          ? null
+          : avionteDescriptionMode === 'missing'
+            ? undefined
+            : avionteDescriptionHeadersOk
+              ? '<p>Fully remote project manager role in the United States.</p>'
+              : '';
+      const responseBody = avionteDescriptionMode === 'missing' ? {} : { description };
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     if (url.hostname === 'jobs.crelate.com' && url.pathname === '/portal/fixture/') {
       return new Response('<script>var ORG_ID = "22222222-2222-4222-8222-222222222222";</script>', { status: 200 });
@@ -446,6 +456,23 @@ async function main(): Promise<void> {
         && emptyDescriptionAvionte.jobs[0].descriptionHtml === null
         && emptyDescriptionAvionte.jobs[0].descriptionText === null
         && emptyDescriptionAvionte.truncated !== true);
+    avionteDescriptionMode = 'null';
+    const nullDescriptionAvionte = await avionte(fixtureAvionteEmployer);
+    check('Avionté keeps jobs when description is null',
+      nullDescriptionAvionte.jobs.length === 1
+        && nullDescriptionAvionte.jobs[0].descriptionHtml === null
+        && nullDescriptionAvionte.truncated !== true);
+    avionteDescriptionMode = 'missing';
+    const missingDescriptionAvionte = await avionte(fixtureAvionteEmployer);
+    check('Avionté keeps jobs when description is missing',
+      missingDescriptionAvionte.jobs.length === 1
+        && missingDescriptionAvionte.jobs[0].descriptionHtml === null
+        && missingDescriptionAvionte.truncated !== true);
+    avionteDescriptionMode = 'bare-empty-string';
+    const bareEmptyDescriptionAvionte = await avionte(fixtureAvionteEmployer);
+    check('Avionté rejects a top-level empty string description response',
+      bareEmptyDescriptionAvionte.jobs.length === 0
+        && bareEmptyDescriptionAvionte.truncated === true);
     avionteDescriptionMode = 'content';
     const emptyAvionte = await resolveBoard(
       'Empty',
