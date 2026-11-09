@@ -215,7 +215,7 @@ export async function avionte(employer: EmployerRow, known?: Set<string>): Promi
   );
   const source = `avionte:${bId}/${jbId}`;
   let truncated = false;
-  const jobs = (await mapLimit(candidates, 6, async ([id, listing]): Promise<RawJob> => {
+  const jobs = (await mapLimit(candidates, 6, async ([id, listing]): Promise<RawJob | null> => {
     const applyUrl = avionteApplyUrl(bId, jbId, id);
     const title = listing.jobTitle?.trim() ?? '';
     if (known?.has(`${source}:${id}`)) return unchangedJob(source, employer, id, title, applyUrl);
