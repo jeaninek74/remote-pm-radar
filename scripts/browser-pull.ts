@@ -573,5 +573,5 @@ async function main(): Promise<void> {
 
 void main().catch((error: unknown) => {
   console.error(`browser-pull failed: ${(error as Error).message}`);
-  process.exitCode = 0;
+  process.exitCode = 1;
 });
