@@ -1,5 +1,11 @@
 import { REFRESH } from '../server/config';
-import { haleyPostingLink, haleyRoleLinks, haleySitemapJobs, parseHaleySitemapXml } from '../server/engine/haley';
+import {
+  haleyPostingLink,
+  haleyRoleLinks,
+  haleySitemapJobs,
+  normalizeHaleySitemapUrl,
+  parseHaleySitemapXml,
+} from '../server/engine/haley';
 import { resolveBoard, detect } from '../server/engine/resolve';
 import { fetchBoard } from '../server/engine/sources';
 import { parseZenopleJson } from '../server/engine/zenople';
@@ -45,6 +51,22 @@ async function main(): Promise<void> {
   check('Haley sitemap index exposes child maps', sitemapIndex.kind === 'sitemapindex'
     && sitemapIndex.locations.length === 2
     && sitemapIndex.locations[0] === 'http://jobs.example.com/jobs-a.xml');
+  const unsafeSitemapIndex = parseHaleySitemapXml(
+    '<sitemapindex><sitemap><loc>http://169.254.169.254/latest/meta-data/</loc></sitemap></sitemapindex>',
+  );
+  check('Haley drops an IP-literal sitemap child',
+    normalizeHaleySitemapUrl(unsafeSitemapIndex.locations[0], 'https://jobs.atwork.com/sitemap.xml', 'jobs.atwork.com') === null);
+  const unsafePostingSitemap = parseHaleySitemapXml(
+    '<urlset><url><loc>https://evil.example.org/jb/Manager-Jobs-in-Town-State/123</loc></url></urlset>',
+  );
+  check('Haley drops a posting URL on an unrelated domain',
+    normalizeHaleySitemapUrl(unsafePostingSitemap.locations[0], 'https://jobs.atwork.com/jobs.xml', 'jobs.atwork.com') === null);
+  const atworkPostingSitemap = parseHaleySitemapXml(
+    '<urlset><url><loc>http://sacramento-jobs.atwork.com/jb/Manager-Jobs-in-Sacramento-California/123</loc></url></urlset>',
+  );
+  check('Haley keeps an AtWork city-subdomain posting',
+    normalizeHaleySitemapUrl(atworkPostingSitemap.locations[0], 'https://jobs.atwork.com/jobs.xml', 'jobs.atwork.com')
+      === 'https://sacramento-jobs.atwork.com/jb/Manager-Jobs-in-Sacramento-California/123');
 
   const doubleEncoded = JSON.stringify(JSON.stringify({ TotalCount: 31, Data: [{ jobId: 782971 }] }));
   const zenopleParsed = parseZenopleJson(doubleEncoded) as { TotalCount?: number; Data?: { jobId?: number }[] };

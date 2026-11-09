@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { REFRESH } from '../config';
 import { careersLocationFields, jobPostingFrom } from './careers';
 import { fetchText, mapLimit } from './http';
@@ -71,11 +72,39 @@ function httpsUrl(value: string, base: string): string | null {
   }
 }
 
+function normalizedHost(host: string): string {
+  return host.toLowerCase().replace(/\.$/, '').replace(/^\[|\]$/g, '');
+}
+
+function unsafeHost(host: string): boolean {
+  return isIP(host) !== 0 || host === 'localhost' || host.endsWith('.localhost');
+}
+
+function registrableDomain(host: string): string {
+  return host.split('.').slice(-2).join('.');
+}
+
+export function normalizeHaleySitemapUrl(value: string, base: string, boardHost: string): string | null {
+  const normalizedUrl = httpsUrl(value, base);
+  if (!normalizedUrl) return null;
+  try {
+    const url = new URL(normalizedUrl);
+    const host = normalizedHost(url.hostname);
+    const board = normalizedHost(new URL(`https://${boardHost}`).hostname);
+    if (unsafeHost(host) || unsafeHost(board)) return null;
+    if (host !== board && registrableDomain(host) !== registrableDomain(board)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function haleySitemapJobs(
   host: string,
   deadline: number,
 ): Promise<{ urls: string[]; truncated: boolean }> {
-  const start = `https://${host}/sitemap.xml`;
+  const start = normalizeHaleySitemapUrl(`https://${host}/sitemap.xml`, `https://${host}/`, host);
+  if (!start) throw new Error('Invalid Haley Marketing sitemap host');
   const queue = [start];
   const seenSitemaps = new Set<string>();
   const jobUrls = new Set<string>();
@@ -101,14 +130,14 @@ export async function haleySitemapJobs(
     const sitemap = parseHaleySitemapXml(xml);
     if (sitemap.kind === 'sitemapindex') {
       for (const location of sitemap.locations) {
-        const childUrl = httpsUrl(location, sitemapUrl);
+        const childUrl = normalizeHaleySitemapUrl(location, sitemapUrl, host);
         if (childUrl && !seenSitemaps.has(childUrl)) queue.push(childUrl);
       }
       continue;
     }
     if (sitemap.kind !== 'urlset') continue;
     for (const location of sitemap.locations) {
-      const jobUrl = httpsUrl(location, sitemapUrl);
+      const jobUrl = normalizeHaleySitemapUrl(location, sitemapUrl, host);
       if (jobUrl && /\/jb\//i.test(new URL(jobUrl).pathname)) jobUrls.add(jobUrl);
     }
   }
