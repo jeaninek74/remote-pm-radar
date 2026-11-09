@@ -1,7 +1,12 @@
 import {
+  careersPostingUrl,
   careersExternalId,
   fetchCareersPage,
+  isBrowserCareersPostingLink,
+  rawJobFromRenderedCareersPage,
   rawJobFromCareersPage,
+  sameCareerSite,
+  sweepCareersPostingLinks,
 } from '../server/engine/careers';
 import {
   browserPullAllowsClosure,
@@ -91,6 +96,65 @@ async function main(): Promise<void> {
     careersExternalId('https://example.test', 'https://jobs.vendor.test/job/req-123456')
       === 'https://jobs.vendor.test/job/req-123456',
   );
+  check('browser links treat www and bare hosts as the same careers site',
+    sameCareerSite('www.gatewaypersonnel.com', 'gatewaypersonnel.com'));
+  const gatewayPostingUrl = 'https://www.gatewaypersonnel.com/Job-board?cjobid=JH185465117&rpid=1756745&postid=aOZ3eGITWek';
+  check('browser links recognize query-string cjobid and postid posting keys',
+    isBrowserCareersPostingLink(gatewayPostingUrl, 'A/R Associate')
+      && careersExternalId('https://gatewaypersonnel.com', gatewayPostingUrl) === gatewayPostingUrl);
+  check('shared careers sweep recognizes cjobid and postid query links',
+    sweepCareersPostingLinks(`<a href="${gatewayPostingUrl}">View</a>`, 'https://gatewaypersonnel.com').length
+      === 1);
+  const searchStationUrl = 'https://searchstation.org/jobs/4522548';
+  check('browser links accept generic View and Apply now labels',
+    isBrowserCareersPostingLink(searchStationUrl, 'View')
+      && isBrowserCareersPostingLink(`${searchStationUrl}/apply`, 'Apply now'));
+  check('browser links inspect identified job details despite long card labels',
+    isBrowserCareersPostingLink(
+      'https://www.malonesolutions.com/job/906670-bilingual-staffing-specialist-spanish-english-louisville-kentucky/',
+      'Bilingual Staffing Specialist (Spanish/English) Malone Louisville, Kentucky',
+    ));
+  check('browser links recognize opaque apply-job routes',
+    isBrowserCareersPostingLink(
+      'https://riderflex.applytojob.com/apply/fpsKcygg5k/Mental-Health-Therapist',
+      'Mental Health Therapist',
+    ));
+  check('browser links recognize SPA hash routes with posting IDs',
+    isBrowserCareersPostingLink(
+      'https://aquinasconsulting.com/job-search#viewJob=Job-017988',
+      'Share Job',
+    ));
+  check('browser links accept Learn More on identified job details',
+    isBrowserCareersPostingLink(
+      'https://www.pyramidcg.com/job-details/accounts-payable-coordinator-in-accounting-finance-jobs-1784168',
+      'Learn More',
+    ));
+  check('browser links reject editorial Read more links',
+    !isBrowserCareersPostingLink(
+      'https://www.trctalent.com/top-5-companies-for-staffing-electrical-jobs-in-2025/',
+      'Read more',
+    ));
+  check('browser links ignore apply forms with jobNumber metadata',
+    !isBrowserCareersPostingLink(
+      'https://apply.prologistix.com/Account/GeneralInfo?jobNumber=1300650&jobTitle=Material%20Handler',
+      'Apply Now',
+    ));
+  check('browser links reject pagination and dated job reports',
+    !isBrowserCareersPostingLink(
+      'https://gatewaypersonnel.com/search-jobs/pager/2428456/page/1',
+      '1',
+    )
+      && !isBrowserCareersPostingLink(
+        'https://www.jjstaff.com/jobs-report/september-2026/',
+        'Read Report',
+      ));
+  check('trailing apply variants collapse to the job posting URL',
+    careersPostingUrl(`${searchStationUrl}/apply`) === searchStationUrl);
+  check('apply fragments collapse while job-routing fragments are preserved',
+    careersPostingUrl('https://bestinrecruiting.com/jobs/30917/#apply')
+      === 'https://bestinrecruiting.com/jobs/30917/'
+      && careersPostingUrl('https://aquinasconsulting.com/job-search#viewJob=Job-017988')
+        === 'https://aquinasconsulting.com/job-search#viewJob=Job-017988');
 
   const origin = 'https://example.test';
   const source = `careers:${employer.slug}`;
@@ -109,6 +173,24 @@ async function main(): Promise<void> {
   })}</script><p>Manage delivery programs for a remote team.</p></html>`;
   const parsed = rawJobFromCareersPage(employer, source, origin, url, linkText, html);
   check('shared careers parser extracts a structured role posting', parsed?.title === 'Program Manager');
+  const renderedTitle = rawJobFromRenderedCareersPage(
+    employer,
+    source,
+    origin,
+    `${origin}/jobs/4522548`,
+    'View',
+    '<html><head><title>Program Manager</title></head><body><h1>Program Manager</h1></body></html>',
+  );
+  check('browser parser gets the posting title from rendered h1/title text',
+    renderedTitle?.title === 'Program Manager');
+  const noIdUrl = `${origin}/job/senior-program-manager/`;
+  const noIdTitleHtml = '<html><body><h1>Senior Program Manager</h1></body></html>';
+  check('browser parser uses a role title on a rendered job route without a numeric ID',
+    rawJobFromRenderedCareersPage(employer, source, origin, noIdUrl, 'View', noIdTitleHtml)?.title
+      === 'Senior Program Manager');
+  check('ordinary careers parser keeps its posting-ID requirement',
+    rawJobFromCareersPage(employer, source, origin, noIdUrl, 'Senior Program Manager', noIdTitleHtml)
+      === null);
   check('shared careers parser rejects non-posting paths',
     rawJobFromCareersPage(employer, source, origin, `${origin}/news/123456`, linkText, html) === null);
   check('shared careers parser rejects non-posting link text',

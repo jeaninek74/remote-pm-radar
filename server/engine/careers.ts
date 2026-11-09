@@ -17,6 +17,8 @@ import type { BoardFetchResult, EmployerRow, RawJob } from './types';
  */
 
 const JOB_URL = /\/(?:job|jobs|career|careers|opening|openings|position|positions|vacancy|req|requisition)s?\//i;
+const APPLY_JOB_URL = /\/apply\/[a-z0-9_-]{6,}\/[a-z0-9_-]+(?:[/?#]|$)/i;
+const HASH_JOB_URL = /#(?:[^#]*[/?&])?(?:viewjob|job|jobs)(?:=|\/)[a-z0-9_-]{3,}/i;
 const SITEMAP_TAG = /<(?:loc)>\s*([^<\s]+)\s*<\/loc>/gi;
 const ANCHOR = /<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const JSON_LD = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -231,13 +233,15 @@ function absolute(href: string, base: string): string | null {
  * as "Project Management Jobs" or a service page called "Portfolio management") is a
  * requisition-style identifier in the URL plus a title that names a role, not a discipline.
  */
-const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|postingid|requisition|requisitionid)=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#&-]|$)|[?&](?:cjobid|postid|rpid|id|jobid|reqid)=[a-z0-9_-]{4,}(?:[&#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const QUERY_POSTING_ID = /[?&](?:cjobid|postid|rpid|id|jobid|reqid)=[a-z0-9_-]{4,}(?:[&#]|$)/i;
 const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
 const NON_POSTING_PATH_SEGMENT = /^(?:.*[-_])?(?:news|blogs?|articles?|stor(?:y|ies)|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?|profiles?|find[-_]a[-_]doctor|providers?|director(?:y|ies))(?:[-_].*)?$/i;
 const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
-const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now)\b/i;
+const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now|share job)\b/i;
 const NON_POSTING_LINK_TEXT = /^(?:meet|read\s+more|learn\s+more|read\s+about|hear\s+from|watch)\b/i;
+const JOB_DETAIL_URL = /\/(?:job|posting)[-_]details?(?:\/|$)/i;
 
 function nonPostingPath(url: string): boolean {
   try {
@@ -281,6 +285,38 @@ export function sweepCareersPostingLinks(html: string, base: string): { url: str
     || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && (JOB_URL.test(url) || POSTING_ID.test(url))));
 }
 
+export function isBrowserCareersPostingLink(url: string, text: string): boolean {
+  const hasJobRoute = JOB_URL.test(url) || JOB_DETAIL_URL.test(url) || HASH_JOB_URL.test(url);
+  const hasPostingUrl = APPLY_JOB_URL.test(url)
+    || QUERY_POSTING_ID.test(url)
+    || ((JOB_URL.test(url) || JOB_DETAIL_URL.test(url) || HASH_JOB_URL.test(url)) && POSTING_ID.test(url));
+  const learnMoreOnPostingUrl = /^learn\s+more\b/i.test(text) && hasPostingUrl;
+  if (
+    nonPostingPath(url)
+    || NON_POSTING_FILE.test(url)
+    || (NON_POSTING_LINK_TEXT.test(text) && !learnMoreOnPostingUrl)
+  ) return false;
+  return Boolean(
+    (text && isRoleTitle(text))
+    || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && hasJobRoute)
+    || hasPostingUrl,
+  );
+}
+
+export function careersPostingUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.pathname = parsed.pathname.replace(/\/apply\/?$/i, '');
+    const fragment = url.split('#', 2)[1];
+    if (fragment === undefined || !fragment || /^(?:apply|apply-now|application)$/i.test(fragment)) {
+      parsed.hash = '';
+    }
+    return parsed.toString();
+  } catch {
+    return url.replace(/\/apply\/?$/i, '');
+  }
+}
+
 export function careersExternalId(origin: string, url: string): string {
   try {
     if (new URL(url).origin === new URL(origin).origin) return url.replace(origin, '').slice(0, 180);
@@ -297,10 +333,15 @@ export function rawJobFromCareersPage(
   url: string,
   linkText: string,
   html: string,
+  allowJobRoute = false,
 ): RawJob | null {
   if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(linkText)) return null;
   const posting = jobPostingFrom(html);
-  if (!posting && !looksLikePostingPage(url, linkText)) return null;
+  if (
+    !posting
+    && !looksLikePostingPage(url, linkText)
+    && !(allowJobRoute && (JOB_URL.test(url) || APPLY_JOB_URL.test(url) || HASH_JOB_URL.test(url) || JOB_DETAIL_URL.test(url)))
+  ) return null;
   const title = (posting?.title ?? linkText ?? '').trim();
   if (!title || !isRoleTitle(title, undefined, employer)) return null;
   const { locations, restrictions } = careersLocationFields(
@@ -338,6 +379,34 @@ export function rawJobFromCareersPage(
     companySize: employer.company_size,
     hqState: employer.hq_state,
   };
+}
+
+export function careersDetailTitle(html: string): string {
+  const postingTitle = jobPostingFrom(html)?.title?.trim();
+  if (postingTitle) return stripHtml(postingTitle).replace(/\s+/g, ' ').trim();
+  const heading = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1];
+  if (heading) return stripHtml(heading).replace(/\s+/g, ' ').trim();
+  const documentTitle = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
+  return documentTitle ? stripHtml(documentTitle).replace(/\s+/g, ' ').trim() : '';
+}
+
+export function rawJobFromRenderedCareersPage(
+  employer: EmployerRow,
+  source: string,
+  origin: string,
+  url: string,
+  linkText: string,
+  html: string,
+): RawJob | null {
+  return rawJobFromCareersPage(
+    employer,
+    source,
+    origin,
+    url,
+    careersDetailTitle(html) || linkText,
+    html,
+    true,
+  );
 }
 
 export interface CareersPageProbe {
@@ -398,7 +467,7 @@ export function sameCareersPostingSet(
   return overlap >= 2 && overlap / smaller >= 0.5;
 }
 
-function sameCareerSite(hostname: string, pageHost: string): boolean {
+export function sameCareerSite(hostname: string, pageHost: string): boolean {
   const normalize = (host: string) => host.toLowerCase().replace(/^www\./, '');
   const host = normalize(hostname);
   const page = normalize(pageHost);

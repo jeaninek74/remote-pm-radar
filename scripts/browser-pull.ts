@@ -7,12 +7,14 @@ import {
   type BrowserPage,
 } from '../server/engine/browser-pull';
 import {
-  rawJobFromCareersPage,
-  sweepCareersPostingLinks,
+  careersPostingUrl,
+  isBrowserCareersPostingLink,
+  rawJobFromRenderedCareersPage,
+  sameCareerSite,
 } from '../server/engine/careers';
 import type { EmployerRow, RawJob } from '../server/engine/types';
 
-const EMPLOYER_BUDGET_MS = 60_000;
+const EMPLOYER_BUDGET_MS = 180_000;
 const DETAIL_CONCURRENCY = 2;
 const MAX_POST_BODY_BYTES = 7 * 1024 * 1024;
 const RETRY_WINDOW_MS = 10 * 60_000;
@@ -30,6 +32,7 @@ interface BrowserEmployer {
 interface BrowserTarget {
   name: string;
   url: string;
+  urls?: string[];
   slug?: string;
   id?: number;
   jobKeys?: Set<string>;
@@ -77,13 +80,6 @@ function employerForTarget(target: BrowserTarget): EmployerRow {
   };
 }
 
-function sameCareerSite(leftHost: string, rightHost: string): boolean {
-  const normalize = (host: string) => host.toLowerCase().replace(/^www\./, '');
-  const left = normalize(leftHost);
-  const right = normalize(rightHost);
-  return left === right || left.endsWith(`.${right}`) || right.endsWith(`.${left}`);
-}
-
 async function waitForRenderedPage(page: Page, url: string, deadline: number): Promise<boolean> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) return false;
@@ -121,24 +117,32 @@ async function collectCandidates(
     } catch {
       continue;
     }
-    let html: string;
+    const embedded = frame !== page.mainFrame();
+    let links: { url: string; text: string }[];
     try {
-      html = await frame.content();
+      links = await frame.locator('a').evaluateAll((anchors) => anchors.map((anchor) => {
+        const element = anchor as HTMLAnchorElement;
+        return {
+          url: element.href || element.getAttribute('href') || '',
+          text: (element.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        };
+      }));
     } catch {
       complete = false;
       continue;
     }
-    const embedded = frame !== page.mainFrame();
-    for (const link of sweepCareersPostingLinks(html, frame.url())) {
+    for (const link of links) {
       let url: URL;
       try {
         url = new URL(link.url);
       } catch {
         continue;
       }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') continue;
       if (!embedded && !sameCareerSite(url.hostname, employerHost)) continue;
+      if (!isBrowserCareersPostingLink(url.toString(), link.text)) continue;
       const candidate = {
-        url: url.toString(),
+        url: careersPostingUrl(url.toString()),
         linkText: link.text,
         frameOrigin: frameUrl.origin,
       };
@@ -158,21 +162,39 @@ async function renderEmployer(
   const deadline = Date.now() + EMPLOYER_BUDGET_MS;
   let complete = true;
   let timedOut = false;
-  let candidates: CandidateLink[] = [];
-  const rootPage = await context.newPage();
-  try {
-    if (!(await waitForRenderedPage(rootPage, base, deadline))) complete = false;
-    if (Date.now() < deadline) {
-      const collected = await collectCandidates(rootPage, base);
-      candidates = collected.candidates;
-      complete &&= collected.complete;
+  const candidateByUrl = new Map<string, CandidateLink>();
+  const listingUrls = [...new Set(target.urls?.length ? target.urls : [base])];
+  for (const listingUrl of listingUrls) {
+    if (Date.now() >= deadline) {
+      timedOut = true;
+      complete = false;
+      break;
     }
-  } catch (error) {
-    complete = false;
-    console.error(`ROOT ${target.name}: ${(error as Error).message}`);
-  } finally {
-    await rootPage.close().catch(() => undefined);
+    const rootPage = await context.newPage();
+    try {
+      if (!(await waitForRenderedPage(rootPage, listingUrl, deadline))) complete = false;
+      if (Date.now() < deadline) {
+        const collected = await collectCandidates(rootPage, listingUrl);
+        complete &&= collected.complete;
+        for (const candidate of collected.candidates) {
+          const previous = candidateByUrl.get(candidate.url);
+          if (!previous || (!previous.linkText && candidate.linkText)) {
+            candidateByUrl.set(candidate.url, candidate);
+          }
+        }
+      }
+    } catch (error) {
+      complete = false;
+      console.error(`ROOT ${target.name} ${listingUrl}: ${(error as Error).message}`);
+    } finally {
+      await rootPage.close().catch(() => undefined);
+    }
   }
+  if (Date.now() >= deadline) {
+    timedOut = true;
+    complete = false;
+  }
+  const candidates = [...candidateByUrl.values()];
 
   for (const candidate of candidates) {
     console.log(`LINK\t${target.name}\t${candidate.frameOrigin}\t${candidate.url}`);
@@ -232,7 +254,7 @@ function rawJobsFor(rendered: RenderedEmployer): RawJob[] {
   const origin = new URL(rendered.employer.careers_url ?? '').origin;
   const source = `browser:${rendered.employer.slug}`;
   return rendered.pages.flatMap((page) => {
-    const job = rawJobFromCareersPage(
+    const job = rawJobFromRenderedCareersPage(
       rendered.employer,
       source,
       origin,
@@ -284,7 +306,7 @@ function printDryRun(rendered: RenderedEmployer): void {
 }
 
 function parseJsonlTargets(text: string): BrowserTarget[] {
-  const selected = new Map<string, BrowserTarget & { count: number }>();
+  const selected = new Map<string, BrowserTarget & { count: number; urls: string[] }>();
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim()) continue;
     let value: unknown;
@@ -304,24 +326,42 @@ function parseJsonlTargets(text: string): BrowserTarget[] {
     };
     const name = typeof row.name === 'string' ? row.name : '';
     if (Array.isArray(row.pages)) {
-      const pages = row.pages.filter((page): page is { url: string; postings: number } =>
+      const pages = row.pages.filter((page): page is {
+        url: string;
+        finalUrl?: string;
+        postings: number;
+      } =>
         page !== null
         && typeof page === 'object'
         && typeof page.url === 'string'
-        && /^https?:\/\//i.test(page.url)
         && typeof page.postings === 'number'
-        && page.postings > 0);
+        && page.postings > 0
+        && /^https?:\/\//i.test(
+          typeof page.finalUrl === 'string' ? page.finalUrl : page.url,
+        ));
       if (!pages.length) continue;
-      const chosen = pages.reduce((best, current) => current.postings > best.postings ? current : best);
+      const pageTargets = pages.map((page) => ({
+        url: typeof page.finalUrl === 'string' ? page.finalUrl : page.url,
+        postings: page.postings,
+      }));
+      const chosen = pageTargets.reduce((best, current) => current.postings > best.postings ? current : best);
+      const urls = [...new Set(pageTargets.map((page) => page.url))];
       const key = name || chosen.url;
       const previous = selected.get(key);
-      if (!previous || chosen.postings > previous.count) {
+      if (!previous) {
         selected.set(key, {
           name: name || new URL(chosen.url).hostname,
           url: chosen.url,
+          urls,
           hqState: typeof row.state === 'string' ? row.state : null,
           count: chosen.postings,
         });
+      } else {
+        previous.urls = [...new Set([...previous.urls, ...urls])];
+        if (chosen.postings > previous.count) {
+          previous.url = chosen.url;
+          previous.count = chosen.postings;
+        }
       }
       continue;
     }
@@ -336,6 +376,7 @@ function parseJsonlTargets(text: string): BrowserTarget[] {
       selected.set(key, {
         name: name || new URL(directUrl).hostname,
         url: directUrl,
+        urls: [directUrl],
         hqState: typeof row.state === 'string' ? row.state : null,
         count: typeof row.postings === 'number' ? row.postings : 0,
       });
