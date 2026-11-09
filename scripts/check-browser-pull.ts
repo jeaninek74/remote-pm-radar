@@ -102,6 +102,21 @@ async function main(): Promise<void> {
     renderedBrowserJobs.length === 1
       && renderedBrowserJobs[0].title === 'Senior Project Manager'
       && renderedBrowserJobs[0].applyUrl === renderedPageUrl);
+  const gatewayBrowserJobs = browserJobsFromPages(
+    { ...browserEmployer, careers_url: 'https://gatewaypersonnel.com/search-jobs' },
+    new Set(),
+    [],
+    [{
+      url: 'https://www.gatewaypersonnel.com/Job-board?cjobid=JH185465117&rpid=1756745&postid=aOZ3eGITWek',
+      linkText: 'View',
+      html: '<html><body><h1>Senior Project Manager</h1></body></html>',
+    }],
+  );
+  check('server browser parser accepts Gateway query-ID routes with a rendered title',
+    gatewayBrowserJobs.length === 1
+      && gatewayBrowserJobs[0].title === 'Senior Project Manager'
+      && gatewayBrowserJobs[0].externalId
+        === 'https://www.gatewaypersonnel.com/Job-board?cjobid=JH185465117&rpid=1756745&postid=aOZ3eGITWek');
 
   check(
     'careers external ID uses the same-origin path and query',

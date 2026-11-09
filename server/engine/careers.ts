@@ -342,7 +342,13 @@ export function rawJobFromCareersPage(
   if (
     !posting
     && !looksLikePostingPage(url, linkText)
-    && !(allowJobRoute && (JOB_URL.test(url) || APPLY_JOB_URL.test(url) || HASH_JOB_URL.test(url) || JOB_DETAIL_URL.test(url)))
+    && !(allowJobRoute && (
+      JOB_URL.test(url)
+      || APPLY_JOB_URL.test(url)
+      || HASH_JOB_URL.test(url)
+      || JOB_DETAIL_URL.test(url)
+      || QUERY_POSTING_ID.test(url)
+    ))
   ) return null;
   const title = (posting?.title ?? linkText ?? '').trim();
   if (!title || !isRoleTitle(title, undefined, employer)) return null;
