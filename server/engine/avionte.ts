@@ -31,6 +31,10 @@ interface AvionteDescriptionResponse {
   description?: unknown;
 }
 
+type AvionteDescriptionResult =
+  | { ok: true; html: string | null }
+  | { ok: false };
+
 export function avionteCoordinates(source: string): { bId: string; jbId: string } | null {
   const normalized = source
     .replace(/&amp;/gi, '&')
@@ -133,22 +137,30 @@ async function fetchDescription(
   bId: string,
   jbId: string,
   deadline: number,
-): Promise<string | null> {
-  if (Date.now() >= deadline) return null;
-  const response = await fetch(avionteDescriptionUrl(jobPostIdEnc), {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': USER_AGENT,
-      'x-compas-careers-buildidenc': bId,
-      'x-compas-careers-jobboardidenc': jbId,
-    },
-    signal: AbortSignal.timeout(Math.min(20_000, Math.max(1, deadline - Date.now()))),
-  });
-  if (!response.ok) return null;
-  const data = await response.json() as AvionteDescriptionResponse | null;
-  return typeof data?.description === 'string' && data.description.trim()
-    ? data.description
-    : null;
+): Promise<AvionteDescriptionResult> {
+  if (Date.now() >= deadline) return { ok: false };
+  try {
+    const response = await fetch(avionteDescriptionUrl(jobPostIdEnc), {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+        'x-compas-careers-buildidenc': bId,
+        'x-compas-careers-jobboardidenc': jbId,
+      },
+      signal: AbortSignal.timeout(Math.min(20_000, Math.max(1, deadline - Date.now()))),
+    });
+    if (!response.ok || Date.now() >= deadline) return { ok: false };
+    const data = await response.json() as AvionteDescriptionResponse | null;
+    if (
+      !data
+      || typeof data !== 'object'
+      || typeof data.description !== 'string'
+      || Date.now() >= deadline
+    ) return { ok: false };
+    return { ok: true, html: data.description.trim() ? data.description : null };
+  } catch {
+    return { ok: false };
+  }
 }
 
 function unchangedJob(
@@ -198,16 +210,16 @@ export async function avionte(employer: EmployerRow, known?: Set<string>): Promi
     const title = listing.jobTitle?.trim() ?? '';
     if (known?.has(`${source}:${id}`)) return unchangedJob(source, employer, id, title, applyUrl);
 
-    let descriptionHtml: string | null = null;
-    if (Date.now() < deadline) {
-      try {
-        descriptionHtml = await fetchDescription(id, bId, jbId, deadline);
-      } catch {
-        descriptionHtml = null;
-      }
-    } else {
+    if (Date.now() >= deadline) {
       truncated = true;
+      return null;
     }
+    const description = await fetchDescription(id, bId, jbId, deadline);
+    if (!description.ok) {
+      truncated = true;
+      return null;
+    }
+    const descriptionHtml = description.html;
     const descriptionText = descriptionHtml ? stripHtml(descriptionHtml) : '';
     const salary = avionteSalary(listing);
     return {

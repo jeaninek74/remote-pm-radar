@@ -282,6 +282,7 @@ async function main(): Promise<void> {
   const originalFetch = globalThis.fetch;
   let avionteDescriptionRequests = 0;
   let avionteDescriptionHeadersOk = false;
+  let avionteDescriptionMode: 'content' | 'failure' | 'empty' = 'content';
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     if (url.hostname === 'hire.myavionte.com' && url.pathname === '/app/careers/') {
@@ -316,10 +317,15 @@ async function main(): Promise<void> {
       const headers = new Headers(init?.headers);
       avionteDescriptionHeadersOk = headers.get('x-compas-careers-buildidenc') === 'fixtureB'
         && headers.get('x-compas-careers-jobboardidenc') === 'fixtureJ';
+      if (avionteDescriptionMode === 'failure') {
+        return new Response('Unavailable', { status: 503 });
+      }
       return new Response(JSON.stringify({
-        description: avionteDescriptionHeadersOk
-          ? '<p>Fully remote project manager role in the United States.</p>'
-          : '',
+        description: avionteDescriptionMode === 'empty'
+          ? ''
+          : avionteDescriptionHeadersOk
+            ? '<p>Fully remote project manager role in the United States.</p>'
+            : '',
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.hostname === 'jobs.crelate.com' && url.pathname === '/portal/fixture/') {
@@ -385,6 +391,20 @@ async function main(): Promise<void> {
     check('Avionté skips known postings before fetching descriptions',
       knownAvionte.ok && knownAvionte.jobs.length === 1
         && knownAvionte.jobs[0].unchanged === true && avionteDescriptionRequests === 0);
+    avionteDescriptionMode = 'failure';
+    const failedAvionte = await avionte(fixtureAvionteEmployer);
+    check('Avionté skips failed description fetches and marks the board truncated',
+      failedAvionte.ok && failedAvionte.jobs.length === 0
+        && failedAvionte.truncated === true && avionteDescriptionRequests === 1);
+    avionteDescriptionRequests = 0;
+    avionteDescriptionMode = 'empty';
+    const emptyDescriptionAvionte = await avionte(fixtureAvionteEmployer);
+    check('Avionté keeps jobs with a genuine empty description',
+      emptyDescriptionAvionte.ok && emptyDescriptionAvionte.jobs.length === 1
+        && emptyDescriptionAvionte.jobs[0].descriptionHtml === null
+        && emptyDescriptionAvionte.jobs[0].descriptionText === null
+        && emptyDescriptionAvionte.truncated !== true);
+    avionteDescriptionMode = 'content';
     const emptyAvionte = await resolveBoard(
       'Empty',
       'https://hire.myavionte.com/app/careers/#/jobs/emptyB/emptyJ//',
