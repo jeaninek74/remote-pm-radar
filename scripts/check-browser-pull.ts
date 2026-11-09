@@ -19,6 +19,7 @@ import {
   browserIngestAuthStatus,
   browserJobKey,
   browserJobsFromPages,
+  isBrowserIngestAuthorized,
   isBrowserIngestPayload,
 } from '../server/engine/browser-pull';
 import { fetchBoard } from '../server/engine/sources';
@@ -169,6 +170,15 @@ async function main(): Promise<void> {
     browserIngestAuthStatus('Bearer wrong-test-token', 'test-only-token') === 401);
   check('browser ingest accepts the configured bearer token',
     browserIngestAuthStatus('Bearer test-only-token', 'test-only-token') === 200);
+  check('browser ingest accepts a valid OIDC bearer',
+    await isBrowserIngestAuthorized('Bearer header.payload.signature', undefined,
+      async () => true));
+  check('browser ingest falls back to a dotted shared token after OIDC rejection',
+    await isBrowserIngestAuthorized('Bearer a.b.c', 'a.b.c', async () => false));
+  check('browser ingest rejects an invalid JWT-shaped bearer without a matching shared token',
+    !await isBrowserIngestAuthorized('Bearer a.b.c', undefined, async () => false)
+      && !await isBrowserIngestAuthorized('Bearer a.b.c', 'different.token.value',
+        async () => false));
   check('browser ingest payload validates required fields',
     isBrowserIngestPayload({
       employerId: 1,

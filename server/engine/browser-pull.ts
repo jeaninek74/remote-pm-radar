@@ -104,6 +104,16 @@ export function browserIngestAuthStatus(
   return timingSafeEqual(expected, supplied) ? 200 : 401;
 }
 
+export async function isBrowserIngestAuthorized(
+  authorization: string | undefined,
+  expectedToken: string | undefined,
+  verifyOidc: (token: string) => Promise<boolean>,
+): Promise<boolean> {
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? '')?.[1];
+  if (bearer && bearer.split('.').length === 3 && await verifyOidc(bearer)) return true;
+  return browserIngestAuthStatus(authorization, expectedToken) === 200;
+}
+
 export function isBrowserIngestPayload(value: unknown): value is BrowserIngestPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const body = value as Partial<BrowserIngestPayload>;

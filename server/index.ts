@@ -17,7 +17,7 @@ import {
 } from './engine/ingest';
 import {
   browserJobsFromPages,
-  browserIngestAuthStatus,
+  isBrowserIngestAuthorized,
   isBrowserIngestPayload,
 } from './engine/browser-pull';
 import { verifyGithubOidcToken } from './engine/github-oidc';
@@ -82,16 +82,11 @@ function requireBrowserIngestToken(
   return (async () => {
     try {
       const authorization = req.get('Authorization');
-      const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? '')?.[1];
-      if (bearer && bearer.split('.').length === 3) {
-        if (await verifyGithubOidcToken(bearer)) {
-          next();
-          return;
-        }
-        res.sendStatus(401);
-        return;
-      }
-      if (browserIngestAuthStatus(authorization, process.env.BROWSER_INGEST_TOKEN) !== 200) {
+      if (!await isBrowserIngestAuthorized(
+        authorization,
+        process.env.BROWSER_INGEST_TOKEN,
+        verifyGithubOidcToken,
+      )) {
         res.sendStatus(401);
         return;
       }
