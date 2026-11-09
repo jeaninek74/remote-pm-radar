@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { careersExternalId, rawJobFromCareersPage } from './careers';
+import { careersExternalId, rawJobFromRenderedCareersPage } from './careers';
 import type { EmployerRow, RawJob } from './types';
 
 export interface BrowserPage {
@@ -83,7 +83,7 @@ export function browserJobsFromPages(
     }
   }
   for (const page of pages) {
-    const job = rawJobFromCareersPage(employer, source, origin, page.url, page.linkText, page.html);
+    const job = rawJobFromRenderedCareersPage(employer, source, origin, page.url, page.linkText, page.html);
     if (job) jobs.push(job);
   }
   return jobs;

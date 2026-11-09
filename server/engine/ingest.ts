@@ -384,8 +384,12 @@ export interface BoardIngestCounts {
   closed: number;
 }
 
-export function browserPullAllowsClosure(complete: boolean, timedOut: boolean): boolean {
-  return complete && !timedOut;
+export function browserPullAllowsClosure(
+  complete: boolean,
+  timedOut: boolean,
+  listedUrlCount: number,
+): boolean {
+  return complete && !timedOut && listedUrlCount > 0;
 }
 
 export function shouldCloseMissing(result: BoardFetchResult, closeMissing: boolean): boolean {

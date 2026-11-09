@@ -241,7 +241,7 @@ app.post(
         result,
         emptyCounters(),
         [],
-        browserPullAllowsClosure(req.body.complete, req.body.timedOut),
+        browserPullAllowsClosure(req.body.complete, req.body.timedOut, listedUrls.length),
       );
       res.json(counts);
     } catch (err) {

@@ -233,13 +233,15 @@ function absolute(href: string, base: string): string | null {
  * as "Project Management Jobs" or a service page called "Portfolio management") is a
  * requisition-style identifier in the URL plus a title that names a role, not a discipline.
  */
-const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|postingid|requisition|requisitionid)=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#&-]|$)|[?&](?:cjobid|postid|rpid|id|jobid|reqid)=[a-z0-9_-]{4,}(?:[&#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|requisition)[a-z_]*=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const QUERY_POSTING_ID = /[?&](?:cjobid|postid|rpid|id|jobid|reqid)=[a-z0-9_-]{4,}(?:[&#]|$)/i;
+const BROWSER_POSTING_ID = /(?:[/_-]|[?&](?:job|jobid|req|reqid|id|posting|postingid|requisition|requisitionid)=)(?:[a-z]{0,6}[-_]?)?\d{3,}(?:[/?#&-]|$)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const ROLE_NOUN = /\b(manager|director|lead|coordinator|consultant|officer|head|vp|vice president|chief of staff|scrum master|specialist|analyst|partner|principal|executive|administrator|supervisor)\b/i;
 const CATEGORY_TITLE = /\b(jobs|careers|opportunities|openings|positions|roles|team|teams|program|programme|department|area|areas|path|track|overview|services?)\s*$/i;
 const NON_POSTING_PATH_SEGMENT = /^(?:.*[-_])?(?:news|blogs?|articles?|stor(?:y|ies)|resources?|knowledge[-_]?base|kb|press|events?|faqs?|guides?|profiles?|find[-_]a[-_]doctor|providers?|director(?:y|ies))(?:[-_].*)?$/i;
 const NON_POSTING_FILE = /\.(?:pdf|docx?|rtf|txt|xlsx?|pptx?)(?:$|[?#])/i;
-const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now|share job)\b/i;
+const GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now)\b/i;
+const BROWSER_GENERIC_POSTING_LINK_TEXT = /^(?:view|apply|details|learn more|read more|more info|see details|view job|view details|apply now|share job)\b/i;
 const NON_POSTING_LINK_TEXT = /^(?:meet|read\s+more|learn\s+more|read\s+about|hear\s+from|watch)\b/i;
 const JOB_DETAIL_URL = /\/(?:job|posting)[-_]details?(?:\/|$)/i;
 
@@ -289,7 +291,7 @@ export function isBrowserCareersPostingLink(url: string, text: string): boolean 
   const hasJobRoute = JOB_URL.test(url) || JOB_DETAIL_URL.test(url) || HASH_JOB_URL.test(url);
   const hasPostingUrl = APPLY_JOB_URL.test(url)
     || QUERY_POSTING_ID.test(url)
-    || ((JOB_URL.test(url) || JOB_DETAIL_URL.test(url) || HASH_JOB_URL.test(url)) && POSTING_ID.test(url));
+    || ((JOB_URL.test(url) || JOB_DETAIL_URL.test(url) || HASH_JOB_URL.test(url)) && BROWSER_POSTING_ID.test(url));
   const learnMoreOnPostingUrl = /^learn\s+more\b/i.test(text) && hasPostingUrl;
   if (
     nonPostingPath(url)
@@ -298,7 +300,7 @@ export function isBrowserCareersPostingLink(url: string, text: string): boolean 
   ) return false;
   return Boolean(
     (text && isRoleTitle(text))
-    || ((!text || GENERIC_POSTING_LINK_TEXT.test(text)) && hasJobRoute)
+    || ((!text || BROWSER_GENERIC_POSTING_LINK_TEXT.test(text)) && hasJobRoute)
     || hasPostingUrl,
   );
 }

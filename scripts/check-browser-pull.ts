@@ -66,9 +66,11 @@ async function main(): Promise<void> {
     !browserResult.ok && browserResult.retryable === true
       && browserResult.error === 'browser employer: read by browser pull');
   check('browser pulls close missing jobs only when complete and not timed out',
-    !browserPullAllowsClosure(false, false)
-      && !browserPullAllowsClosure(true, true)
-      && browserPullAllowsClosure(true, false));
+    !browserPullAllowsClosure(false, false, 1)
+      && !browserPullAllowsClosure(true, true, 1)
+      && browserPullAllowsClosure(true, false, 1));
+  check('browser pulls never close missing jobs when no links were listed',
+    !browserPullAllowsClosure(true, false, 0));
   check('truncated results and a disabled closure gate never close jobs',
     !shouldCloseMissing({ ok: true, jobs: [], totalListed: 0, truncated: true }, true)
       && !shouldCloseMissing({ ok: true, jobs: [], totalListed: 0 }, false));
@@ -85,6 +87,21 @@ async function main(): Promise<void> {
       && knownBrowserJobs[0].source === `browser:${browserEmployer.slug}`
       && knownBrowserJobs[0].externalId === '/job/req-123456'
       && knownBrowserJobs[0].unchanged === true);
+  const renderedPageUrl = 'https://example.test/jobs/4522548';
+  const renderedBrowserJobs = browserJobsFromPages(
+    browserEmployer,
+    new Set(),
+    [],
+    [{
+      url: renderedPageUrl,
+      linkText: 'View',
+      html: '<html><body><h1>Senior Project Manager</h1></body></html>',
+    }],
+  );
+  check('server browser parsing gets a role title from rendered detail HTML',
+    renderedBrowserJobs.length === 1
+      && renderedBrowserJobs[0].title === 'Senior Project Manager'
+      && renderedBrowserJobs[0].applyUrl === renderedPageUrl);
 
   check(
     'careers external ID uses the same-origin path and query',
@@ -100,11 +117,11 @@ async function main(): Promise<void> {
     sameCareerSite('www.gatewaypersonnel.com', 'gatewaypersonnel.com'));
   const gatewayPostingUrl = 'https://www.gatewaypersonnel.com/Job-board?cjobid=JH185465117&rpid=1756745&postid=aOZ3eGITWek';
   check('browser links recognize query-string cjobid and postid posting keys',
-    isBrowserCareersPostingLink(gatewayPostingUrl, 'A/R Associate')
+    isBrowserCareersPostingLink(gatewayPostingUrl, 'View')
       && careersExternalId('https://gatewaypersonnel.com', gatewayPostingUrl) === gatewayPostingUrl);
-  check('shared careers sweep recognizes cjobid and postid query links',
+  check('ordinary careers sweep does not adopt browser-only query posting keys',
     sweepCareersPostingLinks(`<a href="${gatewayPostingUrl}">View</a>`, 'https://gatewaypersonnel.com').length
-      === 1);
+      === 0);
   const searchStationUrl = 'https://searchstation.org/jobs/4522548';
   check('browser links accept generic View and Apply now labels',
     isBrowserCareersPostingLink(searchStationUrl, 'View')
@@ -124,6 +141,11 @@ async function main(): Promise<void> {
       'https://aquinasconsulting.com/job-search#viewJob=Job-017988',
       'Share Job',
     ));
+  const shareJobRoute = 'https://example.test/jobs/open-role';
+  check('Share Job is generic only for browser careers links',
+    isBrowserCareersPostingLink(shareJobRoute, 'Share Job')
+      && sweepCareersPostingLinks(`<a href="${shareJobRoute}">Share Job</a>`, 'https://example.test').length
+        === 0);
   check('browser links accept Learn More on identified job details',
     isBrowserCareersPostingLink(
       'https://www.pyramidcg.com/job-details/accounts-payable-coordinator-in-accounting-finance-jobs-1784168',
