@@ -209,7 +209,8 @@ export function adpSalary(salaryRange: unknown, payGradeRange?: unknown): Parsed
 
 export function adpLocationFields(requisition: AdpRequisition): { locations: string[]; restrictions: string[] } {
   const locations: string[] = [];
-  const restrictions: string[] = [];
+  let hasUsLocation = false;
+  let hasForeignLocation = false;
   for (const location of requisition.requisitionLocations ?? []) {
     const address = location.address ?? {};
     const city = address.cityName?.trim() ?? '';
@@ -239,7 +240,11 @@ export function adpLocationFields(requisition: AdpRequisition): { locations: str
         ? country && !new RegExp(`\\b${country}\\b`, 'i').test(fallback) ? `${fallback}, ${country}` : fallback
         : country;
     if (label) locations.push(label);
-    if (country && country !== 'United States') restrictions.push('Outside the United States');
+    if (country === 'United States') hasUsLocation = true;
+    else if (country) hasForeignLocation = true;
   }
-  return { locations: [...new Set(locations)], restrictions: [...new Set(restrictions)] };
+  return {
+    locations: [...new Set(locations)],
+    restrictions: hasForeignLocation && !hasUsLocation ? ['Outside the United States'] : [],
+  };
 }

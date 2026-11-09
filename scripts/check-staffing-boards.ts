@@ -257,9 +257,17 @@ async function main(): Promise<void> {
   const adpCanadaLocation = adpLocationFields({
     requisitionLocations: [{ nameCode: { shortName: 'Toronto, ON, Canada' } }],
   });
-  check('ADP location fallbacks add US context and exclude foreign postings',
+  const adpUsAndCanadaLocations = adpLocationFields({
+    requisitionLocations: [
+      { address: { cityName: 'Orlando', countrySubdivisionLevel1: { codeValue: 'FL' }, countryCode: 'US' } },
+      { address: { cityName: 'Toronto', countrySubdivisionLevel1: { codeValue: 'ON' }, countryCode: 'CA' } },
+    ],
+  });
+  check('ADP location fallbacks add US context and exclude foreign-only postings',
     adpUsLocation.locations[0] === 'Orlando, FL, 32826, United States'
-      && adpCanadaLocation.restrictions.includes('Outside the United States'));
+      && adpCanadaLocation.restrictions.includes('Outside the United States')
+      && adpUsAndCanadaLocations.locations.length === 2
+      && !adpUsAndCanadaLocations.restrictions.includes('Outside the United States'));
   const avionteAppUrl = 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY//';
   const avionteAppDetection = detect('', avionteAppUrl);
   check('Avionté app URL yields board coordinates',
