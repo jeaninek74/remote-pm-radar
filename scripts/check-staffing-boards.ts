@@ -8,7 +8,7 @@ import {
 } from '../server/engine/haley';
 import { resolveBoard, detect } from '../server/engine/resolve';
 import { fetchBoard } from '../server/engine/sources';
-import { parseZenopleJson } from '../server/engine/zenople';
+import { parseZenopleJson, zenopleLocations } from '../server/engine/zenople';
 import type { Ats, EmployerRow } from '../server/engine/types';
 
 let failures = 0;
@@ -71,6 +71,8 @@ async function main(): Promise<void> {
   const doubleEncoded = JSON.stringify(JSON.stringify({ TotalCount: 31, Data: [{ jobId: 782971 }] }));
   const zenopleParsed = parseZenopleJson(doubleEncoded) as { TotalCount?: number; Data?: { jobId?: number }[] };
   check('Zenople double-encoded JSON parses twice', zenopleParsed.TotalCount === 31 && zenopleParsed.Data?.[0]?.jobId === 782971);
+  check('Zenople omits location when address fields are empty',
+    zenopleLocations('', '', '').length === 0);
 
   const haleyDetection = detect(
     '<script src="https://cdn.haleymarketing.com/assets/board.js"></script><a href="https://jobs.penmac.com/">Jobs</a>',

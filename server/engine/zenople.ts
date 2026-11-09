@@ -75,6 +75,13 @@ function listingDate(value: string | undefined): string | null {
   return date ? isoDate(date) : null;
 }
 
+export function zenopleLocations(city?: string, state?: string, zipCode?: string): string[] {
+  const address = [city, state, zipCode]
+    .filter((part): part is string => typeof part === 'string' && Boolean(part.trim()))
+    .map((part) => part.trim());
+  return address.length ? [`${address.join(', ')}, United States`] : [];
+}
+
 function unchangedJob(
   source: string,
   employer: EmployerRow,
@@ -167,9 +174,6 @@ export async function zenople(employer: EmployerRow, known?: Set<string>): Promi
 
     const descriptionHtml = detail.PortalDescription ?? null;
     const descriptionText = descriptionHtml ? stripHtml(descriptionHtml) : '';
-    const location = [listing.city, listing.state, listing.zipCode, 'United States']
-      .filter(Boolean)
-      .join(', ');
     const postedAt = listingDate(listing.InsertDate);
     const salary = parseSalaryFromText(listing.payRate ?? '', 'Zenople pay rate');
 
@@ -180,7 +184,7 @@ export async function zenople(employer: EmployerRow, known?: Set<string>): Promi
       externalId: id,
       company: employer.name,
       title: detail.JobTitle?.trim() || listing.jobTitle || '',
-      locations: [location],
+      locations: zenopleLocations(listing.city, listing.state, listing.zipCode),
       descriptionHtml,
       descriptionText: descriptionText || null,
       applyUrl,
