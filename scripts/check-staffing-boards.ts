@@ -12,6 +12,26 @@ import { resolveBoard, detect } from '../server/engine/resolve';
 import { fetchBoard } from '../server/engine/sources';
 import { parseZenopleJson, zenopleLocations } from '../server/engine/zenople';
 import { parseSalaryFromText, parseUsdBaseSalary } from '../server/engine/salary';
+import {
+  avionte,
+  avionteApplyUrl,
+  avionteBoardUrl,
+  avionteCoordinates,
+  avionteDescriptionUrl,
+  avionteLocations,
+  avionteSalary,
+  parseAvionteJobPosts,
+} from '../server/engine/avionte';
+import {
+  crelate,
+  crelateApplyUrl,
+  crelateJobRouteId,
+  crelateLocationFields,
+  crelatePortalSlug,
+  crelateSalary,
+  extractCrelateOrgId,
+} from '../server/engine/crelate';
+import { evaluateLocation } from '../server/engine/location';
 import type { Ats, EmployerRow } from '../server/engine/types';
 
 let failures = 0;
@@ -110,6 +130,96 @@ async function main(): Promise<void> {
   check('Zenople omits location when address fields are empty',
     zenopleLocations('', '', '').length === 0);
 
+  const crelateOrgId = extractCrelateOrgId('<script>var ORG_ID = "3600ab03-62d7-4fba-f7bd-f95ed188dd08";</script>');
+  check('Crelate extracts ORG_ID from portal HTML',
+    crelateOrgId === '3600ab03-62d7-4fba-f7bd-f95ed188dd08');
+  const escapedCrelateSource = String.raw`<script>{"url":"https:\/\/jobs.crelate.com\/portal\/abacuscorporation\/job\/98n1kq5y8867trmbj6ue99cx3r"}</script>`;
+  const escapedCrelateDetection = detect(escapedCrelateSource, 'https://www.example.com/');
+  check('Crelate detection extracts slug from escaped inline URLs',
+    crelateDetectionCheck(escapedCrelateDetection, 'abacuscorporation'));
+  check('Crelate general-apply route is ignored',
+    crelatePortalSlug('https://jobs.crelate.com/portal/job/apply/general') === null);
+  check('Crelate detection requires the exact jobs.crelate.com host',
+    crelatePortalSlug('https://notjobs.crelate.com/portal/decoy') === null);
+  const crelatePriority = detect(
+    '<a href="https://jobs.crelate.com/portal/abacuscorporation">Jobs</a><a href="https://jobs.lever.co/acme">Careers</a>',
+    'https://www.acme.com/',
+  );
+  check('Lever keeps priority over Crelate detection',
+    crelatePriority.kind === 'board' && crelatePriority.ats === 'lever');
+  check('Crelate posting route uses Url and falls back to JobCode',
+    crelateJobRouteId({ Url: '/gqq357cn7rz8yu733mns184deo', JobCode: 'fallback' }) === 'gqq357cn7rz8yu733mns184deo'
+      && crelateJobRouteId({ Url: '', JobCode: 'fallback' }) === 'fallback'
+      && crelateApplyUrl('broekemagroup', 'gqq357cn7rz8yu733mns184deo')
+        === 'https://jobs.crelate.com/portal/broekemagroup/job/gqq357cn7rz8yu733mns184deo');
+  const emptyCrelateAddress = crelateLocationFields({ City: '', State: '', PostalCode: '' });
+  check('Crelate empty address yields no locations', emptyCrelateAddress.locations.length === 0);
+  const nonUsCrelateLocation = crelateLocationFields({
+    City: 'Toronto',
+    State: 'ON',
+    Country: 'United States',
+    IsUsJob: false,
+  });
+  const nonUsCrelateVerdict = evaluateLocation({
+    locations: nonUsCrelateLocation.locations,
+    restrictions: nonUsCrelateLocation.restrictions,
+    workplaceType: 'remote',
+  });
+  check('Crelate IsUsJob=false is represented as non-US',
+    nonUsCrelateLocation.restrictions.includes('Outside the United States')
+      && nonUsCrelateVerdict.ca === 'not_us');
+  const crelateAnnualSalary = crelateSalary({ CompensationMinimum: 85000, CompensationMaximum: 95000 });
+  const crelateHourlySalary = crelateSalary({ CompensationMinimum: 20, CompensationMaximum: 25 });
+  check('Crelate numeric salary uses annual and hourly thresholds',
+    crelateAnnualSalary?.min === 85000 && crelateAnnualSalary.max === 95000 && crelateAnnualSalary.interval === 'year'
+      && crelateHourlySalary?.hourlyRate === 20 && crelateHourlySalary.min === 41600
+      && crelateHourlySalary.max === 52000 && crelateHourlySalary.interval === 'hour');
+  const avionteDictPosts = parseAvionteJobPosts({
+    jobPosts: { dictId: { jobTitle: 'Project Manager' } },
+  });
+  const avionteArrayPosts = parseAvionteJobPosts({
+    jobPosts: [{ jobPostIdEnc: 'arrayId', jobTitle: 'Program Manager' }],
+  });
+  check('Avionté parses dictionary and array jobPosts',
+    avionteDictPosts?.[0]?.jobPostIdEnc === 'dictId' && avionteArrayPosts?.[0]?.jobPostIdEnc === 'arrayId');
+  const avionteHourlySalary = avionteSalary({ pay: 23 });
+  const avionteAnnualSalary = avionteSalary({ pay: 75000 });
+  const avionteRangeSalary = avionteSalary({ pay: 0, payMin: 50000, payMax: 70000 });
+  check('Avionté interprets hourly and annual pay without a list cap',
+    avionteHourlySalary?.hourlyRate === 23 && avionteHourlySalary.min === 47840
+      && avionteHourlySalary.interval === 'hour'
+      && avionteAnnualSalary?.min === 75000 && avionteAnnualSalary.interval === 'year'
+      && avionteRangeSalary?.min === 50000 && avionteRangeSalary.max === 70000);
+  const avionteAppUrl = 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY//';
+  const avionteAppDetection = detect('', avionteAppUrl);
+  check('Avionté app URL yields board coordinates',
+    avionteAppDetection.kind === 'board' && avionteAppDetection.ats === 'avionte'
+      && avionteAppDetection.slug === 'KAUX5Mf_j8U/AwoomZzUrHY');
+  const avionteStandalone = detect(
+    '<a href="https://hire.myavionte.com/sonar/v2/careers/integrations/standalone/general?jbId=AwoomZzUrHY&amp;bId=KAUX5Mf_j8U&amp;rpid=general">Apply</a>',
+    'https://www.example.com/',
+  );
+  check('Avionté standalone URL accepts query parameters in either order',
+    avionteStandalone.kind === 'board' && avionteStandalone.ats === 'avionte'
+      && avionteStandalone.slug === 'KAUX5Mf_j8U/AwoomZzUrHY');
+  const avionteWix = detect(
+    String.raw`<iframe src="https:\/\/hire.mycompas.com\/sonar\/v2\/careers\/integrations\/wix\/iframe?bId=FzjD360eJnY&jbId=daugKlPwBRs"></iframe>`,
+    'https://www.example.com/',
+  );
+  check('Avionté detects direct coordinates in a MyCompas Wix iframe',
+    avionteWix.kind === 'board' && avionteWix.ats === 'avionte'
+      && avionteWix.slug === 'FzjD360eJnY/daugKlPwBRs');
+  check('Avionté URL builders retain board context and description path',
+    avionteApplyUrl('KAUX5Mf_j8U', 'AwoomZzUrHY', 'hlrXAAkS3ok')
+      === 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY/hlrXAAkS3ok/'
+      && avionteDescriptionUrl('hlrXAAkS3ok')
+        === 'https://hire.myavionte.com/sonar/v2/jobBoard/jobPost/hlrXAAkS3ok/description'
+      && avionteBoardUrl('KAUX5Mf_j8U', 'AwoomZzUrHY')
+        === 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY//');
+  check('Avionté US locations include country and empty locations stay empty',
+    avionteLocations('addison, TX', '75001').join(' ') === 'addison, TX, 75001, United States'
+      && avionteLocations('', '').length === 0);
+
   const haleyDetection = detect(
     '<script src="https://cdn.haleymarketing.com/assets/board.js"></script><a href="https://jobs.penmac.com/">Jobs</a>',
     'https://www.penmac.com/',
@@ -169,6 +279,114 @@ async function main(): Promise<void> {
   check('Haley fallback accepts a job host on the same registrable domain',
     penmacLink.kind === 'board' && penmacLink.ats === 'haley' && penmacLink.slug === 'jobs.penmac.com');
 
+  const originalFetch = globalThis.fetch;
+  let avionteDescriptionRequests = 0;
+  let avionteDescriptionHeadersOk = false;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(String(input));
+    if (url.hostname === 'hire.myavionte.com' && url.pathname === '/app/careers/') {
+      return new Response('', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    }
+    if (url.hostname === 'hire.myavionte.com' && url.pathname === '/sonar/v2/jobBoard/fixtureB/fixtureJ') {
+      return new Response(JSON.stringify({
+        socialName: 'Fixture Agency',
+        jobPosts: {
+          'fixture-job': {
+            jobPostIdEnc: 'fixture-job',
+            jobTitle: 'Project Manager',
+            location: 'Austin, TX',
+            zip: '78701',
+            postDateUtc: '2026-01-01T00:00:00Z',
+            payMin: 90000,
+            payMax: 100000,
+            jobType: 'Permanent',
+          },
+        },
+        pageSize: 1,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.hostname === 'hire.myavionte.com' && url.pathname === '/sonar/v2/jobBoard/emptyB/emptyJ') {
+      return new Response(JSON.stringify({ jobPosts: {}, pageSize: 10 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.hostname === 'hire.myavionte.com' && url.pathname === '/sonar/v2/jobBoard/jobPost/fixture-job/description') {
+      avionteDescriptionRequests += 1;
+      const headers = new Headers(init?.headers);
+      avionteDescriptionHeadersOk = headers.get('x-compas-careers-buildidenc') === 'fixtureB'
+        && headers.get('x-compas-careers-jobboardidenc') === 'fixtureJ';
+      return new Response(JSON.stringify({
+        description: avionteDescriptionHeadersOk
+          ? '<p>Fully remote project manager role in the United States.</p>'
+          : '',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.hostname === 'jobs.crelate.com' && url.pathname === '/portal/fixture/') {
+      return new Response('<script>var ORG_ID = "22222222-2222-4222-8222-222222222222";</script>', { status: 200 });
+    }
+    if (url.hostname === 'jobs.crelate.com' && url.pathname === '/portal/empty/') {
+      return new Response('<script>var ORG_ID = "11111111-1111-4111-8111-111111111111";</script>', { status: 200 });
+    }
+    if (url.hostname === 'jobs.crelate.com' && url.pathname === '/api/candidateportal/GetAllJobs') {
+      const requestEnvelope = JSON.parse(url.searchParams.get('requestEnvelope') ?? '{}') as { OrganizationId?: string };
+      const jobs = requestEnvelope.OrganizationId === '22222222-2222-4222-8222-222222222222'
+        ? [{
+          Id: 'fixture-guid',
+          Title: 'Project Manager',
+          Description: '<p>Remote project manager role in the United States.</p>',
+          Url: '/fixture-route',
+          JobCode: 'fixture-code',
+        }]
+        : [];
+      return new Response(JSON.stringify({ Jobs: jobs, IsError: false, ErrorMessage: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const knownCrelate = await crelate(
+      employer('crelate', 'fixture', 'Fixture', 'https://jobs.crelate.com/portal/fixture/'),
+      new Set(['crelate:fixture:fixture-route']),
+    );
+    check('Crelate skips known postings without reading their details',
+      knownCrelate.ok && knownCrelate.jobs.length === 1 && knownCrelate.jobs[0].unchanged === true
+        && !knownCrelate.jobs[0].descriptionText);
+    const emptyCrelate = await resolveBoard('Empty', 'https://jobs.crelate.com/portal/empty/', Date.now() + 5000);
+    check('Crelate empty Jobs response falls through instead of validating a board',
+      emptyCrelate.kind === 'unknown');
+    const fixtureAvionteEmployer = employer(
+      'avionte',
+      'fixtureB/fixtureJ',
+      'Fixture Agency',
+      'https://hire.myavionte.com/app/careers/#/jobs/fixtureB/fixtureJ//',
+    );
+    const fixtureAvionte = await fetchBoard(fixtureAvionteEmployer);
+    check('Avionté description requests include board headers and retain description content',
+      fixtureAvionte.ok && fixtureAvionte.jobs.length === 1
+        && fixtureAvionte.jobs[0].descriptionText?.includes('Fully remote') === true
+        && avionteDescriptionRequests === 1 && avionteDescriptionHeadersOk);
+    avionteDescriptionRequests = 0;
+    const knownAvionte = await avionte(
+      fixtureAvionteEmployer,
+      new Set(['avionte:fixtureB/fixtureJ:fixture-job']),
+    );
+    check('Avionté skips known postings before fetching descriptions',
+      knownAvionte.ok && knownAvionte.jobs.length === 1
+        && knownAvionte.jobs[0].unchanged === true && avionteDescriptionRequests === 0);
+    const emptyAvionte = await resolveBoard(
+      'Empty',
+      'https://hire.myavionte.com/app/careers/#/jobs/emptyB/emptyJ//',
+      Date.now() + 5000,
+    );
+    check('Avionté empty jobPosts response falls through instead of validating a board',
+      emptyAvionte.kind === 'unknown');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
   const haleyBoards = [
     { host: 'jobs.penmac.com', name: 'Penmac' },
     { host: 'jobs.doherty.com', name: 'Doherty' },
@@ -216,6 +434,50 @@ async function main(): Promise<void> {
     console.log(`LIVE zenople ${slug} totalListed=${result.totalListed} totalRead=${result.uniqueRead ?? 0} titleMatched=${result.jobs.length} truncated=${result.truncated === true}`);
   }
 
+  const avionteBoards = [
+    { bId: 'KAUX5Mf_j8U', jbId: 'AwoomZzUrHY', name: 'ASAP Personnel', expectedListed: 20 },
+    { bId: 'FzjD360eJnY', jbId: 'daugKlPwBRs', name: 'Ascend Talent Solutions', expectedListed: 180 },
+  ];
+  for (const board of avionteBoards) {
+    const slug = `${board.bId}/${board.jbId}`;
+    const result = await fetchBoard(employer('avionte', slug, board.name, avionteBoardUrl(board.bId, board.jbId)));
+    const withSalary = result.jobs.filter((job) => job.salary).length;
+    const withDescription = result.jobs.filter((job) => Boolean(job.descriptionText?.trim())).length;
+    check(`Avionté ${board.name} read succeeds`, result.ok && result.totalListed === board.expectedListed);
+    console.log(`LIVE avionte ${board.name} listed=${result.totalListed} titleMatched=${result.jobs.length} withDescription=${withDescription} withSalary=${withSalary} truncated=${result.truncated === true}`);
+  }
+
+  const crelateBoards = [
+    { slug: 'broekemagroup', name: 'Broekema Group', url: 'https://jobs.crelate.com/portal/broekemagroup/' },
+    { slug: 'abacuscorporation', name: 'Abacus Corporation', url: 'https://jobs.crelate.com/portal/abacuscorporation/' },
+  ];
+  for (const board of crelateBoards) {
+    const company = employer('crelate', board.slug, board.name, board.url);
+    const result = await fetchBoard(company);
+    const withSalary = result.jobs.filter((job) => job.salary).length;
+    const withDescription = result.jobs.filter((job) => Boolean(job.descriptionText?.trim())).length;
+    const remoteKept = result.jobs.filter((job) => {
+      const verdict = evaluateLocation({
+        locations: job.locations,
+        workplaceType: job.workplaceType,
+        isRemote: job.isRemote,
+        restrictions: job.restrictions,
+        description: job.descriptionText,
+        title: job.title,
+      });
+      return verdict.remote === 'remote' && verdict.ca !== 'not_us' && !verdict.travelHeavy;
+    }).length;
+    check(`Crelate ${board.slug} read succeeds`, result.ok && result.totalListed > 0);
+    check(`Crelate ${board.slug} has title matches`, result.jobs.length > 0);
+    console.log(`LIVE crelate ${board.slug} listed=${result.totalListed} titleMatched=${result.jobs.length} withSalary=${withSalary} withDescription=${withDescription} remoteKept=${remoteKept}`);
+    if (board.slug === 'abacuscorporation') {
+      const resolution = await resolveBoard('Abacus Corporation', 'https://abacusonline.jobs/', Date.now() + REFRESH.employerBudgetMs);
+      check('Resolver detects Crelate from Abacus inline homepage data',
+        resolution.kind === 'board' && resolution.ats === 'crelate' && resolution.slug === 'abacuscorporation');
+      console.log(`LIVE resolver https://abacusonline.jobs/ ${JSON.stringify(resolution)}`);
+    }
+  }
+
   const resolverChecks = [
     { name: 'Penmac', url: 'https://www.penmac.com/', ats: 'haley' as const, slug: 'jobs.penmac.com' },
     { name: 'Doherty', url: 'https://www.doherty.com/', ats: 'haley' as const, slug: 'jobs.doherty.com' },
@@ -235,6 +497,10 @@ async function main(): Promise<void> {
   } else {
     console.log('All staffing-board checks passed.');
   }
+}
+
+function crelateDetectionCheck(detection: ReturnType<typeof detect>, slug: string): boolean {
+  return detection.kind === 'board' && detection.ats === 'crelate' && detection.slug === slug;
 }
 
 void main();

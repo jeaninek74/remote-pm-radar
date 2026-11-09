@@ -7,6 +7,8 @@ import { parsePhenomConfig, parsePhenomResponse, phenomEndpointMatchesPageHost }
 import { stripHtml } from './text';
 import { haleySitemapJobs } from './haley';
 import { parseZenopleJson, zenopleJobPortalUrl } from './zenople';
+import { crelatePortalSlug, extractCrelateOrgId, crelateJobsUrl } from './crelate';
+import { avionteBoardUrl, avionteCoordinates, avionteListUrl, parseAvionteJobPosts } from './avionte';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -270,6 +272,10 @@ export function detect(html: string, finalUrl: string, skipStaffingBoards = fals
     if (zenople) {
       return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
     }
+    const crelate = crelatePortalSlug(`${finalUrl}\n${html}`);
+    if (crelate) return { kind: 'board', ats: 'crelate', slug: crelate };
+    const avionte = avionteCoordinates(`${finalUrl}\n${html}`);
+    if (avionte) return { kind: 'board', ats: 'avionte', slug: `${avionte.bId}/${avionte.jbId}` };
   }
   const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
   if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
@@ -682,6 +688,56 @@ async function validateZenopleCandidate(
   };
 }
 
+async function validateCrelateCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  if (!/^[a-z0-9-]+$/i.test(candidate.slug)) {
+    return { kind: 'unknown', reason: 'Invalid Crelate portal slug' };
+  }
+  const portalUrl = `https://jobs.crelate.com/portal/${encodeURIComponent(candidate.slug)}/`;
+  const portal = await fetch(portalUrl, {
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!portal.ok) return { kind: 'unknown', reason: `Crelate portal HTTP ${portal.status}` };
+  const orgId = extractCrelateOrgId(await portal.text());
+  if (!orgId) return { kind: 'unknown', reason: 'Crelate portal HTML had no ORG_ID' };
+  const response = await fetchJson<{ Jobs?: unknown[]; IsError?: boolean }>(
+    crelateJobsUrl(orgId),
+    deadline,
+  );
+  if (response.IsError || !Array.isArray(response.Jobs) || !response.Jobs.length) {
+    return { kind: 'unknown', reason: 'Crelate GetAllJobs had no postings' };
+  }
+  return {
+    kind: 'board',
+    ats: 'crelate',
+    slug: candidate.slug.toLowerCase(),
+    careersUrl: portalUrl,
+    total: response.Jobs.length,
+  };
+}
+
+async function validateAvionteCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^([a-z0-9_-]+)\/([a-z0-9_-]+)$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid Avionté board coordinates' };
+  const [, bId, jbId] = match;
+  const response = await fetchJson<unknown>(avionteListUrl(bId, jbId), deadline);
+  const posts = parseAvionteJobPosts(response);
+  if (!posts?.length) return { kind: 'unknown', reason: 'Avionté board has no job posts' };
+  return {
+    kind: 'board',
+    ats: 'avionte',
+    slug: `${bId}/${jbId}`,
+    careersUrl: avionteBoardUrl(bId, jbId),
+    total: posts.length,
+  };
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
@@ -691,6 +747,8 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline);
     if (candidate.ats === 'haley') return await validateHaleyCandidate(candidate, deadline);
     if (candidate.ats === 'zenople') return await validateZenopleCandidate(candidate, deadline);
+    if (candidate.ats === 'crelate') return await validateCrelateCandidate(candidate, deadline);
+    if (candidate.ats === 'avionte') return await validateAvionteCandidate(candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
@@ -842,7 +900,12 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       const candidate = detected;
       const validation = await validateCandidate(name, candidate, deadline);
       if (validation.kind === 'board') return validation;
-      if (candidate.ats !== 'haley' && candidate.ats !== 'zenople') return validation;
+      if (
+        candidate.ats !== 'haley'
+        && candidate.ats !== 'zenople'
+        && candidate.ats !== 'crelate'
+        && candidate.ats !== 'avionte'
+      ) return validation;
       detected = detect(html, finalUrl, true);
       if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
     }
