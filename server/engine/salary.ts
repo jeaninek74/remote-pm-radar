@@ -28,7 +28,7 @@ const PAY_CONTEXT = /base (salary|pay|compensation)|salary range|pay range|compe
 const OTE_CONTEXT = /\bote\b|on-target earnings|total comp|total compensation|inclusive of (equity|bonus)|including (equity|bonus)|equity \+ bonus/i;
 const FOREIGN = /\u20ac|\u00a3|\bCAD\b|\bEUR\b|\bGBP\b|\bAUD\b|\bCHF\b|\bINR\b|\bBRL\b|\bMXN\b|\bSGD\b/;
 
-function toNumber(raw: string | undefined): number | null {
+function toNumber(raw: string | undefined, preserveFraction = false): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/\s/g, '');
   if (/[kK]$/.test(cleaned)) {
@@ -36,7 +36,7 @@ function toNumber(raw: string | undefined): number | null {
     return Number.isFinite(n) ? Math.round(n * 1000) : null;
   }
   const n = parseFloat(cleaned.replace(/,/g, ''));
-  return Number.isFinite(n) ? Math.round(n) : null;
+  return Number.isFinite(n) ? preserveFraction ? n : Math.round(n) : null;
 }
 
 function plausibleAnnual(n: number | null): boolean {
@@ -99,11 +99,11 @@ export function parseSalaryFromText(text: string, evidenceLabel = 'Job descripti
   RANGE_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = RANGE_RE.exec(flat)) !== null) {
-    const a = toNumber(match[1]);
-    const b = toNumber(match[2]);
-    if (a === null || b === null) continue;
     const suffix = flat.slice(match.index + match[0].length, match.index + match[0].length + 24).toLowerCase();
     const hourly = /(\/|per\s)\s?(hour|hr)\b|hourly/.test(suffix) || /\bper hour\b/.test(suffix);
+    const a = toNumber(match[1], hourly);
+    const b = toNumber(match[2], hourly);
+    if (a === null || b === null) continue;
     pushRange(a, b, match.index, match[0].length, hourly);
   }
 
@@ -119,11 +119,11 @@ export function parseSalaryFromText(text: string, evidenceLabel = 'Job descripti
   // 3. Single figures ("$150,000+", "$120/hour", "$9,500/month").
   SINGLE_RE.lastIndex = 0;
   while ((match = SINGLE_RE.exec(flat)) !== null) {
-    const value = toNumber(match[1]);
-    if (value === null) continue;
     const tail = flat.slice(match.index + match[0].length, match.index + match[0].length + 26).toLowerCase();
     const amountAndTail = `${match[0]}${tail}`;
     const hourly = /(\/|per\s)\s?(hour|hr)\b|hourly/.test(amountAndTail);
+    const value = toNumber(match[1], hourly);
+    if (value === null) continue;
     const monthly = /(\/|per\s)\s?month/.test(amountAndTail);
     const plus = /^\s*\+/.test(tail);
     const score = contextScore(flat, match.index, match[0].length);
@@ -190,7 +190,7 @@ export function parseUsdBaseSalary(
   const max = asAmount(value.maxValue ?? value.value) ?? min;
   if (min == null || max == null) return null;
   const unit = /hour/i.test(value.unitText ?? '') ? 'per hour' : 'per year';
-  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 2 });
   const salaryText = min === max
     ? `USD ${format(min)} ${unit}`
     : `USD ${format(min)} - USD ${format(max)} ${unit}`;

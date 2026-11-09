@@ -11,6 +11,7 @@ import {
 import { resolveBoard, detect } from '../server/engine/resolve';
 import { fetchBoard } from '../server/engine/sources';
 import { parseZenopleJson, zenopleLocations } from '../server/engine/zenople';
+import { parseSalaryFromText, parseUsdBaseSalary } from '../server/engine/salary';
 import type { Ats, EmployerRow } from '../server/engine/types';
 
 let failures = 0;
@@ -85,6 +86,23 @@ async function main(): Promise<void> {
     : null;
   check('Haley prefers structured USD baseSalary over an empty description salary',
     structuredSalary?.min === 90000 && structuredSalary.max === 110000 && structuredSalary.interval === 'year');
+  const decimalHourlySalary = parseSalaryFromText('USD 43.27 per hour');
+  check('Salary parser preserves decimal hourly pay and annualizes it',
+    decimalHourlySalary?.hourlyRate === 43.27 && decimalHourlySalary.min === 90002 && decimalHourlySalary.interval === 'hour');
+  const decimalHourlyRange = parseSalaryFromText('USD 43.27 - USD 50.5 per hour');
+  check('Salary parser handles a fractional hourly range',
+    decimalHourlyRange?.hourlyRate === 43.27
+      && decimalHourlyRange.min === 90002
+      && decimalHourlyRange.max === 105040
+      && decimalHourlyRange.interval === 'hour');
+  const structuredHourlySalary = parseUsdBaseSalary(
+    { currency: 'USD', value: { value: 43.27, unitText: 'HOUR' } },
+    'Staffing board test',
+  );
+  check('Structured hourly baseSalary keeps cents and clears the $90K threshold',
+    structuredHourlySalary?.hourlyRate === 43.27
+      && structuredHourlySalary.min === 90002
+      && structuredHourlySalary.interval === 'hour');
 
   const doubleEncoded = JSON.stringify(JSON.stringify({ TotalCount: 31, Data: [{ jobId: 782971 }] }));
   const zenopleParsed = parseZenopleJson(doubleEncoded) as { TotalCount?: number; Data?: { jobId?: number }[] };
