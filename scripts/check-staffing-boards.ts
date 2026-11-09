@@ -61,6 +61,36 @@ async function main(): Promise<void> {
     zenopleDetection.kind === 'board' && zenopleDetection.ats === 'zenople' && zenopleDetection.slug === 'laborworks/LBW');
   check('Zenople ESG Azure variant is ignored',
     detect('', 'https://laborworks.zenople.esgazure.com/job-portal/LBW').kind !== 'board');
+  const leverDetection = detect(
+    '<a href="https://jobs.lever.co/acme">Jobs</a>',
+    'https://www.acme.com/careers',
+  );
+  check('Lever link keeps existing ATS detection priority',
+    leverDetection.kind === 'board' && leverDetection.ats === 'lever');
+  const ashbyDetection = detect(
+    '<a href="https://jobs.ashbyhq.com/acme">Jobs</a>',
+    'https://www.acme.com/careers',
+  );
+  check('Ashby link keeps existing ATS detection priority',
+    ashbyDetection.kind === 'board' && ashbyDetection.ats === 'ashby');
+  const smartRecruitersDetection = detect(
+    '<a href="https://careers.smartrecruiters.com/Acme">Jobs</a>',
+    'https://www.acme.com/careers',
+  );
+  check('SmartRecruiters link keeps existing ATS detection priority',
+    smartRecruitersDetection.kind === 'board' && smartRecruitersDetection.ats === 'smartrecruiters');
+  const unrelatedJobHost = detect(
+    '<a href="https://jobs.example.org/">Jobs</a>',
+    'https://www.acme.com/careers',
+  );
+  check('Haley fallback ignores an unrelated jobs host',
+    unrelatedJobHost.kind !== 'board' || unrelatedJobHost.ats !== 'haley');
+  const penmacLink = detect(
+    '<a href="https://jobs.penmac.com/">Jobs</a>',
+    'https://www.penmac.com/',
+  );
+  check('Haley fallback accepts a job host on the same registrable domain',
+    penmacLink.kind === 'board' && penmacLink.ats === 'haley' && penmacLink.slug === 'jobs.penmac.com');
 
   const haleyBoards = [
     { host: 'jobs.penmac.com', name: 'Penmac' },

@@ -195,11 +195,18 @@ function haleyCoordinates(html: string, finalUrl: string): string | null {
   }
   if (/index\.smpl/i.test(page.pathname)) return page.hostname.toLowerCase();
 
+  const pageDomain = page.hostname.toLowerCase().split('.').slice(-2).join('.');
   for (const href of linkedUrls) {
     try {
       const url = new URL(href, page);
       const host = url.hostname.toLowerCase();
-      if (host !== page.hostname.toLowerCase() && host !== 'cdn.haleymarketing.com' && jobHost(host)) return host;
+      const hostDomain = host.split('.').slice(-2).join('.');
+      if (
+        host !== page.hostname.toLowerCase()
+        && host !== 'cdn.haleymarketing.com'
+        && hostDomain === pageDomain
+        && jobHost(host)
+      ) return host;
     } catch { /* ignore malformed links */ }
   }
   return /cdn\.haleymarketing\.com/i.test(normalized) && jobHost(page.hostname)
@@ -252,15 +259,15 @@ export function detect(html: string, finalUrl: string): BoardDetection {
       phenom,
     };
   }
+  for (const pattern of ATS_PATTERNS) {
+    const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
+    if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
+  }
   const haleyHost = haleyCoordinates(html, finalUrl);
   if (haleyHost) return { kind: 'board', ats: 'haley', slug: haleyHost };
   const zenople = zenopleCoordinates(`${finalUrl}\n${html}`);
   if (zenople) {
     return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
-  }
-  for (const pattern of ATS_PATTERNS) {
-    const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
-    if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
   }
   const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
   if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
