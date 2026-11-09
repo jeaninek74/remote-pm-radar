@@ -96,8 +96,8 @@ export function buildBrowserPayloadChunks(
 export function browserIngestAuthStatus(
   authorization: string | undefined,
   expectedToken: string | undefined,
-): 200 | 401 | 404 {
-  if (!expectedToken) return 404;
+): 200 | 401 {
+  if (!expectedToken) return 401;
   const expected = Buffer.from(`Bearer ${expectedToken}`);
   const supplied = Buffer.from(authorization ?? '');
   if (expected.length !== supplied.length) return 401;

@@ -1,3 +1,4 @@
+import { createHmac, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
 import {
   careersPostingUrl,
   careersExternalId,
@@ -22,6 +23,32 @@ import {
 } from '../server/engine/browser-pull';
 import { fetchBoard } from '../server/engine/sources';
 import type { EmployerRow } from '../server/engine/types';
+import {
+  BROWSER_PULL_OIDC_POLICY,
+  verifyGithubOidcClaims,
+  verifyGithubOidcToken,
+  verifyJwtRs256,
+} from '../server/engine/github-oidc';
+
+const { privateKey: oidcPrivateKey, publicKey: oidcPublicKey } = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+});
+const oidcJwk = {
+  ...oidcPublicKey.export({ format: 'jwk' }),
+  kid: 'browser-pull-test-key',
+} as JsonWebKey;
+const oidcJwks: JsonWebKey[] = [oidcJwk];
+
+function signTestJwt(
+  claims: Record<string, unknown>,
+  header: Record<string, unknown> = { alg: 'RS256', typ: 'JWT', kid: 'browser-pull-test-key' },
+): string {
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const signingInput = `${encodedHeader}.${encodedClaims}`;
+  const signature = cryptoSign('RSA-SHA256', Buffer.from(signingInput), oidcPrivateKey);
+  return `${signingInput}.${signature.toString('base64url')}`;
+}
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -46,8 +73,98 @@ const employer: EmployerRow = {
 };
 
 async function main(): Promise<void> {
-  check('browser ingest token is disabled when unset',
-    browserIngestAuthStatus(undefined, undefined) === 404);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const validClaims: Record<string, unknown> = {
+    iss: BROWSER_PULL_OIDC_POLICY.issuer,
+    aud: [BROWSER_PULL_OIDC_POLICY.audience, 'another-audience'],
+    repository: BROWSER_PULL_OIDC_POLICY.repository,
+    repository_id: BROWSER_PULL_OIDC_POLICY.repositoryId,
+    workflow_ref: BROWSER_PULL_OIDC_POLICY.workflowRef,
+    ref: BROWSER_PULL_OIDC_POLICY.ref,
+    event_name: 'schedule',
+    exp: nowSec + 300,
+    nbf: nowSec - 30,
+    iat: nowSec,
+  };
+  let jwksFetchCount = 0;
+  const fetchJwks = async (url: string): Promise<JsonWebKey[]> => {
+    if (url !== `${BROWSER_PULL_OIDC_POLICY.issuer}/.well-known/jwks`) {
+      throw new Error(`Unexpected JWKS URL: ${url}`);
+    }
+    jwksFetchCount += 1;
+    return oidcJwks;
+  };
+  const validOidcToken = signTestJwt(validClaims);
+  check('RS256 verifier accepts a locally signed token',
+    verifyJwtRs256(validOidcToken, oidcJwks)?.repository === BROWSER_PULL_OIDC_POLICY.repository);
+  check('GitHub OIDC claims accept the configured repository and workflow',
+    verifyGithubOidcClaims(validClaims, BROWSER_PULL_OIDC_POLICY, nowSec));
+  check('GitHub OIDC accepts a valid signed token',
+    await verifyGithubOidcToken(validOidcToken, BROWSER_PULL_OIDC_POLICY, fetchJwks));
+  check('GitHub OIDC reuses cached JWKS for subsequent verification',
+    await verifyGithubOidcToken(validOidcToken, BROWSER_PULL_OIDC_POLICY, fetchJwks)
+      && jwksFetchCount === 1);
+
+  const rejectedOidcTokens: Array<[string, string]> = [
+    ['wrong repository', signTestJwt({ ...validClaims, repository: 'other/repository' })],
+    ['wrong repository ID', signTestJwt({ ...validClaims, repository_id: '0' })],
+    ['workflow ref on another branch', signTestJwt({
+      ...validClaims,
+      workflow_ref: 'jeaninek74/remote-pm-radar/.github/workflows/browser-pull.yml@refs/heads/feature',
+    })],
+    ['another workflow file', signTestJwt({
+      ...validClaims,
+      workflow_ref: 'jeaninek74/remote-pm-radar/.github/workflows/other.yml@refs/heads/master',
+    })],
+    ['pull request ref', signTestJwt({ ...validClaims, ref: 'refs/pull/1/merge' })],
+    ['pull request event', signTestJwt({ ...validClaims, event_name: 'pull_request' })],
+    ['wrong audience', signTestJwt({ ...validClaims, aud: 'wrong-audience' })],
+    ['wrong issuer', signTestJwt({ ...validClaims, iss: 'https://issuer.invalid' })],
+    ['expired token', signTestJwt({ ...validClaims, exp: nowSec - 61 })],
+    ['alg none token', `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify(validClaims)).toString('base64url')}.`],
+    ['HS256 token signed with public key bytes', (() => {
+      const header = Buffer.from(JSON.stringify({
+        alg: 'HS256',
+        typ: 'JWT',
+        kid: 'browser-pull-test-key',
+      })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify(validClaims)).toString('base64url');
+      const signingInput = `${header}.${payload}`;
+      const publicKeyBytes = oidcPublicKey.export({ format: 'der', type: 'spki' });
+      const signature = createHmac('sha256', publicKeyBytes)
+        .update(signingInput)
+        .digest('base64url');
+      return `${signingInput}.${signature}`;
+    })()],
+    ['tampered payload', (() => {
+      const [header, , signature] = validOidcToken.split('.');
+      const tamperedClaims = Buffer.from(JSON.stringify({
+        ...validClaims,
+        repository: 'attacker/repository',
+      })).toString('base64url');
+      return `${header}.${tamperedClaims}.${signature}`;
+    })()],
+  ];
+  for (const [name, token] of rejectedOidcTokens) {
+    check(`GitHub OIDC rejects ${name}`,
+      !await verifyGithubOidcToken(token, BROWSER_PULL_OIDC_POLICY, fetchJwks));
+  }
+  const unknownKidToken = signTestJwt(validClaims, {
+    alg: 'RS256',
+    typ: 'JWT',
+    kid: 'unknown-test-key',
+  });
+  check('RS256 verifier rejects an unknown key ID',
+    verifyJwtRs256(unknownKidToken, oidcJwks) === null);
+  check('GitHub OIDC rejects an unknown kid and refreshes JWKS once',
+    !await verifyGithubOidcToken(unknownKidToken, BROWSER_PULL_OIDC_POLICY, fetchJwks)
+      && jwksFetchCount === 2);
+  check('GitHub OIDC rate-limits repeated unknown-kid JWKS refreshes',
+    !await verifyGithubOidcToken(unknownKidToken, BROWSER_PULL_OIDC_POLICY, fetchJwks)
+      && jwksFetchCount === 2);
+
+  check('browser ingest with no configured local token returns unauthorized',
+    browserIngestAuthStatus(undefined, undefined) === 401);
   check('browser ingest rejects a wrong token',
     browserIngestAuthStatus('Bearer wrong-test-token', 'test-only-token') === 401);
   check('browser ingest accepts the configured bearer token',
