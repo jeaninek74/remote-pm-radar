@@ -16,6 +16,7 @@ import { ACTIVE_ROLE_FAMILY } from './roles/active';
 import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
 import type { Ats, BoardFetchResult, EmployerRow, RawJob } from './types';
+import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 
@@ -110,6 +111,10 @@ export async function seedEmployers(): Promise<number> {
 
 export function careersUrlFor(ats: string, slug: string): string {
   switch (ats) {
+    case 'adp': {
+      const coordinates = adpCoordinates(slug);
+      return coordinates ? adpBoardUrl(coordinates) : '';
+    }
     // Workday slugs carry their own tenant/site pair, e.g. "accenture/AccentureCareers".
     case 'workday': return slug.includes('/') ? `https://${slug.split('/')[0]}.wd1.myworkdayjobs.com/${slug.split('/')[1]}` : '';
     case 'greenhouse': return `https://boards.greenhouse.io/${slug}`;

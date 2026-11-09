@@ -30,6 +30,19 @@ import { haley } from './haley';
 import { zenople } from './zenople';
 import { crelate } from './crelate';
 import { avionte } from './avionte';
+import {
+  adpApplyUrl,
+  adpCoordinates,
+  adpDetailUrl,
+  adpExternalJobId,
+  adpLocationFields,
+  adpListUrl,
+  adpPostingDate,
+  adpSalary,
+  adpStringField,
+  type AdpRequisition,
+  type AdpRequisitionsResponse,
+} from './adp';
 
 const DIRECT_READER_PACE_MS = Number(process.env.DIRECT_READER_PACE_MS ?? 250);
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -794,7 +807,7 @@ interface UkgSearchResult {
 }
 
 function ukgCoordinates(slug: string): { host: string; tenant: string; boardGuid: string } | null {
-  const match = /^(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(slug);
+  const match = /^((?:recruiting2?\.ultipro\.com|[a-z0-9-]+\.rec\.pro\.ukg\.net))\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(slug);
   return match ? { host: match[1].toLowerCase(), tenant: match[2], boardGuid: match[3] } : null;
 }
 
@@ -1099,7 +1112,132 @@ async function ukg(employer: EmployerRow, known?: Set<string>): Promise<BoardFet
       if (Date.now() >= deadline || /HTTP 429|HTTP 5\d\d/i.test((error as Error).message)) break;
     }
   }
-  return { jobs, ok: true, totalListed: totalCount, truncated };
+  return {
+    jobs,
+    ok: true,
+    totalListed: totalCount,
+    uniqueRead: new Set(all.map((opportunity) => String(opportunity.Id ?? ''))).size,
+    truncated,
+  };
+}
+
+function adpResponse(response: unknown): AdpRequisitionsResponse {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    throw new Error('ADP response was not an object');
+  }
+  return response as AdpRequisitionsResponse;
+}
+
+function adpTotal(response: AdpRequisitionsResponse): number | null {
+  const total = Number(response.meta?.totalNumber);
+  return Number.isFinite(total) && total >= 0 ? total : null;
+}
+
+async function adpPage(
+  coordinates: NonNullable<ReturnType<typeof adpCoordinates>>,
+  top: number,
+  skip: number,
+  deadline: number,
+): Promise<AdpRequisitionsResponse> {
+  if (!await directReaderPause(deadline)) throw new Error('employer budget exceeded');
+  const response = await directReaderGet(adpListUrl(coordinates, top, skip), deadline, { Accept: 'application/json' });
+  return adpResponse(await response.json());
+}
+
+function adpUnchangedJob(
+  employer: EmployerRow,
+  source: string,
+  itemId: string,
+  title: string,
+  applyUrl: string,
+): RawJob {
+  return {
+    source, ats: 'adp', board: employer.slug, externalId: itemId,
+    company: employer.name, title, locations: [], applyUrl, linkType: 'employer',
+    unchanged: true,
+  };
+}
+
+async function adp(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+  const coordinates = adpCoordinates(employer.slug);
+  if (!coordinates) return { jobs: [], ok: false, error: 'invalid ADP board slug', totalListed: 0 };
+  const deadline = Date.now() + REFRESH.employerBudgetMs;
+  const source = `adp:${employer.slug}`;
+  let first: AdpRequisitionsResponse;
+  let top = 100;
+  try {
+    first = await adpPage(coordinates, top, 0, deadline);
+  } catch (error) {
+    if (!/^HTTP (?:400|413|422)$/.test((error as Error).message)) throw error;
+    top = 20;
+    first = await adpPage(coordinates, top, 0, deadline);
+  }
+  if (!Array.isArray(first.jobRequisitions)) throw new Error('ADP response had no jobRequisitions array');
+  const total = adpTotal(first);
+  if (total === null) throw new Error('ADP response had no numeric meta.totalNumber');
+  const listings = [...first.jobRequisitions];
+  let truncated = false;
+  let skip = first.jobRequisitions.length;
+  while (skip < total) {
+    if (Date.now() >= deadline) { truncated = true; break; }
+    const page = await adpPage(coordinates, top, skip, deadline);
+    if (!Array.isArray(page.jobRequisitions) || !page.jobRequisitions.length) {
+      truncated = true;
+      break;
+    }
+    listings.push(...page.jobRequisitions);
+    skip += page.jobRequisitions.length;
+  }
+
+  const uniqueListings = new Map<string, AdpRequisition>();
+  for (const listing of listings) {
+    const id = String(listing.itemID ?? '').trim();
+    if (id) uniqueListings.set(id, listing);
+  }
+  if (uniqueListings.size < total) truncated = true;
+  const candidates = [...uniqueListings.entries()].filter(([, listing]) =>
+    isRoleTitle(listing.requisitionTitle ?? '', undefined, employer));
+  const jobs: RawJob[] = [];
+  for (const [itemId, listing] of candidates) {
+    const title = listing.requisitionTitle?.trim() ?? '';
+    const applyUrl = adpApplyUrl(coordinates, itemId);
+    if (known?.has(`${source}:${itemId}`)) {
+      jobs.push(adpUnchangedJob(employer, source, itemId, title, applyUrl));
+      continue;
+    }
+    if (!await directReaderPause(deadline)) { truncated = true; break; }
+    try {
+      const response = await directReaderGet(adpDetailUrl(coordinates, itemId), deadline, { Accept: 'application/json' });
+      const payload = await response.json() as AdpRequisition | { jobRequisition?: AdpRequisition };
+      const detail = 'jobRequisition' in payload && payload.jobRequisition ? payload.jobRequisition : payload as AdpRequisition;
+      const merged: AdpRequisition = {
+        ...listing,
+        ...detail,
+        requisitionLocations: detail.requisitionLocations ?? listing.requisitionLocations,
+        customFieldGroup: detail.customFieldGroup ?? listing.customFieldGroup,
+      };
+      const descriptionHtml = merged.requisitionDescription?.trim() || null;
+      const locations = adpLocationFields(merged);
+      const salary = adpSalary(adpStringField(merged, 'SalaryRange'), merged.payGradeRange ?? listing.payGradeRange);
+      const postedAt = isoDate(adpPostingDate(merged) ?? '');
+      jobs.push({
+        source, ats: 'adp', board: employer.slug, externalId: itemId,
+        company: employer.name, title: merged.requisitionTitle?.trim() || title,
+        locations: locations.locations, restrictions: locations.restrictions,
+        descriptionHtml, descriptionText: descriptionHtml ? clean(descriptionHtml) : null,
+        applyUrl, linkType: 'employer', postedAt,
+        postedConfidence: postedAt ? 'confirmed' : 'unknown',
+        salary, salarySource: salary ? 'Employer posting (ADP)' : null,
+        requisitionId: adpExternalJobId(merged) ?? itemId,
+        industry: employer.industry, companySize: employer.company_size, hqState: employer.hq_state,
+      });
+    } catch (error) {
+      truncated = true;
+      console.warn(`[adp] ${employer.slug}/${itemId}: ${(error as Error).message.slice(0, 120)}`);
+      if (Date.now() >= deadline) break;
+    }
+  }
+  return { jobs, ok: true, totalListed: total, uniqueRead: uniqueListings.size, truncated };
 }
 
 interface TaleoJob {
@@ -1825,6 +1963,7 @@ const ADAPTERS: Record<Ats, (employer: EmployerRow, known?: Set<string>) => Prom
   dayforce,
   icims,
   ukg,
+  adp,
   taleo,
   successfactors,
   neogov,

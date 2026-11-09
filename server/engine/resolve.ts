@@ -9,12 +9,13 @@ import { haleySitemapJobs } from './haley';
 import { parseZenopleJson, zenopleJobPortalUrl } from './zenople';
 import { crelatePortalSlug, extractCrelateOrgId, crelateJobsUrl } from './crelate';
 import { avionteBoardUrl, avionteCoordinates, avionteListUrl, parseAvionteJobPosts } from './avionte';
+import { adpBoardUrl, adpCoordinates, adpCoordinatesFromSource, adpListUrl, adpSlug, type AdpRequisitionsResponse } from './adp';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 const WORKDAY_URL = /https?:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^"'?#\s/]+)/i;
-const UKG_URL = /https?:\/\/(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/JobBoard\/([0-9a-f-]{36})/i;
+const UKG_URL = /https?:\/\/((?:recruiting2?\.ultipro\.com|[a-z0-9-]+\.rec\.pro\.ukg\.net))\/([A-Za-z0-9]+)\/JobBoard\/([0-9a-f-]{36})/i;
 const ATS_PATTERNS: { ats: Exclude<Ats, 'workday' | 'recruitee'>; re: RegExp }[] = [
   { ats: 'greenhouse', re: /(?:boards|job-boards)\.greenhouse\.io\/(?:embed\/job_board\?for=)?([a-z0-9-]+)/i },
   { ats: 'lever', re: /jobs\.lever\.co\/([a-z0-9-]+)/i },
@@ -233,6 +234,8 @@ export function detect(html: string, finalUrl: string, skipStaffingBoards = fals
     const site = workdayMatch[3];
     return { kind: 'board', ats: 'workday', slug: `${tenant}/${site}`, workday: { tenant, wd, site } };
   }
+  const adp = adpCoordinatesFromSource(`${finalUrl}\n${html}`);
+  if (adp) return { kind: 'board', ats: 'adp', slug: adpSlug(adp) };
   const ukgMatch = UKG_URL.exec(finalUrl) ?? UKG_URL.exec(html);
   if (ukgMatch) {
     const host = ukgMatch[1].toLowerCase();
@@ -376,7 +379,7 @@ async function validateUkgCandidate(
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
 ): Promise<BoardResolution> {
-  const match = /^(recruiting2?\.ultipro\.com)\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(candidate.slug);
+  const match = /^((?:recruiting2?\.ultipro\.com|[a-z0-9-]+\.rec\.pro\.ukg\.net))\/([A-Za-z0-9]+)\/([0-9a-f-]{36})$/i.exec(candidate.slug);
   if (!match) return { kind: 'unknown', reason: 'Invalid UKG board coordinates' };
   const [, host, tenant, guid] = match;
   const boardPage = await fetch(`https://${host}/${tenant}/JobBoard/${guid}`, {
@@ -423,6 +426,26 @@ async function validateUkgCandidate(
     slug,
     careersUrl: `https://${host.toLowerCase()}/${tenant}/JobBoard/${guid}`,
     total: data.totalCount,
+  };
+}
+
+async function validateAdpCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const coordinates = adpCoordinates(candidate.slug);
+  if (!coordinates) return { kind: 'unknown', reason: 'Invalid ADP Workforce Now board coordinates' };
+  const response = await fetchJson<AdpRequisitionsResponse>(adpListUrl(coordinates, 1, 0), deadline);
+  const total = Number(response.meta?.totalNumber);
+  if (!Array.isArray(response.jobRequisitions) || !Number.isFinite(total) || total < 0) {
+    return { kind: 'unknown', reason: 'ADP response had no job list or numeric total' };
+  }
+  return {
+    kind: 'board',
+    ats: 'adp',
+    slug: adpSlug(coordinates),
+    careersUrl: adpBoardUrl(coordinates),
+    total,
   };
 }
 
@@ -740,6 +763,7 @@ async function validateAvionteCandidate(
 
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
+    if (candidate.ats === 'adp') return await validateAdpCandidate(candidate, deadline);
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
     if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
     if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);

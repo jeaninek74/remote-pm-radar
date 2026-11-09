@@ -45,6 +45,20 @@ async function main(): Promise<void> {
   );
   const ukgFinal = detect('', 'https://recruiting2.ultipro.com/CKE1000CKER/JobBoard/8d7aeff6-90f7-47bf-9f70-771c5260877f');
   check('detect UKG board in final URL', ukgFinal.kind === 'board' && ukgFinal.ats === 'ukg');
+  const ukgRecPro = detect(
+    '<a href="https://myifmc.rec.pro.ukg.net/SAB1501STIL/JobBoard/d5ed6a45-132e-4635-96d6-65377be649b1">Jobs</a>',
+    'https://employer.example/careers',
+  );
+  check('detect UKG rec.pro host in a link',
+    ukgRecPro.kind === 'board' && ukgRecPro.ats === 'ukg'
+      && ukgRecPro.slug === 'myifmc.rec.pro.ukg.net/SAB1501STIL/d5ed6a45-132e-4635-96d6-65377be649b1');
+  const adpIframe = detect(
+    '<iframe src="https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?ccId=19000101_000001&amp;cid=856f0547-6210-4057-add7-4ef48d092619"></iframe>',
+    'https://employer.example/careers',
+  );
+  check('detect ADP Workforce Now CID from an encoded iframe URL',
+    adpIframe.kind === 'board' && adpIframe.ats === 'adp'
+      && adpIframe.slug === '856f0547-6210-4057-add7-4ef48d092619');
 
   const ukgSubstring = detect('<main>ukgtools helps teams hire</main>', 'https://employer.example/careers');
   check('do not flag a UKG substring as an ATS signature', ukgSubstring.kind === 'none');
@@ -156,6 +170,7 @@ async function main(): Promise<void> {
     ['Accenture', 'https://www.accenture.com/us-en/careers'],
     ['Guidehouse', 'https://careers.guidehouse.com/'],
     ['Protiviti', 'https://www.protiviti.com/us-en/careers'],
+    ['Viable Engineering Solutions', 'https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=f235e091-e446-4050-a9fd-156e35c53a12&ccId=19000101_000001&lang=en_US'],
     ['AutoZone', 'https://egud.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/requisitions?mode=location'],
     ['PwC', 'https://www.pwc.com/us/en/careers.html'],
     ['Mayo Clinic', 'https://www.mayoclinic.org/careers'],

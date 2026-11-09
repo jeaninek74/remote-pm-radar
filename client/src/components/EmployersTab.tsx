@@ -79,7 +79,7 @@ export function EmployersTab({ employers }: { employers: Employer[] }) {
                 <td>{employer.industry ?? '—'}</td>
                 <td>{employer.companySize ?? '—'}</td>
                 <td className="mono">{employer.hqState ?? '—'}</td>
-                <td className="mono">{employer.ats === 'manual' ? 'no public feed' : `${employer.ats}/${employer.slug}`}</td>
+                <td className="mono">{employer.ats === 'manual' ? 'no public feed' : `${employer.ats === 'adp' ? 'ADP Workforce Now' : employer.ats}/${employer.slug}`}</td>
                 <td>
                   {employer.careersUrl ? (
                     <a href={employer.careersUrl} target="_blank" rel="noopener noreferrer">Open ↗</a>
