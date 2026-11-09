@@ -77,7 +77,7 @@ export function crelateLocationFields(
   const country = ['us', 'usa', 'unitedstates', 'unitedstatesofamerica'].includes(countryKey)
     ? 'United States'
     : countryValue || (
-      /^[a-z]{2}$/i.test(state) && detectStates(`${state}, United States`).includes(state.toUpperCase())
+      /^[a-z]{2}$/i.test(state) && detectStates(` ${state}, United States`).includes(state.toUpperCase())
         ? 'United States'
         : ''
     );
