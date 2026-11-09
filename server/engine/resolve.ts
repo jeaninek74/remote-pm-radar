@@ -221,7 +221,7 @@ function zenopleCoordinates(source: string): { tenant: string; organization: str
   return { tenant: match[1].toLowerCase(), organization: match[2].toUpperCase() };
 }
 
-export function detect(html: string, finalUrl: string): BoardDetection {
+export function detect(html: string, finalUrl: string, skipStaffingBoards = false): BoardDetection {
   const finalIcimsHost = icimsHostFrom(finalUrl);
   if (finalIcimsHost) return { kind: 'board', ats: 'icims', slug: finalIcimsHost };
   const workdayMatch = WORKDAY_URL.exec(finalUrl) ?? WORKDAY_URL.exec(html);
@@ -263,11 +263,13 @@ export function detect(html: string, finalUrl: string): BoardDetection {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
     if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
   }
-  const haleyHost = haleyCoordinates(html, finalUrl);
-  if (haleyHost) return { kind: 'board', ats: 'haley', slug: haleyHost };
-  const zenople = zenopleCoordinates(`${finalUrl}\n${html}`);
-  if (zenople) {
-    return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
+  if (!skipStaffingBoards) {
+    const haleyHost = haleyCoordinates(html, finalUrl);
+    if (haleyHost) return { kind: 'board', ats: 'haley', slug: haleyHost };
+    const zenople = zenopleCoordinates(`${finalUrl}\n${html}`);
+    if (zenople) {
+      return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
+    }
   }
   const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
   if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
@@ -836,7 +838,14 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       html = fullHtml;
       detected = detect(html, finalUrl);
     }
-    if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+    if (detected.kind === 'board') {
+      const candidate = detected;
+      const validation = await validateCandidate(name, candidate, deadline);
+      if (validation.kind === 'board') return validation;
+      if (candidate.ats !== 'haley' && candidate.ats !== 'zenople') return validation;
+      detected = detect(html, finalUrl, true);
+      if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+    }
     const finalHost = current.hostname.toLowerCase();
     if (rmkHost(finalHost)) {
       try {
