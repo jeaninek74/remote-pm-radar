@@ -219,6 +219,7 @@ export async function avionte(employer: EmployerRow, known?: Set<string>): Promi
       title,
       locations: avionteLocations(listing.location, listing.zip),
       postedAt: isoDate(listing.postDateUtc ?? ''),
+      postedConfidence: isoDate(listing.postDateUtc ?? '') ? 'confirmed' : 'unknown',
       employmentType: listing.jobType ?? null,
       descriptionHtml,
       descriptionText: descriptionText || null,

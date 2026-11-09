@@ -187,6 +187,7 @@ export async function crelate(employer: EmployerRow, known?: Set<string>): Promi
     const descriptionText = descriptionHtml ? stripHtml(descriptionHtml) : '';
     const { locations, restrictions } = crelateLocationFields(listing);
     const postedAt = isoDate(listing.LastPostedOnDate ?? '') ?? isoDate(listing.LastPostedOn ?? '');
+    // LastPostedOnDate is a repost date, not the original posting date.
     const salary = crelateSalary(listing);
     jobs.push({
       source,
@@ -198,6 +199,7 @@ export async function crelate(employer: EmployerRow, known?: Set<string>): Promi
       locations,
       restrictions,
       postedAt,
+      postedConfidence: 'unknown',
       descriptionHtml,
       descriptionText: descriptionText || null,
       applyUrl,

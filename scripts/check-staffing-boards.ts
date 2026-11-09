@@ -335,6 +335,7 @@ async function main(): Promise<void> {
           Id: 'fixture-guid',
           Title: 'Project Manager',
           Description: '<p>Remote project manager role in the United States.</p>',
+          LastPostedOnDate: '2026-01-01',
           Url: '/fixture-route',
           JobCode: 'fixture-code',
         }]
@@ -347,6 +348,11 @@ async function main(): Promise<void> {
     return originalFetch(input, init);
   }) as typeof fetch;
   try {
+    const freshCrelate = await crelate(
+      employer('crelate', 'fixture', 'Fixture', 'https://jobs.crelate.com/portal/fixture/'),
+    );
+    check('Crelate last-posted dates remain unconfirmed',
+      freshCrelate.jobs[0]?.postedAt === '2026-01-01' && freshCrelate.jobs[0]?.postedConfidence === 'unknown');
     const knownCrelate = await crelate(
       employer('crelate', 'fixture', 'Fixture', 'https://jobs.crelate.com/portal/fixture/'),
       new Set(['crelate:fixture:fixture-route']),
@@ -368,6 +374,9 @@ async function main(): Promise<void> {
       fixtureAvionte.ok && fixtureAvionte.jobs.length === 1
         && fixtureAvionte.jobs[0].descriptionText?.includes('Fully remote') === true
         && avionteDescriptionRequests === 1 && avionteDescriptionHeadersOk);
+    check('Avionté post dates are confirmed',
+      fixtureAvionte.jobs[0]?.postedAt === '2026-01-01'
+        && fixtureAvionte.jobs[0]?.postedConfidence === 'confirmed');
     avionteDescriptionRequests = 0;
     const knownAvionte = await avionte(
       fixtureAvionteEmployer,
