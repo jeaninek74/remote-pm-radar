@@ -154,6 +154,36 @@ async function main(): Promise<void> {
         === 'https://jobs.crelate.com/portal/broekemagroup/job/gqq357cn7rz8yu733mns184deo');
   const emptyCrelateAddress = crelateLocationFields({ City: '', State: '', PostalCode: '' });
   check('Crelate empty address yields no locations', emptyCrelateAddress.locations.length === 0);
+  const crelateUsCountry = crelateLocationFields({
+    City: 'Austin',
+    State: 'TX',
+    PostalCode: '78701',
+    Country: 'USA',
+  });
+  const crelateUsStateOnly = crelateLocationFields({
+    City: 'Seattle',
+    State: 'WA',
+    PostalCode: '',
+  });
+  check('Crelate normalizes US countries and infers US from state codes',
+    crelateUsCountry.locations[0] === 'Austin, TX, 78701, United States'
+      && crelateLocationFields({ City: 'Boston', State: 'MA', Country: 'US' }).locations[0]
+        === 'Boston, MA, United States'
+      && crelateUsStateOnly.locations[0] === 'Seattle, WA, United States');
+  const canadianCrelateLocation = crelateLocationFields({
+    City: 'Ottawa',
+    State: 'ON',
+    PostalCode: 'K1A 0B1',
+    Country: 'Canada',
+  });
+  const canadianCrelateVerdict = evaluateLocation({
+    locations: canadianCrelateLocation.locations,
+    workplaceType: 'remote',
+  });
+  check('Crelate Canada locations are excluded as non-US',
+    canadianCrelateLocation.locations[0] === 'Ottawa, ON, K1A 0B1, Canada'
+      && canadianCrelateLocation.restrictions.includes('Outside the United States')
+      && canadianCrelateVerdict.ca === 'not_us');
   const nonUsCrelateLocation = crelateLocationFields({
     City: 'Toronto',
     State: 'ON',

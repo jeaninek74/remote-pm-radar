@@ -1,5 +1,6 @@
 import { REFRESH } from '../config';
 import { fetchJson, fetchText } from './http';
+import { detectStates } from './location';
 import { maximumOnlySalary, parseSalaryFromText } from './salary';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
@@ -70,12 +71,24 @@ export function crelateApplyUrl(slug: string, routeId: string): string {
 export function crelateLocationFields(
   job: Pick<CrelateJob, 'City' | 'State' | 'PostalCode' | 'Country' | 'IsUsJob'>,
 ): CrelateLocationFields {
-  const address = [job.City, job.State, job.PostalCode]
+  const state = typeof job.State === 'string' ? job.State.trim() : '';
+  const countryValue = typeof job.Country === 'string' ? job.Country.trim() : '';
+  const countryKey = countryValue.toLowerCase().replace(/[.\s]/g, '');
+  const country = ['us', 'usa', 'unitedstates', 'unitedstatesofamerica'].includes(countryKey)
+    ? 'United States'
+    : countryValue || (
+      /^[a-z]{2}$/i.test(state) && detectStates(`${state}, United States`).includes(state.toUpperCase())
+        ? 'United States'
+        : ''
+    );
+  const address = [job.City, state, job.PostalCode, country]
     .filter((part): part is string => typeof part === 'string' && Boolean(part.trim()))
     .map((part) => part.trim());
   return {
     locations: address.length ? [address.join(', ')] : [],
-    restrictions: job.IsUsJob === false ? ['Outside the United States'] : [],
+    restrictions: job.IsUsJob === false || Boolean(country && country !== 'United States')
+      ? ['Outside the United States']
+      : [],
   };
 }
 
