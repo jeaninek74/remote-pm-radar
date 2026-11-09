@@ -2,8 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { evaluateRaw } from '../server/engine/ingest';
 import {
+  buildBrowserPayloadChunks,
   browserJobKey,
   browserIngestAuthStatus,
+  type BrowserIngestPayload,
   type BrowserPage,
 } from '../server/engine/browser-pull';
 import {
@@ -439,48 +441,22 @@ async function runBrowserTargets(
   return rendered;
 }
 
-function postPayloads(rendered: RenderedEmployer): Record<string, unknown>[] {
+function postPayloads(rendered: RenderedEmployer): BrowserIngestPayload[] {
   const employerId = rendered.employerId;
   if (employerId === null) throw new Error('Cannot post a browser pull without an employer id');
-  const pageChunks: (BrowserPage & { frameOrigin: string })[][] = [];
-  let current: (BrowserPage & { frameOrigin: string })[] = [];
-  for (const page of rendered.pages) {
-    const trial = [...current, page].map(({ url, linkText, html }) => ({ url, linkText, html }));
-    const body = JSON.stringify({
-      employerId,
-      complete: false,
-      timedOut: rendered.timedOut,
-      listedUrls: [],
-      pages: trial,
-    });
-    if (Buffer.byteLength(body) > MAX_POST_BODY_BYTES) {
-      if (!current.length) {
-        console.error(`SKIP oversized posting page for ${rendered.employer.name}: ${page.url}`);
-        rendered.complete = false;
-        continue;
-      }
-      pageChunks.push(current);
-      current = [page];
-      continue;
-    }
-    current.push(page);
-  }
-  if (current.length || !pageChunks.length) pageChunks.push(current);
-
-  const listedBodyBytes = Buffer.byteLength(JSON.stringify(rendered.listedUrls));
-  const pageBodyBytes = Math.max(...pageChunks.map((chunk) => Buffer.byteLength(JSON.stringify(
-    chunk.map(({ url, linkText, html }) => ({ url, linkText, html })),
-  ))));
-  if (listedBodyBytes + pageBodyBytes + 1024 > MAX_POST_BODY_BYTES) {
-    throw new Error('Full listedUrls payload exceeds the browser ingest body limit');
-  }
-  return pageChunks.map((chunk, index) => ({
+  const result = buildBrowserPayloadChunks(
     employerId,
-    complete: index === pageChunks.length - 1 && rendered.complete,
-    timedOut: rendered.timedOut,
-    listedUrls: index === pageChunks.length - 1 ? rendered.listedUrls : [],
-    pages: chunk.map(({ url, linkText, html }) => ({ url, linkText, html })),
-  }));
+    rendered.complete,
+    rendered.timedOut,
+    rendered.listedUrls,
+    rendered.pages,
+    MAX_POST_BODY_BYTES,
+  );
+  rendered.complete = result.complete;
+  for (const url of result.skippedUrls) {
+    console.error(`SKIP oversized posting page for ${rendered.employer.name}: ${url}`);
+  }
+  return result.chunks;
 }
 
 function postWindowDelay(now = new Date()): number {
@@ -504,7 +480,7 @@ async function waitForPostWindow(): Promise<void> {
 async function postWithRetry(
   radarUrl: string,
   token: string,
-  payload: Record<string, unknown>,
+  payload: BrowserIngestPayload,
 ): Promise<unknown> {
   const startedAt = Date.now();
   for (;;) {

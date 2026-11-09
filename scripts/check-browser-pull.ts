@@ -14,6 +14,7 @@ import {
   SWEEP_EMPLOYER_WHERE,
 } from '../server/engine/ingest';
 import {
+  buildBrowserPayloadChunks,
   browserIngestAuthStatus,
   browserJobKey,
   browserJobsFromPages,
@@ -74,6 +75,27 @@ async function main(): Promise<void> {
   check('truncated results and a disabled closure gate never close jobs',
     !shouldCloseMissing({ ok: true, jobs: [], totalListed: 0, truncated: true }, true)
       && !shouldCloseMissing({ ok: true, jobs: [], totalListed: 0 }, false));
+  const chunked = buildBrowserPayloadChunks(
+    1,
+    true,
+    false,
+    ['https://example.test/jobs/1', 'https://example.test/jobs/oversized', 'https://example.test/jobs/2'],
+    [
+      { url: 'https://example.test/jobs/1', linkText: 'View', html: 'a'.repeat(80) },
+      { url: 'https://example.test/jobs/oversized', linkText: 'View', html: 'b'.repeat(600) },
+      { url: 'https://example.test/jobs/2', linkText: 'View', html: 'c'.repeat(80) },
+    ],
+    400,
+  );
+  const chunkedPages = chunked.chunks.flatMap((chunk) => chunk.pages);
+  check('oversized browser pages are skipped while other pages and listed URLs are chunked',
+    !chunked.complete
+      && chunked.skippedUrls.length === 1
+      && chunked.skippedUrls[0] === 'https://example.test/jobs/oversized'
+      && chunkedPages.length === 2
+      && chunkedPages.every((page) => page.url !== 'https://example.test/jobs/oversized')
+      && chunked.chunks.at(-1)?.listedUrls.length === 3
+      && chunked.chunks.every((chunk) => Buffer.byteLength(JSON.stringify(chunk)) <= 400));
   const browserEmployer: EmployerRow = { ...employer, ats: 'browser' };
   const knownUrl = 'https://example.test/job/req-123456';
   const knownBrowserJobs = browserJobsFromPages(

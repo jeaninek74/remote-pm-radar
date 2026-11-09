@@ -16,6 +16,83 @@ export interface BrowserIngestPayload {
   pages: BrowserPage[];
 }
 
+export interface BrowserPayloadPage extends BrowserPage {
+  frameOrigin?: string;
+}
+
+export interface BrowserPayloadChunks {
+  chunks: BrowserIngestPayload[];
+  complete: boolean;
+  skippedUrls: string[];
+}
+
+export function buildBrowserPayloadChunks(
+  employerId: number,
+  complete: boolean,
+  timedOut: boolean,
+  listedUrls: string[],
+  pages: BrowserPayloadPage[],
+  maxBodyBytes: number,
+): BrowserPayloadChunks {
+  if (!Number.isInteger(maxBodyBytes) || maxBodyBytes <= 0) {
+    throw new Error('Browser ingest body limit must be a positive integer');
+  }
+  const makePayload = (
+    pageChunk: BrowserPage[],
+    includeListedUrls: boolean,
+    payloadComplete: boolean,
+  ): BrowserIngestPayload => ({
+    employerId,
+    complete: payloadComplete,
+    timedOut,
+    listedUrls: includeListedUrls ? listedUrls : [],
+    pages: pageChunk,
+  });
+  const fits = (payload: BrowserIngestPayload) =>
+    Buffer.byteLength(JSON.stringify(payload)) <= maxBodyBytes;
+  if (!fits(makePayload([], true, false))) {
+    throw new Error('Full listedUrls payload exceeds the browser ingest body limit');
+  }
+
+  const pageChunks: BrowserPage[][] = [];
+  const skippedUrls: string[] = [];
+  let current: BrowserPage[] = [];
+  let payloadComplete = complete;
+  for (const page of pages) {
+    const payloadPage = { url: page.url, linkText: page.linkText, html: page.html };
+    if (!fits(makePayload([payloadPage], false, false))) {
+      skippedUrls.push(page.url);
+      payloadComplete = false;
+      continue;
+    }
+    const trial = [...current, payloadPage];
+    if (!fits(makePayload(trial, false, false))) {
+      if (current.length) pageChunks.push(current);
+      current = [payloadPage];
+    } else {
+      current = trial;
+    }
+  }
+  if (current.length) pageChunks.push(current);
+
+  const finalPageChunk = pageChunks.at(-1);
+  const listedUrlsFitWithFinalChunk = Boolean(
+    finalPageChunk && fits(makePayload(finalPageChunk, true, payloadComplete)),
+  );
+  const chunks = pageChunks.map((pageChunk, index) => {
+    const isFinalPageChunk = index === pageChunks.length - 1 && listedUrlsFitWithFinalChunk;
+    return makePayload(
+      pageChunk,
+      isFinalPageChunk,
+      isFinalPageChunk ? payloadComplete : false,
+    );
+  });
+  if (!listedUrlsFitWithFinalChunk) {
+    chunks.push(makePayload([], true, payloadComplete));
+  }
+  return { chunks, complete: payloadComplete, skippedUrls };
+}
+
 export function browserIngestAuthStatus(
   authorization: string | undefined,
   expectedToken: string | undefined,
