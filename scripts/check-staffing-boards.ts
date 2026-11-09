@@ -1,5 +1,7 @@
 import { REFRESH } from '../server/config';
+import { jobPostingFrom } from '../server/engine/careers';
 import {
+  haleySalary,
   haleyPostingLink,
   haleyRoleLinks,
   haleySitemapJobs,
@@ -67,6 +69,22 @@ async function main(): Promise<void> {
   check('Haley keeps an AtWork city-subdomain posting',
     normalizeHaleySitemapUrl(atworkPostingSitemap.locations[0], 'https://jobs.atwork.com/jobs.xml', 'jobs.atwork.com')
       === 'https://sacramento-jobs.atwork.com/jb/Manager-Jobs-in-Sacramento-California/123');
+  const salaryPosting = jobPostingFrom(
+    `<script type="application/ld+json">${JSON.stringify({
+      '@type': 'JobPosting',
+      title: 'Program Manager',
+      description: 'A program manager role with no pay listed.',
+      baseSalary: {
+        currency: 'USD',
+        value: { minValue: 90000, maxValue: 110000, unitText: 'YEAR' },
+      },
+    })}</script>`,
+  );
+  const structuredSalary = salaryPosting
+    ? haleySalary(salaryPosting, salaryPosting.description ?? '')
+    : null;
+  check('Haley prefers structured USD baseSalary over an empty description salary',
+    structuredSalary?.min === 90000 && structuredSalary.max === 110000 && structuredSalary.interval === 'year');
 
   const doubleEncoded = JSON.stringify(JSON.stringify({ TotalCount: 31, Data: [{ jobId: 782971 }] }));
   const zenopleParsed = parseZenopleJson(doubleEncoded) as { TotalCount?: number; Data?: { jobId?: number }[] };

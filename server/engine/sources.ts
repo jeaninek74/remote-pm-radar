@@ -4,7 +4,13 @@ import { isRoleTitle, searchTerms } from './titles';
 import { fetchCareersPage, jobPostingFrom, type JobPostingLd } from './careers';
 import { fetchIcimsText, icimsDetailUrl, icimsHost, icimsJobUrl, icimsSitemapJobs } from './icims';
 import { isoDate, stripHtml } from './text';
-import { parseAshbyCompensation, parsePayRangeBlock, parseSalaryFromText, type ParsedSalary } from './salary';
+import {
+  parseAshbyCompensation,
+  parsePayRangeBlock,
+  parseSalaryFromText,
+  parseUsdBaseSalary,
+  type ParsedSalary,
+} from './salary';
 import type { Ats, BoardFetchResult, RawJob } from './types';
 import type { EmployerRow } from './types';
 import { parseSuccessFactorsFeed } from './successfactors';
@@ -752,24 +758,7 @@ function icimsRestrictions(posting: JobPostingLd): string[] {
 }
 
 function icimsBaseSalary(posting: JobPostingLd): ParsedSalary | null {
-  const baseSalary = posting.baseSalary;
-  if (!baseSalary?.value || baseSalary.currency?.toUpperCase() !== 'USD') return null;
-  const value = baseSalary.value;
-  const asAmount = (amount: number | string | undefined): number | null => {
-    if (typeof amount === 'number') return Number.isFinite(amount) ? amount : null;
-    if (typeof amount !== 'string') return null;
-    const parsed = Number(amount.replace(/,/g, '').trim());
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const min = asAmount(value.minValue ?? value.value);
-  const max = asAmount(value.maxValue ?? value.value) ?? min;
-  if (min == null || max == null) return null;
-  const unit = /hour/i.test(value.unitText ?? '') ? 'per hour' : 'per year';
-  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  const salaryText = min === max
-    ? `USD ${format(min)} ${unit}`
-    : `USD ${format(min)} - USD ${format(max)} ${unit}`;
-  return pickSalary(salaryText, 'iCIMS base salary');
+  return parseUsdBaseSalary(posting.baseSalary, 'iCIMS base salary');
 }
 
 interface UkgOpportunity {

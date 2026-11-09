@@ -1,8 +1,8 @@
 import { isIP } from 'node:net';
 import { REFRESH } from '../config';
-import { careersLocationFields, jobPostingFrom } from './careers';
+import { careersLocationFields, jobPostingFrom, type JobPostingLd } from './careers';
 import { fetchText, mapLimit } from './http';
-import { parseSalaryFromText } from './salary';
+import { parseSalaryFromText, parseUsdBaseSalary, type ParsedSalary } from './salary';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -15,6 +15,11 @@ export interface HaleySitemap {
 export interface HaleyPostingLink {
   id: string;
   title: string;
+}
+
+export function haleySalary(posting: JobPostingLd, descriptionText: string): ParsedSalary | null {
+  return parseUsdBaseSalary(posting.baseSalary, 'Haley Marketing base salary')
+    ?? parseSalaryFromText(descriptionText, 'Haley Marketing posting');
 }
 
 function decodeXml(value: string): string {
@@ -193,7 +198,7 @@ export async function haley(employer: EmployerRow, known?: Set<string>): Promise
       title,
     );
     const postedAt = isoDate(posting.datePosted ?? '');
-    const salary = parseSalaryFromText(descriptionText, 'Haley Marketing posting');
+    const salary = haleySalary(posting, descriptionText);
     const hiringOrganization = typeof posting.hiringOrganization === 'string'
       ? posting.hiringOrganization
       : posting.hiringOrganization?.name;

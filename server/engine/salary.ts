@@ -164,6 +164,39 @@ export function parseSalaryFromText(text: string, evidenceLabel = 'Job descripti
   };
 }
 
+export interface StructuredBaseSalary {
+  currency?: string;
+  value?: {
+    minValue?: number | string;
+    maxValue?: number | string;
+    value?: number | string;
+    unitText?: string;
+  };
+}
+
+export function parseUsdBaseSalary(
+  baseSalary: StructuredBaseSalary | null | undefined,
+  evidenceLabel: string,
+): ParsedSalary | null {
+  if (!baseSalary?.value || baseSalary.currency?.toUpperCase() !== 'USD') return null;
+  const value = baseSalary.value;
+  const asAmount = (amount: number | string | undefined): number | null => {
+    if (typeof amount === 'number') return Number.isFinite(amount) ? amount : null;
+    if (typeof amount !== 'string') return null;
+    const parsed = Number(amount.replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const min = asAmount(value.minValue ?? value.value);
+  const max = asAmount(value.maxValue ?? value.value) ?? min;
+  if (min == null || max == null) return null;
+  const unit = /hour/i.test(value.unitText ?? '') ? 'per hour' : 'per year';
+  const format = (amount: number) => amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const salaryText = min === max
+    ? `USD ${format(min)} ${unit}`
+    : `USD ${format(min)} - USD ${format(max)} ${unit}`;
+  return parseSalaryFromText(salaryText, evidenceLabel);
+}
+
 /**
  * Greenhouse posts pay inside a dedicated `pay-range` block. Reading that block
  * first avoids picking up unrelated dollar figures elsewhere in the posting.
