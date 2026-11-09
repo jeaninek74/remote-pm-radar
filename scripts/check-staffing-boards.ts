@@ -121,6 +121,23 @@ async function main(): Promise<void> {
     zenopleDetection.kind === 'board' && zenopleDetection.ats === 'zenople' && zenopleDetection.slug === 'laborworks/LBW');
   check('Zenople ESG Azure variant is ignored',
     detect('', 'https://laborworks.zenople.esgazure.com/job-portal/LBW').kind !== 'board');
+  check('Ordinary platform words do not identify unreadable boards',
+    detect(
+      'Exact Staff is phenomenal; the phenomenon; a rippling effect; we use UKG',
+      'https://www.example.com/',
+    ).kind === 'none');
+  const phenomDetection = detect(
+    '<script src="https://cdn.phenompeople.com/x.js"></script>',
+    'https://www.example.com/',
+  );
+  check('Phenom CDN signature is unreadable',
+    phenomDetection.kind === 'unreadable' && phenomDetection.platform === 'Phenom');
+  const ukgDetection = detect('', 'https://recruiting.ultipro.com/ABC1000/JobBoard/xyz');
+  check('UltiPro URL signature is unreadable',
+    ukgDetection.kind === 'unreadable' && ukgDetection.platform === 'UKG/UltiPro');
+  const ripplingDetection = detect('', 'https://ats.rippling.com/acme/jobs');
+  check('Rippling ATS URL signature is unreadable',
+    ripplingDetection.kind === 'unreadable' && ripplingDetection.platform === 'Rippling');
   const leverDetection = detect(
     '<a href="https://jobs.lever.co/acme">Jobs</a>',
     'https://www.acme.com/careers',

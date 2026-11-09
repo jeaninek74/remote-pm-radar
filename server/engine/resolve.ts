@@ -43,7 +43,7 @@ function oracleCoordinates(source: string): { host: string; site: string } | nul
 }
 
 const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
-  { platform: 'Phenom', re: /phenompeople|phenom/i },
+  { platform: 'Phenom', re: /phenompeople|phenom\.com/i },
   { platform: 'UKG Ready', re: /entertimeonline\.com/i },
   { platform: 'PeopleAdmin', re: /peopleadmin\.com/i },
   { platform: 'NEOGOV', re: /(?:governmentjobs|schooljobs)\.com/i },
@@ -56,11 +56,11 @@ const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
   { platform: 'TalentBrew', re: /talentbrew|tbcdn/i },
   { platform: 'Paradox', re: /paradox\.ai/i },
   { platform: 'Dayforce', re: /dayforcehcm\.com/i },
-  { platform: 'UKG/UltiPro', re: /ultipro\.com|\bukg\b/i },
+  { platform: 'UKG/UltiPro', re: /ultipro\.com|\.ukg\.net/i },
   { platform: 'Jobvite', re: /jobvite\.com/i },
   { platform: 'ADP Workforce Now', re: /(?:workforcenow\.adp\.com|adp\.com\/workforcenow)/i },
   { platform: 'Cornerstone OnDemand', re: /csod\.com/i },
-  { platform: 'Rippling', re: /rippling/i },
+  { platform: 'Rippling', re: /ats\.rippling\.com/i },
 ];
 
 const NAME_NOISE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|companies|group|holdings|plc|the|and|of)\b/g;

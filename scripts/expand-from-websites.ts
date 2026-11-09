@@ -200,9 +200,10 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
     if (result.kind === 'board') {
       return result;
     }
+    const inspectableCareersPage = result.kind === 'unreadable'
+      || (result.kind === 'unknown' && /\bHTTP\s+200\b/i.test(result.reason));
     if (
-      result.kind === 'unknown'
-      && /\bHTTP\s+200\b/i.test(result.reason)
+      inspectableCareersPage
       && sameSite(new URL(normalizedUrl), homepageUrl)
       && !isAtsHost(new URL(normalizedUrl).hostname)
       && !excludedCareerLink(normalizedUrl)
@@ -249,22 +250,20 @@ async function resolveWebsite(name: string, website: string, deadline: number): 
     if (result) return result;
   }
 
-  if (!unreadable) {
-    for (const careersUrl of careerPages) {
-      if (Date.now() >= deadline) break;
-      const probe = await inspectCareersPage(careersUrl, deadline);
-      if (probe.postings > 0) {
-        return {
-          kind: 'careers',
-          careersUrl,
-          postings: probe.postings,
-          matching: probe.matching,
-          postingPaths: probe.postingPaths,
-          postingIdentities: probe.postingIdentities,
-          examplePostingUrl: probe.examplePostingUrl,
-          truncated: probe.truncated,
-        };
-      }
+  for (const careersUrl of careerPages) {
+    if (Date.now() >= deadline) break;
+    const probe = await inspectCareersPage(careersUrl, deadline);
+    if (probe.postings > 0) {
+      return {
+        kind: 'careers',
+        careersUrl,
+        postings: probe.postings,
+        matching: probe.matching,
+        postingPaths: probe.postingPaths,
+        postingIdentities: probe.postingIdentities,
+        examplePostingUrl: probe.examplePostingUrl,
+        truncated: probe.truncated,
+      };
     }
   }
 
