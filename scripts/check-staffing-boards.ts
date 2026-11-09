@@ -235,6 +235,8 @@ async function main(): Promise<void> {
       && avionteMaxOnlyHourly.interval === 'hour' && avionteMaxOnlyHourly.hourlyRate === 25);
   const adpAnnualSalary = adpSalary('130000.00 to 160000.00 (USD) Annually');
   const adpHourlySalary = adpSalary('30.00 to 40.00 (USD) Hourly');
+  const adpMaximumOnlyGrade = adpSalary(null, { maximumValue: 160000, currencyCode: 'USD', frequency: 'Annually' });
+  const adpMinimumOnlyGrade = adpSalary(null, { minimumValue: 90000, currencyCode: 'USD', frequency: 'Annually' });
   const adpDefaultCoordinates = adpCoordinates('856f0547-6210-4057-add7-4ef48d092619');
   const adpCustomCoordinates = adpCoordinates('856f0547-6210-4057-add7-4ef48d092619/19000101_000002');
   check('ADP salary strings use the shared annual and hourly parser',
@@ -242,6 +244,9 @@ async function main(): Promise<void> {
       && adpAnnualSalary.interval === 'year'
       && adpHourlySalary?.min === 62400 && adpHourlySalary.max === 83200
       && adpHourlySalary.interval === 'hour' && adpHourlySalary.hourlyRate === 30);
+  check('ADP max-only pay is excluded while minimum-only pay remains a floor',
+    adpMaximumOnlyGrade === null && adpMinimumOnlyGrade?.min === 90000
+      && adpSalary('Up to 160000.00 (USD) Annually') === null);
   check('ADP slugs support default and custom ccId apply URLs',
     adpDefaultCoordinates?.ccId === '19000101_000001'
       && adpCustomCoordinates?.ccId === '19000101_000002'

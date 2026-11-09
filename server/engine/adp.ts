@@ -185,7 +185,7 @@ function payGradeSalary(value: unknown): ParsedSalary | null {
   const max = amount(get(/^(?:maximum|max)(?:value|amount)?$/));
   const currency = currencyName(String(get(/^(?:currency|currencycode)$/) ?? ''));
   const unit = String(get(/(?:unit|period|frequency)/) ?? '').toLowerCase();
-  if ((min === null && max === null) || (currency && currency !== 'USD')) return null;
+  if (min === null || (currency && currency !== 'USD')) return null;
   const hourly = /hour|hr/.test(unit);
   const annual = /year|annual|annum|yr/.test(unit);
   if (!hourly && !annual) return null;
