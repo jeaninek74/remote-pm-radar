@@ -68,7 +68,7 @@ export interface FeedSource {
 export interface EmployerRow {
   id: number;
   slug: string;
-  ats: Ats | 'manual';
+  ats: Ats | 'manual' | 'browser';
   name: string;
   industry: string | null;
   company_size: string | null;

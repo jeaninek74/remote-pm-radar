@@ -15,13 +15,15 @@ import { isOwnershipWatchTitle, isRoleTitle } from './titles';
 import { ACTIVE_ROLE_FAMILY } from './roles/active';
 import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
-import type { Ats, EmployerRow, RawJob } from './types';
+import type { Ats, BoardFetchResult, EmployerRow, RawJob } from './types';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 
 export { nameTokens, namesAgree };
 
 let running = false;
+
+export const SWEEP_EMPLOYER_WHERE = "active = TRUE AND careers_url IS NOT NULL AND ats <> 'browser'";
 
 export function isRefreshing(): boolean {
   return running;
@@ -375,6 +377,116 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
   return rows[0];
 }
 
+export interface BoardIngestCounts {
+  inserted: number;
+  unchanged: number;
+  skipped: number;
+  closed: number;
+}
+
+export function browserPullAllowsClosure(
+  complete: boolean,
+  timedOut: boolean,
+  listedUrlCount: number,
+): boolean {
+  return complete && !timedOut && listedUrlCount > 0;
+}
+
+export function shouldCloseMissing(result: BoardFetchResult, closeMissing: boolean): boolean {
+  return closeMissing && !result.truncated;
+}
+
+export async function ingestBoardResult(
+  employer: EmployerRow,
+  result: BoardFetchResult,
+  counters: RunCounters,
+  linkCandidates: number[],
+  closeMissing = true,
+): Promise<BoardIngestCounts> {
+  if (!result.ok) throw new Error('Cannot ingest an unsuccessful board result');
+  counters.employersSearched += 1;
+  counters.jobsFetched += result.totalListed;
+
+  const counts: BoardIngestCounts = {
+    inserted: 0,
+    unchanged: 0,
+    skipped: Math.max(0, result.totalListed - result.jobs.length),
+    closed: 0,
+  };
+  const seenKeys = new Set<string>();
+  let matched = 0;
+
+  for (const raw of result.jobs) {
+    if (raw.unchanged) {
+      const key = `${raw.source}:${raw.externalId}`.slice(0, 190);
+      if (raw.ats === 'phenom' && raw.requisitionId) {
+        await q(
+          `UPDATE jobs
+              SET last_seen_at = now(), requisition_id = COALESCE(requisition_id, $2)
+            WHERE job_key = $1`,
+          [key, raw.requisitionId],
+        );
+      } else {
+        await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
+      }
+      seenKeys.add(key);
+      matched += 1;
+      counts.unchanged += 1;
+      continue;
+    }
+    const ev = evaluateRaw(raw, employer);
+    if (!ev) {
+      counts.skipped += 1;
+      continue;
+    }
+    matched += 1;
+    seenKeys.add(ev.jobKey);
+    const outcome = await upsertJob(ev);
+    if (outcome.inserted) {
+      counts.inserted += 1;
+      counters.newJobs += 1;
+      if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1') counters.addedTab1 += 1;
+      if (outcome.bucket === 'tab2') counters.addedTab2 += 1;
+      if (outcome.bucket === 'unsalaried') counters.queued += 0;
+      if (outcome.bucket === 'queue') counters.queued += 1;
+      // Every new live-tab posting gets its application link verified — no count cap; the
+      // verification stage is bounded by time only.
+      if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2' || outcome.bucket === 'unsalaried') {
+        linkCandidates.push(outcome.id);
+      }
+    } else {
+      counts.unchanged += 1;
+    }
+  }
+  counters.jobsMatched += matched;
+
+  if (shouldCloseMissing(result, closeMissing) && (seenKeys.size || matched === 0)) {
+    const closed = await q<{ id: number }>(
+      `UPDATE jobs
+          SET bucket='archived',
+              bucket_reason='No longer listed on the employer''s job board (closed or filled).',
+              updated_at=now()
+        WHERE employer_id = $1
+          AND bucket IN ('tab0','tab1','tab2')
+          AND last_seen_at < now() - INTERVAL '10 minutes'
+        RETURNING id`,
+      [employer.id],
+    );
+    counts.closed = closed.length;
+    counters.closed += closed.length;
+  }
+
+  await q(
+    `UPDATE employers
+        SET last_searched_at = now(), last_status = $2, last_error = NULL,
+            jobs_seen = $3, fail_count = 0
+      WHERE id = $1`,
+    [employer.id, `${result.totalListed} postings, ${matched} ${ACTIVE_ROLE_FAMILY.jobNoun}`, result.totalListed],
+  );
+  await recordSource(`${employer.ats}:${employer.slug}`, employer.name, true, result.totalListed);
+  return counts;
+}
+
 /* ---------------------------------------------------------------- discovery */
 
 async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; slug: string } | null> {
@@ -556,7 +668,7 @@ export interface RunCounters {
   errors: { source: string; message: string }[];
 }
 
-function emptyCounters(): RunCounters {
+export function emptyCounters(): RunCounters {
   return {
     employersSearched: 0, sourcesChecked: 0, sourcesFailed: 0, jobsFetched: 0, jobsMatched: 0,
     newJobs: 0, addedTab1: 0, addedTab2: 0, queued: 0, duplicates: 0, archived: 0, closed: 0,
@@ -683,9 +795,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
               black_owned, ownership_status, ownership_source, last_searched_at::text,
               last_resolve_at::text, active
-         FROM employers
-        WHERE active = TRUE
-          AND careers_url IS NOT NULL
+        FROM employers
+        WHERE ${SWEEP_EMPLOYER_WHERE}
         ORDER BY last_searched_at ASC NULLS FIRST
         ${REFRESH.employersPerRun > 0 ? 'LIMIT $1' : ''}`,
       REFRESH.employersPerRun > 0 ? [REFRESH.employersPerRun] : [],
@@ -810,74 +921,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         return;
       }
 
-      counters.employersSearched += 1;
-      counters.jobsFetched += result.totalListed;
-
-      const seenKeys = new Set<string>();
-      let matched = 0;
-
-      for (const raw of result.jobs) {
-        if (raw.unchanged) {
-          const key = `${raw.source}:${raw.externalId}`.slice(0, 190);
-          if (raw.ats === 'phenom' && raw.requisitionId) {
-            await q(
-              `UPDATE jobs
-                  SET last_seen_at = now(), requisition_id = COALESCE(requisition_id, $2)
-                WHERE job_key = $1`,
-              [key, raw.requisitionId],
-            );
-          } else {
-            await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
-          }
-          seenKeys.add(key);
-          matched += 1;
-          continue;
-        }
-        const ev = evaluateRaw(raw, employer);
-        if (!ev) continue;
-        matched += 1;
-        seenKeys.add(ev.jobKey);
-        const outcome = await upsertJob(ev);
-        if (outcome.inserted) {
-          counters.newJobs += 1;
-          if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1') counters.addedTab1 += 1;
-          if (outcome.bucket === 'tab2') counters.addedTab2 += 1;
-          if (outcome.bucket === 'unsalaried') counters.queued += 0;
-          if (outcome.bucket === 'queue') counters.queued += 1;
-          // Every new live-tab posting gets its application link verified — no count cap; the
-          // verification stage is bounded by time only.
-          if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2' || outcome.bucket === 'unsalaried') {
-            linkCandidates.push(outcome.id);
-          }
-        }
-      }
-      counters.jobsMatched += matched;
-
-      // Anything previously live for this employer but no longer listed has closed — unless the
-      // board was only partly read (time budget), in which case absence proves nothing.
-      if (!result.truncated && (seenKeys.size || matched === 0)) {
-        const closed = await q<{ id: number }>(
-          `UPDATE jobs
-              SET bucket='archived',
-                  bucket_reason='No longer listed on the employer''s job board (closed or filled).',
-                  updated_at=now()
-            WHERE employer_id = $1
-              AND bucket IN ('tab0','tab1','tab2')
-              AND last_seen_at < now() - INTERVAL '10 minutes'
-            RETURNING id`,
-          [employer.id],
-        );
-        counters.closed += closed.length;
-      }
-
-      await q(
-        `UPDATE employers
-            SET last_searched_at = now(), last_status = $2, last_error = NULL,
-                jobs_seen = $3, fail_count = 0
-          WHERE id = $1`,
-        [employer.id, `${result.totalListed} postings, ${matched} ${ACTIVE_ROLE_FAMILY.jobNoun}`, result.totalListed],
-      );
-      await recordSource(`${employer.ats}:${employer.slug}`, employer.name, true, result.totalListed);
+      await ingestBoardResult(employer, result, counters, linkCandidates);
     }
 
     // Employer job boards only. Aggregator feeds are deliberately not ingested:
