@@ -5,6 +5,10 @@ import { parseSuccessFactorsFeed } from './successfactors';
 import { parseNeogovFeed } from './neogov';
 import { parsePhenomConfig, parsePhenomResponse, phenomEndpointMatchesPageHost } from './phenom';
 import { stripHtml } from './text';
+import { haleySitemapJobs } from './haley';
+import { parseZenopleJson, zenopleJobPortalUrl } from './zenople';
+import { crelatePortalSlug, extractCrelateOrgId, crelateJobsUrl } from './crelate';
+import { avionteBoardUrl, avionteCoordinates, avionteListUrl, parseAvionteJobPosts } from './avionte';
 
 const PAGE_TIMEOUT_MS = 15_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -41,7 +45,7 @@ function oracleCoordinates(source: string): { host: string; site: string } | nul
 }
 
 const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
-  { platform: 'Phenom', re: /phenompeople|phenom/i },
+  { platform: 'Phenom', re: /phenompeople|phenom\.com/i },
   { platform: 'UKG Ready', re: /entertimeonline\.com/i },
   { platform: 'PeopleAdmin', re: /peopleadmin\.com/i },
   { platform: 'NEOGOV', re: /(?:governmentjobs|schooljobs)\.com/i },
@@ -54,11 +58,11 @@ const UNREADABLE_PLATFORMS: { platform: string; re: RegExp }[] = [
   { platform: 'TalentBrew', re: /talentbrew|tbcdn/i },
   { platform: 'Paradox', re: /paradox\.ai/i },
   { platform: 'Dayforce', re: /dayforcehcm\.com/i },
-  { platform: 'UKG/UltiPro', re: /ultipro\.com|\bukg\b/i },
+  { platform: 'UKG/UltiPro', re: /ultipro\.com|\.ukg\.net/i },
   { platform: 'Jobvite', re: /jobvite\.com/i },
   { platform: 'ADP Workforce Now', re: /(?:workforcenow\.adp\.com|adp\.com\/workforcenow)/i },
   { platform: 'Cornerstone OnDemand', re: /csod\.com/i },
-  { platform: 'Rippling', re: /rippling/i },
+  { platform: 'Rippling', re: /ats\.rippling\.com/i },
 ];
 
 const NAME_NOISE = /\b(inc|incorporated|llc|l\.l\.c|ltd|limited|corp|corporation|co|company|companies|group|holdings|plc|the|and|of)\b/g;
@@ -173,7 +177,53 @@ function rmkHost(host: string): boolean {
   return !/\.successfactors\.(?:com|eu)$/i.test(host);
 }
 
-export function detect(html: string, finalUrl: string): BoardDetection {
+function haleyCoordinates(html: string, finalUrl: string): string | null {
+  const normalized = html.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  let page: URL;
+  try {
+    page = new URL(finalUrl);
+  } catch {
+    return null;
+  }
+
+  const jobHost = (host: string) => /(?:^|[.-])(?:jobs?|careers?|employment)(?:[.-]|$)/i.test(host);
+  const linkedUrls = [...normalized.matchAll(/\b(?:href|src)\s*=\s*["']([^"']+)["']/gi)]
+    .map((match) => match[1]);
+  for (const href of linkedUrls) {
+    try {
+      const url = new URL(href, page);
+      if (/index\.smpl/i.test(url.pathname)) return url.hostname.toLowerCase();
+    } catch { /* ignore malformed links */ }
+  }
+  if (/index\.smpl/i.test(page.pathname)) return page.hostname.toLowerCase();
+
+  const pageDomain = page.hostname.toLowerCase().split('.').slice(-2).join('.');
+  for (const href of linkedUrls) {
+    try {
+      const url = new URL(href, page);
+      const host = url.hostname.toLowerCase();
+      const hostDomain = host.split('.').slice(-2).join('.');
+      if (
+        host !== page.hostname.toLowerCase()
+        && host !== 'cdn.haleymarketing.com'
+        && hostDomain === pageDomain
+        && jobHost(host)
+      ) return host;
+    } catch { /* ignore malformed links */ }
+  }
+  return /cdn\.haleymarketing\.com/i.test(normalized) && jobHost(page.hostname)
+    ? page.hostname.toLowerCase()
+    : null;
+}
+
+function zenopleCoordinates(source: string): { tenant: string; organization: string } | null {
+  const normalized = source.replace(/&amp;/gi, '&').replace(/\\\//g, '/');
+  const match = /https?:\/\/([a-z0-9-]+)\.zenople\.com\/(?:job-portal|apply|login)\/([A-Za-z0-9]+)(?=[/?#"'<>\\\s]|$)/i.exec(normalized);
+  if (!match) return null;
+  return { tenant: match[1].toLowerCase(), organization: match[2].toUpperCase() };
+}
+
+export function detect(html: string, finalUrl: string, skipStaffingBoards = false): BoardDetection {
   const finalIcimsHost = icimsHostFrom(finalUrl);
   if (finalIcimsHost) return { kind: 'board', ats: 'icims', slug: finalIcimsHost };
   const workdayMatch = WORKDAY_URL.exec(finalUrl) ?? WORKDAY_URL.exec(html);
@@ -214,6 +264,18 @@ export function detect(html: string, finalUrl: string): BoardDetection {
   for (const pattern of ATS_PATTERNS) {
     const match = pattern.re.exec(finalUrl) ?? pattern.re.exec(html);
     if (match) return { kind: 'board', ats: pattern.ats, slug: match[1].toLowerCase() };
+  }
+  if (!skipStaffingBoards) {
+    const haleyHost = haleyCoordinates(html, finalUrl);
+    if (haleyHost) return { kind: 'board', ats: 'haley', slug: haleyHost };
+    const zenople = zenopleCoordinates(`${finalUrl}\n${html}`);
+    if (zenople) {
+      return { kind: 'board', ats: 'zenople', slug: `${zenople.tenant}/${zenople.organization}` };
+    }
+    const crelate = crelatePortalSlug(`${finalUrl}\n${html}`);
+    if (crelate) return { kind: 'board', ats: 'crelate', slug: crelate };
+    const avionte = avionteCoordinates(`${finalUrl}\n${html}`);
+    if (avionte) return { kind: 'board', ats: 'avionte', slug: `${avionte.bId}/${avionte.jbId}` };
   }
   const oracle = oracleCoordinates(finalUrl) ?? oracleCoordinates(html);
   if (oracle) return { kind: 'board', ats: 'oracle', slug: `${oracle.host}/${oracle.site}` };
@@ -580,6 +642,102 @@ async function validatePhenomCandidate(
   }
 }
 
+async function validateHaleyCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const host = candidate.slug.toLowerCase();
+  if (!/^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(host) || /(?:^|\.)haleymarketing\.com$/i.test(host)) {
+    return { kind: 'unknown', reason: 'Invalid Haley Marketing board host' };
+  }
+  const { urls } = await haleySitemapJobs(host, deadline);
+  if (!urls.length) return { kind: 'unknown', reason: 'Haley Marketing sitemap has no job postings' };
+  return {
+    kind: 'board',
+    ats: 'haley',
+    slug: host,
+    careersUrl: `https://${host}/`,
+    total: urls.length,
+  };
+}
+
+async function validateZenopleCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^([a-z0-9-]+)\/([a-z0-9]+)$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid Zenople tenant/organization coordinates' };
+  const tenant = match[1].toLowerCase();
+  const organization = match[2].toUpperCase();
+  const response = await fetch(zenopleJobPortalUrl(tenant, organization, 1), {
+    headers: { Accept: 'application/json', 'User-Agent': BROWSER_USER_AGENT },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!response.ok) return { kind: 'unknown', reason: `Zenople JobPortal HTTP ${response.status}` };
+  const data = parseZenopleJson(await response.json()) as { TotalCount?: unknown } | null;
+  const total = Number(data?.TotalCount);
+  if (!Number.isFinite(total) || total < 0) {
+    return { kind: 'unknown', reason: 'Zenople JobPortal response had no parseable TotalCount' };
+  }
+  return {
+    kind: 'board',
+    ats: 'zenople',
+    slug: `${tenant}/${organization}`,
+    careersUrl: `https://${tenant}.zenople.com/job-portal/${organization}`,
+    total,
+  };
+}
+
+async function validateCrelateCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  if (!/^[a-z0-9-]+$/i.test(candidate.slug)) {
+    return { kind: 'unknown', reason: 'Invalid Crelate portal slug' };
+  }
+  const portalUrl = `https://jobs.crelate.com/portal/${encodeURIComponent(candidate.slug)}/`;
+  const portal = await fetch(portalUrl, {
+    headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(timeoutFor(deadline)),
+  });
+  if (!portal.ok) return { kind: 'unknown', reason: `Crelate portal HTTP ${portal.status}` };
+  const orgId = extractCrelateOrgId(await portal.text());
+  if (!orgId) return { kind: 'unknown', reason: 'Crelate portal HTML had no ORG_ID' };
+  const response = await fetchJson<{ Jobs?: unknown[]; IsError?: boolean }>(
+    crelateJobsUrl(orgId),
+    deadline,
+  );
+  if (response.IsError || !Array.isArray(response.Jobs) || !response.Jobs.length) {
+    return { kind: 'unknown', reason: 'Crelate GetAllJobs had no postings' };
+  }
+  return {
+    kind: 'board',
+    ats: 'crelate',
+    slug: candidate.slug.toLowerCase(),
+    careersUrl: portalUrl,
+    total: response.Jobs.length,
+  };
+}
+
+async function validateAvionteCandidate(
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+): Promise<BoardResolution> {
+  const match = /^([a-z0-9_-]+)\/([a-z0-9_-]+)$/i.exec(candidate.slug);
+  if (!match) return { kind: 'unknown', reason: 'Invalid Avionté board coordinates' };
+  const [, bId, jbId] = match;
+  const response = await fetchJson<unknown>(avionteListUrl(bId, jbId), deadline);
+  const posts = parseAvionteJobPosts(response);
+  if (!posts?.length) return { kind: 'unknown', reason: 'Avionté board has no job posts' };
+  return {
+    kind: 'board',
+    ats: 'avionte',
+    slug: `${bId}/${jbId}`,
+    careersUrl: avionteBoardUrl(bId, jbId),
+    total: posts.length,
+  };
+}
+
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
@@ -587,6 +745,10 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
     if (candidate.ats === 'neogov') return await validateNeogovCandidate(name, candidate, deadline);
     if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline);
+    if (candidate.ats === 'haley') return await validateHaleyCandidate(candidate, deadline);
+    if (candidate.ats === 'zenople') return await validateZenopleCandidate(candidate, deadline);
+    if (candidate.ats === 'crelate') return await validateCrelateCandidate(candidate, deadline);
+    if (candidate.ats === 'avionte') return await validateAvionteCandidate(candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const data = await fetchJson<{ total?: unknown }>(
@@ -726,10 +888,27 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       current = new URL(location, current);
     }
     if (!response || (response.status >= 300 && response.status < 400)) throw new Error('redirect limit exceeded');
-    const html = (await response.text()).slice(0, 400_000);
+    const fullHtml = await response.text();
+    let html = fullHtml.slice(0, 400_000);
     const finalUrl = current.toString();
-    const detected = detect(html, finalUrl);
-    if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+    let detected = detect(html, finalUrl);
+    if (detected.kind === 'none' && html.length < fullHtml.length) {
+      html = fullHtml;
+      detected = detect(html, finalUrl);
+    }
+    if (detected.kind === 'board') {
+      const candidate = detected;
+      const validation = await validateCandidate(name, candidate, deadline);
+      if (validation.kind === 'board') return validation;
+      if (
+        candidate.ats !== 'haley'
+        && candidate.ats !== 'zenople'
+        && candidate.ats !== 'crelate'
+        && candidate.ats !== 'avionte'
+      ) return validation;
+      detected = detect(html, finalUrl, true);
+      if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+    }
     const finalHost = current.hostname.toLowerCase();
     if (rmkHost(finalHost)) {
       try {
