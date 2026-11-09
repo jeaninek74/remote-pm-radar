@@ -4,13 +4,29 @@ import express from 'express';
 import cron from 'node-cron';
 import { healthCheck, migrate, q, refreshLockHeldElsewhere, one } from './db';
 import { APP, REFRESH, RULES } from './config';
-import { discoveryStatus, isRefreshing, runRefresh, seedEmployers, startDiscovery, startRefresh } from './engine/ingest';
+import {
+  browserPullAllowsClosure,
+  discoveryStatus,
+  emptyCounters,
+  ingestBoardResult,
+  isRefreshing,
+  runRefresh,
+  seedEmployers,
+  startDiscovery,
+  startRefresh,
+} from './engine/ingest';
+import {
+  browserJobsFromPages,
+  browserIngestAuthStatus,
+  isBrowserIngestPayload,
+} from './engine/browser-pull';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
 import { buildCsv, buildWorkbook } from './export';
 import { PROFILE, describeProfile } from './profile';
 import { buildIdFromHtml } from '../client/src/buildVersion';
+import type { EmployerRow } from './engine/types';
 
 /** Filename stem for exports, derived from the board name so nothing is branded by hand. */
 function exportSlug(): string {
@@ -51,7 +67,24 @@ const BUILD_ID = readBuildId();
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '256kb' }));
+const apiJsonParser = express.json({ limit: '256kb' });
+app.use((req, res, next) => {
+  if (req.path === '/api/browser-ingest') return next();
+  return apiJsonParser(req, res, next);
+});
+
+function requireBrowserIngestToken(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  const status = browserIngestAuthStatus(req.get('Authorization'), process.env.BROWSER_INGEST_TOKEN);
+  if (status !== 200) {
+    res.sendStatus(status);
+    return;
+  }
+  next();
+}
 
 function nextScheduledRefresh(from = new Date()): string | null {
   // The schedule is every thirty minutes, so the next run is the next :00 or :30 in
@@ -127,6 +160,95 @@ app.get('/api/employers', async (_req, res, next) => {
     next(err);
   }
 });
+
+app.get('/api/browser-employers', requireBrowserIngestToken, async (_req, res, next) => {
+  try {
+    const employers = await q<{
+      id: number;
+      name: string;
+      slug: string;
+      careers_url: string;
+      job_keys: string[];
+    }>(
+      `SELECT e.id, e.name, e.slug, e.careers_url,
+              COALESCE(array_agg(j.job_key) FILTER (WHERE j.job_key IS NOT NULL), ARRAY[]::text[]) AS job_keys
+         FROM employers e
+         LEFT JOIN jobs j ON j.employer_id = e.id
+        WHERE e.active = TRUE AND e.ats = 'browser' AND e.careers_url IS NOT NULL
+        GROUP BY e.id
+        ORDER BY e.id`,
+    );
+    res.json({ employers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  '/api/browser-ingest',
+  requireBrowserIngestToken,
+  express.json({ limit: '8mb' }),
+  async (req, res, next) => {
+    try {
+      if (!isBrowserIngestPayload(req.body)) {
+        res.status(400).json({ error: 'Invalid browser ingest payload' });
+        return;
+      }
+      if (isRefreshing()) {
+        res.status(409).json({ error: 'A refresh is running; retry the browser ingest later' });
+        return;
+      }
+      const runningRun = await one<{ id: number }>(
+        `SELECT id FROM refresh_runs WHERE status='running' ORDER BY id DESC LIMIT 1`,
+      );
+      if (runningRun) {
+        res.status(409).json({ error: 'A refresh is running; retry the browser ingest later' });
+        return;
+      }
+
+      const employerRows = await q<EmployerRow>(
+        `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
+                black_owned, ownership_status, ownership_source, last_searched_at::text,
+                last_resolve_at::text, active
+           FROM employers
+          WHERE id = $1 AND active = TRUE AND ats = 'browser'`,
+        [req.body.employerId],
+      );
+      const employer = employerRows[0];
+      if (!employer) {
+        res.status(404).json({ error: 'Active browser employer not found' });
+        return;
+      }
+      const knownRows = await q<{ job_key: string }>(
+        `SELECT job_key FROM jobs WHERE employer_id = $1`,
+        [employer.id],
+      );
+      const listedUrls = [...new Set(req.body.listedUrls)];
+      const jobs = browserJobsFromPages(
+        employer,
+        new Set(knownRows.map((row) => row.job_key)),
+        listedUrls,
+        req.body.pages,
+      );
+      const result = {
+        jobs,
+        ok: true,
+        totalListed: listedUrls.length,
+        truncated: !req.body.complete || req.body.timedOut,
+      };
+      const counts = await ingestBoardResult(
+        employer,
+        result,
+        emptyCounters(),
+        [],
+        browserPullAllowsClosure(req.body.complete, req.body.timedOut),
+      );
+      res.json(counts);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 app.get('/api/runs', async (req, res, next) => {
   try {
