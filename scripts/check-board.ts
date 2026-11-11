@@ -18,10 +18,10 @@ function employerFor(spec: string, index: number): EmployerRow {
   const target = rest.join(':');
   const isWorkday = ats === 'workday';
   const isIcims = ats === 'icims';
-  const isNewDirectAts = ats === 'ukg' || ats === 'taleo' || ats === 'successfactors' || ats === 'neogov' || ats === 'phenom';
+  const isNewDirectAts = ats === 'adp' || ats === 'ukg' || ats === 'taleo' || ats === 'successfactors' || ats === 'neogov' || ats === 'phenom';
   const boardTarget = target.split('|')[0];
   const icimsTarget = isIcims ? boardTarget : target;
-  const sourceName = ats === 'oracle'
+  const sourceName = ats === 'adp' ? 'ADP Workforce Now' : ats === 'oracle'
     ? target.startsWith('egud.') ? 'AutoZone' : 'International Paper'
     : ats === 'dayforce' ? 'Bristol Bay Native Corporation'
       : isIcims ? target.split('|')[1] ?? icimsTarget.replace(/^careers-/i, '').split('.')[0]
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   let hardFailures = 0;
   for (const [index, spec] of specs.entries()) {
     const employer = employerFor(spec, index);
-    const isNewDirectAts = ['ukg', 'taleo', 'successfactors', 'neogov'].includes(employer.ats);
+    const isNewDirectAts = ['adp', 'ukg', 'taleo', 'successfactors', 'neogov'].includes(employer.ats);
     const started = Date.now();
     const result = await fetchBoard(employer);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);

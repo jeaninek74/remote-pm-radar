@@ -31,6 +31,7 @@ import {
   crelateSalary,
   extractCrelateOrgId,
 } from '../server/engine/crelate';
+import { adpApplyUrl, adpCoordinates, adpLocationFields, adpSalary } from '../server/engine/adp';
 import { evaluateLocation } from '../server/engine/location';
 import type { Ats, EmployerRow } from '../server/engine/types';
 
@@ -232,6 +233,41 @@ async function main(): Promise<void> {
     avionteMaxOnlyAnnual?.min === null && avionteMaxOnlyAnnual.max === 90000
       && avionteMaxOnlyHourly?.min === null && avionteMaxOnlyHourly.max === 52000
       && avionteMaxOnlyHourly.interval === 'hour' && avionteMaxOnlyHourly.hourlyRate === 25);
+  const adpAnnualSalary = adpSalary('130000.00 to 160000.00 (USD) Annually');
+  const adpHourlySalary = adpSalary('30.00 to 40.00 (USD) Hourly');
+  const adpMaximumOnlyGrade = adpSalary(null, { maximumValue: 160000, currencyCode: 'USD', frequency: 'Annually' });
+  const adpMinimumOnlyGrade = adpSalary(null, { minimumValue: 90000, currencyCode: 'USD', frequency: 'Annually' });
+  const adpDefaultCoordinates = adpCoordinates('856f0547-6210-4057-add7-4ef48d092619');
+  const adpCustomCoordinates = adpCoordinates('856f0547-6210-4057-add7-4ef48d092619/19000101_000002');
+  check('ADP salary strings use the shared annual and hourly parser',
+    adpAnnualSalary?.min === 130000 && adpAnnualSalary.max === 160000
+      && adpAnnualSalary.interval === 'year'
+      && adpHourlySalary?.min === 62400 && adpHourlySalary.max === 83200
+      && adpHourlySalary.interval === 'hour' && adpHourlySalary.hourlyRate === 30);
+  check('ADP max-only pay is excluded while minimum-only pay remains a floor',
+    adpMaximumOnlyGrade === null && adpMinimumOnlyGrade?.min === 90000
+      && adpSalary('Up to 160000.00 (USD) Annually') === null);
+  check('ADP slugs support default and custom ccId apply URLs',
+    adpDefaultCoordinates?.ccId === '19000101_000001'
+      && adpCustomCoordinates?.ccId === '19000101_000002'
+      && adpApplyUrl(adpDefaultCoordinates!, '643898').includes('jobId=643898'));
+  const adpUsLocation = adpLocationFields({
+    requisitionLocations: [{ nameCode: { shortName: 'Orlando, FL, 32826' } }],
+  });
+  const adpCanadaLocation = adpLocationFields({
+    requisitionLocations: [{ nameCode: { shortName: 'Toronto, ON, Canada' } }],
+  });
+  const adpUsAndCanadaLocations = adpLocationFields({
+    requisitionLocations: [
+      { address: { cityName: 'Orlando', countrySubdivisionLevel1: { codeValue: 'FL' }, countryCode: 'US' } },
+      { address: { cityName: 'Toronto', countrySubdivisionLevel1: { codeValue: 'ON' }, countryCode: 'CA' } },
+    ],
+  });
+  check('ADP location fallbacks add US context and exclude foreign-only postings',
+    adpUsLocation.locations[0] === 'Orlando, FL, 32826, United States'
+      && adpCanadaLocation.restrictions.includes('Outside the United States')
+      && adpUsAndCanadaLocations.locations.length === 2
+      && !adpUsAndCanadaLocations.restrictions.includes('Outside the United States'));
   const avionteAppUrl = 'https://hire.myavionte.com/app/careers/#/jobs/KAUX5Mf_j8U/AwoomZzUrHY//';
   const avionteAppDetection = detect('', avionteAppUrl);
   check('Avionté app URL yields board coordinates',

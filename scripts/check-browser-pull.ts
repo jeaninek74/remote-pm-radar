@@ -242,6 +242,15 @@ async function main(): Promise<void> {
   );
   check('browser parser gets the posting title from rendered h1/title text',
     renderedTitle?.title === 'Program Manager');
+  check('browser parser rejects job-count search-result titles',
+    rawJobFromRenderedCareersPage(
+      employer,
+      source,
+      origin,
+      `${origin}/jobs/q-project-manager`,
+      'View',
+      '<html><head><title>4632 operations manager jobs found</title></head><body><h1>4632 operations manager jobs found</h1></body></html>',
+    ) === null);
   const noIdUrl = `${origin}/job/senior-program-manager/`;
   const noIdTitleHtml = '<html><body><h1>Senior Program Manager</h1></body></html>';
   check('browser parser uses a role title on a rendered job route without a numeric ID',

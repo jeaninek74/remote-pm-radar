@@ -406,12 +406,14 @@ export function rawJobFromRenderedCareersPage(
   linkText: string,
   html: string,
 ): RawJob | null {
+  const renderedTitle = careersDetailTitle(html) || linkText;
+  if (/^\s*[\d,]+\+?\s+.*\bjobs?\s+(?:found|available|results?)\b/i.test(renderedTitle)) return null;
   return rawJobFromCareersPage(
     employer,
     source,
     origin,
     url,
-    careersDetailTitle(html) || linkText,
+    renderedTitle,
     html,
     true,
   );
