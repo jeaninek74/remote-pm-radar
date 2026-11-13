@@ -128,13 +128,18 @@ const JOB_COLUMNS = `
   app_status, notes, interview_at::text, recruiter_notes, applied_at::text, follow_up_at::text
 `;
 
+const LIST_JOB_COLUMNS = JOB_COLUMNS.replace(
+  'bucket, bucket_reason',
+  "CASE WHEN duplicate_of IS NOT NULL THEN 'excluded' ELSE bucket END AS bucket, bucket_reason",
+);
+
 export async function listJobs(): Promise<JobRow[]> {
   const rows = await q<JobRecord>(
-    `SELECT ${JOB_COLUMNS}
+    `SELECT ${LIST_JOB_COLUMNS}
        FROM jobs
       WHERE (duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived'))
          OR app_status <> 'Not Applied'
-      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC,
+      ORDER BY (jobs.bucket = 'tab0') DESC, (jobs.bucket = 'tab1') DESC, (jobs.bucket = 'tab2') DESC, (jobs.bucket = 'unsalaried') DESC,
                posted_at DESC NULLS LAST, first_seen_at DESC NULLS LAST`,
   );
   return rows.map(mapJob);
