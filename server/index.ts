@@ -17,9 +17,10 @@ import {
 } from './engine/ingest';
 import {
   browserJobsFromPages,
-  browserIngestAuthStatus,
+  isBrowserIngestAuthorized,
   isBrowserIngestPayload,
 } from './engine/browser-pull';
+import { verifyGithubOidcToken } from './engine/github-oidc';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
@@ -77,13 +78,23 @@ function requireBrowserIngestToken(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
-): void {
-  const status = browserIngestAuthStatus(req.get('Authorization'), process.env.BROWSER_INGEST_TOKEN);
-  if (status !== 200) {
-    res.sendStatus(status);
-    return;
-  }
-  next();
+): Promise<void> {
+  return (async () => {
+    try {
+      const authorization = req.get('Authorization');
+      if (!await isBrowserIngestAuthorized(
+        authorization,
+        process.env.BROWSER_INGEST_TOKEN,
+        verifyGithubOidcToken,
+      )) {
+        res.sendStatus(401);
+        return;
+      }
+      next();
+    } catch {
+      res.sendStatus(401);
+    }
+  })();
 }
 
 function nextScheduledRefresh(from = new Date()): string | null {

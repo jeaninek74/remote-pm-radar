@@ -96,12 +96,22 @@ export function buildBrowserPayloadChunks(
 export function browserIngestAuthStatus(
   authorization: string | undefined,
   expectedToken: string | undefined,
-): 200 | 401 | 404 {
-  if (!expectedToken) return 404;
+): 200 | 401 {
+  if (!expectedToken) return 401;
   const expected = Buffer.from(`Bearer ${expectedToken}`);
   const supplied = Buffer.from(authorization ?? '');
   if (expected.length !== supplied.length) return 401;
   return timingSafeEqual(expected, supplied) ? 200 : 401;
+}
+
+export async function isBrowserIngestAuthorized(
+  authorization: string | undefined,
+  expectedToken: string | undefined,
+  verifyOidc: (token: string) => Promise<boolean>,
+): Promise<boolean> {
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? '')?.[1];
+  if (bearer && bearer.split('.').length === 3 && await verifyOidc(bearer)) return true;
+  return browserIngestAuthStatus(authorization, expectedToken) === 200;
 }
 
 export function isBrowserIngestPayload(value: unknown): value is BrowserIngestPayload {

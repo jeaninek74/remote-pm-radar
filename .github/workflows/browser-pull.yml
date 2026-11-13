@@ -5,6 +5,10 @@ on:
     - cron: '20,50 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: browser-pull
   cancel-in-progress: false
@@ -39,6 +43,5 @@ jobs:
 
       - name: Pull browser-rendered postings
         env:
-          BROWSER_INGEST_TOKEN: ${{ secrets.BROWSER_INGEST_TOKEN }}
           RADAR_URL: https://remote-pm-radar.onrender.com
         run: npx tsx scripts/browser-pull.ts

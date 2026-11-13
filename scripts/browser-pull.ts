@@ -4,7 +4,6 @@ import { evaluateRaw } from '../server/engine/ingest';
 import {
   buildBrowserPayloadChunks,
   browserJobKey,
-  browserIngestAuthStatus,
   type BrowserIngestPayload,
   type BrowserPage,
 } from '../server/engine/browser-pull';
@@ -477,18 +476,41 @@ async function waitForPostWindow(): Promise<void> {
   }
 }
 
+async function authHeader(): Promise<string | null> {
+  const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  if (requestUrl && requestToken) {
+    const response = await fetch(
+      `${requestUrl}&audience=remote-pm-radar-browser-pull`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${requestToken}` },
+      },
+    );
+    if (!response.ok) throw new Error(`GitHub OIDC token request failed: HTTP ${response.status}`);
+    const payload = await response.json() as { value?: unknown };
+    if (typeof payload.value !== 'string' || !payload.value) {
+      throw new Error('GitHub OIDC token response did not include a token');
+    }
+    return `Bearer ${payload.value}`;
+  }
+  const localToken = process.env.BROWSER_INGEST_TOKEN;
+  return localToken ? `Bearer ${localToken}` : null;
+}
+
 async function postWithRetry(
   radarUrl: string,
-  token: string,
   payload: BrowserIngestPayload,
 ): Promise<unknown> {
   const startedAt = Date.now();
   for (;;) {
     await waitForPostWindow();
+    const authorization = await authHeader();
+    if (!authorization) throw new Error('Browser pull authentication is unavailable');
     const response = await fetch(`${radarUrl}/api/browser-ingest`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: authorization,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -512,14 +534,14 @@ async function postWithRetry(
 }
 
 async function runServerMode(): Promise<void> {
-  const token = process.env.BROWSER_INGEST_TOKEN;
-  if (browserIngestAuthStatus(undefined, token) === 404) {
-    console.log('BROWSER_INGEST_TOKEN not set; skipping');
+  const authorization = await authHeader();
+  if (!authorization) {
+    console.log('no GitHub OIDC or BROWSER_INGEST_TOKEN; skipping');
     return;
   }
   const radarUrl = (process.env.RADAR_URL ?? 'https://remote-pm-radar.onrender.com').replace(/\/+$/, '');
   const response = await fetch(`${radarUrl}/api/browser-employers`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: authorization },
   });
   if (!response.ok) throw new Error(`GET /api/browser-employers failed: HTTP ${response.status}`);
   const payload = await response.json() as { employers?: BrowserEmployer[] };
@@ -540,7 +562,7 @@ async function runServerMode(): Promise<void> {
     try {
       const chunks = postPayloads(result);
       for (const chunk of chunks) {
-        const responseBody = await postWithRetry(radarUrl, token!, chunk);
+        const responseBody = await postWithRetry(radarUrl, chunk);
         console.log(`INGEST\t${result.employer.name}\t${JSON.stringify(responseBody)}`);
         posted += 1;
       }
