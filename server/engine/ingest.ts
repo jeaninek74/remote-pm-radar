@@ -13,12 +13,15 @@ import { scoreJob } from './match';
 import { detectUrgency } from './urgency';
 import { isOwnershipWatchTitle, isRoleTitle } from './titles';
 import { ACTIVE_ROLE_FAMILY } from './roles/active';
-import { companyKey, daysBetween, norm, slugify, titleKey, truncate } from './text';
+import { companyKey, daysBetween, norm, slugify, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
 import type { Ats, BoardFetchResult, EmployerRow, RawJob } from './types';
 import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
+import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
+
+export { sharedBoardPostingKey } from './dedupe';
 
 export { nameTokens, namesAgree };
 
@@ -312,10 +315,11 @@ interface UpsertOutcome {
   id: number;
   inserted: boolean;
   bucket: string;
+  duplicate_of: number | null;
 }
 
 async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
-  const rows = await q<{ id: number; inserted: boolean; bucket: string }>(
+  const rows = await q<{ id: number; inserted: boolean; bucket: string; duplicate_of: number | null }>(
     `INSERT INTO jobs (
         job_key, employer_id, company, title, category, industry, company_size, hq_state,
         remote_status, ca_eligibility, ca_eligibility_note, employment_type,
@@ -368,7 +372,7 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
         description_excerpt = EXCLUDED.description_excerpt,
         employer_id = COALESCE(EXCLUDED.employer_id, jobs.employer_id),
         updated_at = now()
-     RETURNING id, (xmax = 0) AS inserted, bucket`,
+     RETURNING id, (xmax = 0) AS inserted, bucket, duplicate_of`,
     [
       ev.jobKey, ev.employerId, ev.company, ev.title, ev.category, ev.industry, ev.companySize, ev.hqState,
       ev.remoteStatus, ev.caEligibility, ev.caNote, ev.employmentType,
@@ -379,7 +383,32 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
       ev.bucket, ev.bucketReason, ev.descriptionExcerpt, ev.source,
     ],
   );
-  return rows[0];
+  const inserted = rows[0];
+  if (inserted.inserted && ['tab0', 'tab1', 'tab2', 'unsalaried', 'queue'].includes(inserted.bucket)) {
+    const existingRows = await q<DedupeRow>(
+      `SELECT id, company, title, job_key, requisition_id, posted_at::text
+         FROM jobs
+        WHERE id <> $1
+          AND duplicate_of IS NULL
+          AND bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+          AND (lower(company) = lower($2) OR requisition_id = $3)`,
+      [inserted.id, ev.company, ev.requisitionId],
+    );
+    const keys = new Set(dedupeKeys({
+      id: inserted.id,
+      job_key: ev.jobKey,
+      company: ev.company,
+      title: ev.title,
+      requisition_id: ev.requisitionId,
+      posted_at: ev.postedAt,
+    }));
+    const match = existingRows.find((row) => dedupeKeys(row).some((key) => keys.has(key)));
+    if (match) {
+      await q(`UPDATE jobs SET duplicate_of = $2 WHERE id = $1`, [inserted.id, match.id]);
+      inserted.duplicate_of = match.id;
+    }
+  }
+  return inserted;
 }
 
 export interface BoardIngestCounts {
@@ -456,7 +485,10 @@ export async function ingestBoardResult(
       if (outcome.bucket === 'queue') counters.queued += 1;
       // Every new live-tab posting gets its application link verified — no count cap; the
       // verification stage is bounded by time only.
-      if (outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2' || outcome.bucket === 'unsalaried') {
+      if (
+        outcome.duplicate_of === null
+        && (outcome.bucket === 'tab0' || outcome.bucket === 'tab1' || outcome.bucket === 'tab2' || outcome.bucket === 'unsalaried')
+      ) {
         linkCandidates.push(outcome.id);
       }
     } else {
@@ -466,13 +498,16 @@ export async function ingestBoardResult(
   counters.jobsMatched += matched;
 
   if (shouldCloseMissing(result, closeMissing) && (seenKeys.size || matched === 0)) {
+    const missingBucketList = employer.ats === 'browser'
+      ? "'tab0','tab1','tab2'"
+      : "'tab0','tab1','tab2','unsalaried','queue'";
     const closed = await q<{ id: number }>(
       `UPDATE jobs
           SET bucket='archived',
               bucket_reason='No longer listed on the employer''s job board (closed or filled).',
               updated_at=now()
         WHERE employer_id = $1
-          AND bucket IN ('tab0','tab1','tab2')
+          AND bucket IN (${missingBucketList})
           AND last_seen_at < now() - INTERVAL '10 minutes'
         RETURNING id`,
       [employer.id],
@@ -788,6 +823,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   };
 
   try {
+    await dedupeJobs();
     const employerCount = await one<{ count: string }>(`SELECT count(*)::text AS count FROM employers`);
     if (!employerCount || employerCount.count === '0') {
       await progress('Seeding employer inventory');
@@ -962,7 +998,8 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     // of time), newest first, so no live link stays unchecked across runs.
     const unverified = await q<{ id: number }>(
       `SELECT id FROM jobs
-        WHERE bucket IN ('tab0','tab1','tab2','unsalaried') AND link_verified_at IS NULL
+        WHERE duplicate_of IS NULL
+          AND bucket IN ('tab0','tab1','tab2','unsalaried') AND link_verified_at IS NULL
         ORDER BY first_seen_at DESC`,
     );
     const linkIds = [...new Set([...linkCandidates, ...unverified.map((row) => row.id)])];
@@ -971,7 +1008,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     await mapLimit(linkIds, 8, async (id) => {
       if (Date.now() > linkDeadline) return;
       const job = await one<{ id: number; apply_url: string; bucket: string }>(
-        `SELECT id, apply_url, bucket FROM jobs WHERE id=$1`,
+        `SELECT id, apply_url, bucket FROM jobs WHERE id=$1 AND duplicate_of IS NULL`,
         [id],
       );
       // A row deduplicated or archived since it was queued is not moved back into a bucket.
@@ -1031,35 +1068,11 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
 /* ------------------------------------------------------------ post-processors */
 
-export function sharedBoardPostingKey(
-  jobKey: string,
-  requisitionId?: string | null,
-  title?: string | null,
-  postedAt?: string | null,
-): string | null {
-  const match = jobKey.match(/^oracle:([^/]+)\/[^:]+:(.+)$/);
-  if (match) return `oracle-posting:${match[1].toLowerCase()}:${match[2]}`;
-  const postedDate = postedAt?.slice(0, 10);
-  if (
-    /^phenom:/i.test(jobKey)
-    && requisitionId?.trim()
-    && title?.trim()
-    && postedDate
-    && /^\d{4}-\d{2}-\d{2}$/.test(postedDate)
-  ) {
-    return `phenom-posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}:${postedDate}`;
-  }
-  return null;
-}
-
 async function dedupeJobs(): Promise<number> {
-  const rows = await q<{
-    id: number; job_key: string; company: string; title: string; requisition_id: string | null;
-    link_type: string; posted_at: string | null; bucket: string;
-  }>(
+  const rows = await q<DedupeRow>(
     // Winner order: a role the user is tracking, then an employer link, then the most useful
     // bucket (a salary tab beats Pay not published beats the queue), then the oldest posting.
-    `SELECT id, job_key, company, title, requisition_id, link_type, posted_at::text, bucket
+    `SELECT id, job_key, company, title, requisition_id, posted_at::text, app_status, link_type, bucket
        FROM jobs
       WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
       ORDER BY (app_status IS NOT NULL AND app_status <> 'Not Applied') DESC,
@@ -1067,43 +1080,33 @@ async function dedupeJobs(): Promise<number> {
                CASE bucket WHEN 'tab2' THEN 0 WHEN 'tab1' THEN 1 WHEN 'tab0' THEN 2 WHEN 'unsalaried' THEN 3 ELSE 4 END,
                posted_at ASC NULLS LAST, id ASC`,
   );
-  const winners = new Map<string, { id: number; company: string; title: string }>();
-  const losers: { id: number; of: number; company: string; title: string }[] = [];
-  for (const row of rows) {
-    const keys = [
-      `${companyKey(row.company)}::${titleKey(row.title)}`,
-      sharedBoardPostingKey(row.job_key, row.requisition_id, row.title, row.posted_at),
-    ].filter((key): key is string => key !== null);
-    let winner: { id: number; company: string; title: string } | undefined;
-    for (const key of keys) {
-      winner = winners.get(key);
-      if (winner) break;
-    }
-    if (winner) {
-      // Rows arrive in winner order, so the first row for a key always wins.
-      losers.push({ id: row.id, of: winner.id, company: row.company, title: row.title });
-    } else {
-      const entry = { id: row.id, company: row.company, title: row.title };
-      for (const key of keys) winners.set(key, entry);
-    }
-  }
-  for (const loser of losers) {
+  const losers = duplicateLosers(rows);
+  const loserIds = [...losers.keys()];
+  if (loserIds.length) {
     await q(
-      `UPDATE jobs SET bucket='excluded',
-              bucket_reason=$2,
-              updated_at=now()
-        WHERE id=$1`,
-      [loser.id, `Duplicate of record #${loser.of} (same role at ${loser.company}).`],
+      `UPDATE jobs AS job
+          SET duplicate_of = mapping.winner_id
+         FROM unnest($1::int[], $2::int[]) AS mapping(id, winner_id)
+        WHERE job.id = mapping.id`,
+      [loserIds, [...losers.values()]],
     );
   }
-  return losers.length;
+  await q(
+    `UPDATE jobs
+        SET duplicate_of = NULL
+      WHERE duplicate_of IS NOT NULL
+        AND NOT (id = ANY($1::int[]))`,
+    [loserIds],
+  );
+  return losers.size;
 }
 
 async function flagMultiRoleUrgency(): Promise<void> {
   const rows = await q<{ company: string; open_roles: string }>(
     `SELECT company, count(*)::text AS open_roles
        FROM jobs
-      WHERE bucket IN ('tab0','tab1','tab2')
+      WHERE duplicate_of IS NULL
+        AND bucket IN ('tab0','tab1','tab2')
       GROUP BY company
      HAVING count(*) >= 2`,
   );
@@ -1112,7 +1115,7 @@ async function flagMultiRoleUrgency(): Promise<void> {
       `UPDATE jobs
           SET urgency='Medium',
               urgency_evidence=COALESCE(urgency_evidence, $2)
-        WHERE company=$1 AND bucket IN ('tab0','tab1','tab2') AND urgency='Low'`,
+        WHERE company=$1 AND duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND urgency='Low'`,
       [row.company, `Employer is recruiting ${row.open_roles} project/program roles at the same time (inferred, not stated in the posting).`],
     );
   }
@@ -1122,7 +1125,8 @@ async function flagExplicitUrgency(): Promise<number> {
   const rows = await q<{ id: number; title: string; description_excerpt: string | null }>(
     `SELECT id, title, description_excerpt
        FROM jobs
-      WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+      WHERE duplicate_of IS NULL
+        AND bucket IN ('tab0','tab1','tab2','unsalaried','queue')
         AND urgency IS DISTINCT FROM 'High'`,
   );
   let updated = 0;
@@ -1132,7 +1136,7 @@ async function flagExplicitUrgency(): Promise<number> {
     const changed = await q<{ id: number }>(
       `UPDATE jobs
           SET urgency='High', urgency_evidence=$2, updated_at=now()
-        WHERE id=$1 AND urgency IS DISTINCT FROM 'High'
+        WHERE id=$1 AND duplicate_of IS NULL AND urgency IS DISTINCT FROM 'High'
         RETURNING id`,
       [row.id, verdict.evidence],
     );

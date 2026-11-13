@@ -14,6 +14,8 @@
     "dev": "npm run build && npm start",
     "typecheck": "tsc --noEmit",
     "test": "tsx scripts/selftest.ts",
+    "check:location": "tsx scripts/check-location.ts",
+    "check:dedupe": "tsx scripts/check-dedupe.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:employers": "tsx scripts/seed-employers.ts",
     "refresh": "tsx scripts/refresh.ts"
