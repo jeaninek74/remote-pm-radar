@@ -190,6 +190,11 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const restrictionText = restrictions.join(' | ');
   const restrictionStateInfo = parseRestrictionStates(restrictions);
   const scopeText = `${locText} | ${restrictionText}`;
+  const restrictionsNameUs = restrictions.some((restriction) =>
+    US_MARKERS.test(restriction)
+    || /\bunited states\b/i.test(restriction)
+    || detectStates(restriction).length > 0,
+  );
   const nationwideUsOnly = locations.length > 0
     && locations.every((location) =>
       US_MARKERS.test(location) || /^(?:united states|us|usa|united states of america)$/i.test(location),
@@ -262,7 +267,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     };
   }
 
-  if (locations.length > 0 && locations.every(isForeignListedLocation)) {
+  if (locations.length > 0 && locations.every(isForeignListedLocation) && !restrictionsNameUs) {
     return {
       remote,
       ca: 'not_us',

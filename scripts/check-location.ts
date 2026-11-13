@@ -445,6 +445,24 @@ const allForeignNote = evaluateLocation({
 check('all-foreign note includes exact labels',
   allForeignNote.note === 'All listed locations are outside the United States (Warsaw, POL).');
 
+const foreignWithUsResidencyRestriction = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Must reside in the United States'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with US residency restriction stays eligible',
+  foreignWithUsResidencyRestriction.ca !== 'not_us');
+
+const foreignWithUsStateRestriction = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Remote within Texas'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with US state restriction stays eligible',
+  foreignWithUsStateRestriction.ca !== 'not_us');
+
 const lowercaseCode = evaluateLocation({
   locations: ['pol'],
   workplaceType: 'remote',
