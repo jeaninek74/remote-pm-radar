@@ -463,6 +463,24 @@ const foreignWithUsStateRestriction = evaluateLocation({
 check('foreign location with US state restriction stays eligible',
   foreignWithUsStateRestriction.ca !== 'not_us');
 
+const foreignWithExcludedState = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Remote, excluding New York'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with excluded US state remains not_us',
+  foreignWithExcludedState.ca === 'not_us');
+
+const foreignWithUnavailableState = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Not available in California'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with unavailable US state remains not_us',
+  foreignWithUnavailableState.ca === 'not_us');
+
 const lowercaseCode = evaluateLocation({
   locations: ['pol'],
   workplaceType: 'remote',

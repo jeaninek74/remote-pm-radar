@@ -71,6 +71,7 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|(?:us|usa)\s*\/\s*(?:can|canada)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|eu|united kingdom|uk|ireland|germany|deutschland|france|spain|españa|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|méxico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai|sweden|norway|denmark|finland|lithuania|latvia|estonia|bulgaria|romania|hungary|czech|slovakia|austria|switzerland|belgium|italy|greece|turkey|ukraine|saudi arabia|qatar|egypt|morocco|nicaragua|costa rica|panama|panamá|peru|ecuador|guatemala|honduras|el salvador|dominican republic|thailand|vietnam|malaysia|indonesia|taiwan|hong kong)\b/i;
 const EXPLICIT_NON_US_SCOPE = /\b(?:outside (?:the )?(?:united states|u\.?s\.?)|non[- ]us)\b/i;
+const RESTRICTION_EXCLUSION = /\b(?:exclud\w*|except|other than|not (?:available|eligible|open|hiring))\b/i;
 const ISO3_FOREIGN_CODE_TOKEN = /(?:^|[,\s-]|\()(?:POL|GBR|THA|CRI|CAN|MEX|IND|DEU|FRA|ESP|IRL|NLD|BEL|ITA|PRT|CHE|AUT|SWE|NOR|DNK|FIN|LTU|BGR|ROU|HUN|CZE|AUS|NZL|SGP|PHL|MYS|IDN|VNM|JPN|KOR|CHN|TWN|HKG|BRA|ARG|COL|CHL|PER|ISR|ARE|SAU|ZAF|EGY)(?=$|[,;\s)\-:])/;
 const CANADIAN_PROVINCE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:ON|QC|BC|AB|MB|NS|NB|NL|SK|PE)\b/i;
 const AUSTRALIAN_STATE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:NSW|VIC|QLD)\b/i;
@@ -193,7 +194,7 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const restrictionsNameUs = restrictions.some((restriction) =>
     US_MARKERS.test(restriction)
     || /\bunited states\b/i.test(restriction)
-    || detectStates(restriction).length > 0,
+    || (detectStates(restriction).length > 0 && !RESTRICTION_EXCLUSION.test(restriction)),
   );
   const nationwideUsOnly = locations.length > 0
     && locations.every((location) =>
