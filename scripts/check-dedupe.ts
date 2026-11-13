@@ -42,6 +42,18 @@ const precisionLosers = duplicateLosers([
 check('same requisition/title/date deduplicates across companies',
   precisionLosers.size === 1 && precisionLosers.get(11) === 10);
 
+check('same requisition/title/date at unrelated companies stays distinct',
+  duplicateLosers([
+    row(12, 'Acme Health', 'Program Manager', 'greenhouse:acme:7352', '7352', '2026-11-04'),
+    row(13, 'Brightline Staffing', 'Program Manager', 'greenhouse:brightline:7352', '7352', '2026-11-04'),
+  ]).size === 0);
+
+check('Phenom shared requisition/title/date still deduplicates across tenants',
+  duplicateLosers([
+    row(14, 'Bon Secours', 'Sourcing Program Manager', 'phenom:bonsecours:1', 'R289400', '2026-11-04'),
+    row(15, 'Mercy', 'Sourcing Program Manager', 'phenom:mercy:1', 'R289400', '2026-11-04'),
+  ]).get(15) === 14);
+
 check('same requisition/title on different posted dates stays distinct',
   duplicateLosers([
     row(20, 'Company One', 'Program Manager', 'greenhouse:one:7352', '7352', '2026-11-04'),
@@ -61,11 +73,11 @@ const trackedLosers = duplicateLosers([
 check('pre-sorted tracked row wins', trackedLosers.size === 1 && trackedLosers.get(41) === 40);
 
 check('Oracle shared-board key is preserved',
-  sharedBoardPostingKey('oracle:tenant/site:ABC123') === 'oracle-posting:tenant:ABC123');
+  sharedBoardPostingKey('oracle:tenant/site:ABC123', 'Oracle Company') === 'oracle-posting:tenant:ABC123');
 check('generic requisition key applies across sources',
-  sharedBoardPostingKey('greenhouse:tenant:123', ' 7352 ', 'Program Manager', '2026-11-04')
-    === 'posting:7352:programmanager:2026-11-04');
+  sharedBoardPostingKey('greenhouse:tenant:123', 'Precision AQ', ' 7352 ', 'Program Manager', '2026-11-04')
+    === 'posting:precision:7352:programmanager:2026-11-04');
 check('generic requisition key requires a valid date',
-  sharedBoardPostingKey('greenhouse:tenant:123', '7352', 'Program Manager', null) === null);
+  sharedBoardPostingKey('greenhouse:tenant:123', 'Precision AQ', '7352', 'Program Manager', null) === null);
 
 if (failures) throw new Error(`${failures} dedupe check(s) failed`);

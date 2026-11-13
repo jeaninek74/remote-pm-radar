@@ -1,4 +1,5 @@
 import { companyKey, titleKey } from './text';
+import { nameTokens } from './resolve';
 
 export interface DedupeRow {
   id: number;
@@ -14,6 +15,7 @@ export interface DedupeRow {
 
 export function sharedBoardPostingKey(
   jobKey: string,
+  company: string,
   requisitionId?: string | null,
   title?: string | null,
   postedAt?: string | null,
@@ -23,19 +25,30 @@ export function sharedBoardPostingKey(
 
   const postedDate = postedAt?.slice(0, 10);
   if (
+    /^phenom:/i.test(jobKey)
+    && requisitionId?.trim()
+    && title?.trim()
+    && postedDate
+    && /^\d{4}-\d{2}-\d{2}$/.test(postedDate)
+  ) {
+    return `phenom-posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}:${postedDate}`;
+  }
+
+  if (
     requisitionId?.trim()
     && title?.trim()
     && postedDate
     && /^\d{4}-\d{2}-\d{2}$/.test(postedDate)
   ) {
-    return `posting:${requisitionId.trim().toLowerCase()}:${titleKey(title)}:${postedDate}`;
+    const companyName = nameTokens(company)[0] ?? companyKey(company);
+    return `posting:${companyName}:${requisitionId.trim().toLowerCase()}:${titleKey(title)}:${postedDate}`;
   }
   return null;
 }
 
 export function dedupeKeys(row: DedupeRow): string[] {
   const keys = [`${companyKey(row.company)}::${titleKey(row.title)}`];
-  const postingKey = sharedBoardPostingKey(row.job_key, row.requisition_id, row.title, row.posted_at);
+  const postingKey = sharedBoardPostingKey(row.job_key, row.company, row.requisition_id, row.title, row.posted_at);
   if (postingKey) keys.push(postingKey);
   return keys;
 }

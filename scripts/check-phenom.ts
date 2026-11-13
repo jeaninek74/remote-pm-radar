@@ -201,12 +201,14 @@ check('Phenom job URL preserves locale path', phenomJobUrl('job/123', 'https://j
 const sharedPhenomTitle = 'Sourcing Program Manager - Work at Home';
 const bonSecoursPostingKey = sharedBoardPostingKey(
   'Phenom:careers.bonsecours.com/us/en:BSMBSZUSR289400EXTERNALENUS',
+  'Bon Secours',
   'R289400',
   sharedPhenomTitle,
   '2026-11-01',
 );
 const mercyPostingKey = sharedBoardPostingKey(
   'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+  'Mercy',
   'R289400',
   sharedPhenomTitle,
   '2026-11-01',
@@ -216,6 +218,7 @@ check('Phenom shared requisition IDs and dates deduplicate across tenant prefixe
 check('Phenom shared requisition IDs with different dates stay distinct',
   bonSecoursPostingKey !== sharedBoardPostingKey(
     'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'Mercy',
     'R289400',
     sharedPhenomTitle,
     '2026-11-02',
@@ -223,6 +226,7 @@ check('Phenom shared requisition IDs with different dates stay distinct',
 check('Phenom posting without a date has no shared key',
   sharedBoardPostingKey(
     'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'Mercy',
     'R289400',
     sharedPhenomTitle,
     null,
@@ -230,6 +234,7 @@ check('Phenom posting without a date has no shared key',
 check('Phenom shared requisition keys retain title identity',
   sharedBoardPostingKey(
     'Phenom:careers.mercy.com/us/en:BSMMHPUSR289400EXTERNALENUS',
+    'Mercy',
     'R289400',
     'Different Program Manager Role',
     '2026-11-01',
