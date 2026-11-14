@@ -481,23 +481,37 @@ export async function ingestBoardResult(
   const seenKeys = new Set<string>();
   let matched = 0;
 
+  const markUnchanged = async (raw: RawJob): Promise<void> => {
+    const key = rawJobKey(raw);
+    if (raw.ats === 'phenom' && raw.requisitionId) {
+      await q(
+        `UPDATE jobs
+            SET last_seen_at = now(), requisition_id = COALESCE(requisition_id, $2)
+          WHERE job_key = $1`,
+        [key, raw.requisitionId],
+      );
+    } else {
+      await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
+    }
+    seenKeys.add(key);
+    matched += 1;
+    counts.unchanged += 1;
+  };
+
   for (const raw of result.jobs) {
     if (raw.unchanged) {
-      const key = rawJobKey(raw);
-      if (raw.ats === 'phenom' && raw.requisitionId) {
-        await q(
-          `UPDATE jobs
-              SET last_seen_at = now(), requisition_id = COALESCE(requisition_id, $2)
-            WHERE job_key = $1`,
-          [key, raw.requisitionId],
-        );
-      } else {
-        await q(`UPDATE jobs SET last_seen_at = now() WHERE job_key = $1`, [key]);
-      }
-      seenKeys.add(key);
-      matched += 1;
-      counts.unchanged += 1;
+      await markUnchanged(raw);
       continue;
+    }
+    if (!(raw.descriptionText ?? '').trim()) {
+      const stored = await one<{ id: number }>(
+        `SELECT id FROM jobs WHERE job_key = $1 LIMIT 1`,
+        [rawJobKey(raw)],
+      );
+      if (stored) {
+        await markUnchanged(raw);
+        continue;
+      }
     }
     const evaluation = evaluateRawDetailed(raw, employer);
     if (evaluation.job === null) {
