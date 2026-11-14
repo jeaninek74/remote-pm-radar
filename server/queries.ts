@@ -128,13 +128,18 @@ const JOB_COLUMNS = `
   app_status, notes, interview_at::text, recruiter_notes, applied_at::text, follow_up_at::text
 `;
 
+const LIST_JOB_COLUMNS = JOB_COLUMNS.replace(
+  'bucket, bucket_reason',
+  "CASE WHEN duplicate_of IS NOT NULL THEN 'excluded' ELSE bucket END AS bucket, bucket_reason",
+);
+
 export async function listJobs(): Promise<JobRow[]> {
   const rows = await q<JobRecord>(
-    `SELECT ${JOB_COLUMNS}
+    `SELECT ${LIST_JOB_COLUMNS}
        FROM jobs
-      WHERE bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived')
+      WHERE (duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2','unsalaried','queue','archived'))
          OR app_status <> 'Not Applied'
-      ORDER BY (bucket = 'tab0') DESC, (bucket = 'tab1') DESC, (bucket = 'tab2') DESC, (bucket = 'unsalaried') DESC,
+      ORDER BY (jobs.bucket = 'tab0') DESC, (jobs.bucket = 'tab1') DESC, (jobs.bucket = 'tab2') DESC, (jobs.bucket = 'unsalaried') DESC,
                posted_at DESC NULLS LAST, first_seen_at DESC NULLS LAST`,
   );
   return rows.map(mapJob);
@@ -181,21 +186,21 @@ export async function getStats(): Promise<Stats> {
     queue: string; archived: string;
   }>(
     `SELECT
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2'))::text AS active,
-       count(*) FILTER (WHERE bucket='tab0')::text AS tab0,
-       count(*) FILTER (WHERE bucket='tab1')::text AS tab1,
-       count(*) FILTER (WHERE bucket='tab2')::text AS tab2,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND first_seen_at >= CURRENT_DATE)::text AS new_today,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND first_seen_at > now() - INTERVAL '24 hours')::text AS new_24h,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Nontechnical')::text AS nontechnical,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Technical')::text AS technical,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND category='Hybrid')::text AS hybrid,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2','unsalaried') AND urgency='High')::text AS urgent,
-       count(*) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
-       count(DISTINCT company) FILTER (WHERE bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
-       count(*) FILTER (WHERE bucket='unsalaried')::text AS unsalaried,
-       count(*) FILTER (WHERE bucket='queue')::text AS queue,
-       count(*) FILTER (WHERE bucket='archived')::text AS archived
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2'))::text AS active,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='tab0')::text AS tab0,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='tab1')::text AS tab1,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='tab2')::text AS tab2,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND first_seen_at >= CURRENT_DATE)::text AS new_today,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND first_seen_at > now() - INTERVAL '24 hours')::text AS new_24h,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND category='Nontechnical')::text AS nontechnical,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND category='Technical')::text AS technical,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND category='Hybrid')::text AS hybrid,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2','unsalaried') AND urgency='High')::text AS urgent,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_jobs,
+       count(DISTINCT company) FILTER (WHERE duplicate_of IS NULL AND bucket IN ('tab0','tab1','tab2') AND black_owned_verification='Verified Black-owned')::text AS black_owned_employers,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='unsalaried')::text AS unsalaried,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='queue')::text AS queue,
+       count(*) FILTER (WHERE duplicate_of IS NULL AND bucket='archived')::text AS archived
      FROM jobs`,
   );
 
@@ -282,7 +287,7 @@ export async function listEmployers(): Promise<EmployerRowOut[]> {
     `SELECT e.id, e.name, e.ats, e.slug, e.industry, e.company_size, e.hq_state, e.careers_url,
             e.black_owned, e.ownership_status, e.ownership_source, e.discovered_via,
             e.last_searched_at::text, e.last_status, e.jobs_seen, e.active,
-            count(j.id) FILTER (WHERE j.bucket IN ('tab0','tab1','tab2'))::text AS open_roles
+            count(j.id) FILTER (WHERE j.duplicate_of IS NULL AND j.bucket IN ('tab0','tab1','tab2'))::text AS open_roles
        FROM employers e
        LEFT JOIN jobs j ON j.employer_id = e.id
       GROUP BY e.id
@@ -448,7 +453,7 @@ export async function updateTracking(id: number, patch: Record<string, unknown>)
 export async function queueSummary(): Promise<{ reason: string; count: number }[]> {
   const rows = await q<{ reason: string; count: string }>(
     `SELECT COALESCE(bucket_reason,'Unspecified') AS reason, count(*)::text AS count
-       FROM jobs WHERE bucket='queue' GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
+       FROM jobs WHERE duplicate_of IS NULL AND bucket='queue' GROUP BY 1 ORDER BY count(*) DESC LIMIT 12`,
   );
   return rows.map((r) => ({ reason: r.reason, count: Number(r.count) }));
 }

@@ -68,9 +68,14 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 // Workday lists offices and the remote option side by side ("US - VA, McLean, US - Remote (Any
 // location)"); the "US - Remote" entry is a nationwide scope, not a second office. A bare
 // "Remote (Any location)" says nothing about the country and is not treated as US.
-const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|conus)\b/i;
-const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai)\b/i;
+const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|(?:us|usa)\s*\/\s*(?:can|canada)|conus)\b/i;
+const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|eu|united kingdom|uk|ireland|germany|deutschland|france|spain|españa|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|méxico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai|sweden|norway|denmark|finland|lithuania|latvia|estonia|bulgaria|romania|hungary|czech|slovakia|austria|switzerland|belgium|italy|greece|turkey|ukraine|saudi arabia|qatar|egypt|morocco|nicaragua|costa rica|panama|panamá|peru|ecuador|guatemala|honduras|el salvador|dominican republic|thailand|vietnam|malaysia|indonesia|taiwan|hong kong)\b/i;
 const EXPLICIT_NON_US_SCOPE = /\b(?:outside (?:the )?(?:united states|u\.?s\.?)|non[- ]us)\b/i;
+const RESTRICTION_EXCLUSION = /\b(?:exclud\w*|except|other than|not (?:available|eligible|open|hiring))\b/i;
+const ISO3_FOREIGN_CODE_TOKEN = /(?:^|[,\s-]|\()(?:POL|GBR|THA|CRI|CAN|MEX|IND|DEU|FRA|ESP|IRL|NLD|BEL|ITA|PRT|CHE|AUT|SWE|NOR|DNK|FIN|LTU|BGR|ROU|HUN|CZE|AUS|NZL|SGP|PHL|MYS|IDN|VNM|JPN|KOR|CHN|TWN|HKG|BRA|ARG|COL|CHL|PER|ISR|ARE|SAU|ZAF|EGY)(?=$|[,;\s)\-:])/;
+const CANADIAN_PROVINCE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:ON|QC|BC|AB|MB|NS|NB|NL|SK|PE)\b/i;
+const AUSTRALIAN_STATE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:NSW|VIC|QLD)\b/i;
+const FOREIGN_CITY_MARKERS = /\b(london|warsaw|krakow|wroclaw|dublin|sydney|melbourne|toronto|montreal|vancouver|calgary|ottawa|singapore|manila|bangkok|sofia|bucharest|iasi|guadalajara|zapopan|monterrey|dordrecht|amsterdam|rotterdam|escazu|heredia|madrid|barcelona|paris|berlin|munich|frankfurt|tel aviv|tokyo|seoul|shanghai|beijing|bengaluru|bangalore|mumbai|pune|hyderabad|chennai|gurugram|gurgaon|noida|delhi|aurangabad|kolkata|são paulo|sao paulo|buenos aires|bogota|bogotá|lima|mexico city|cdmx)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
 const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
 const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in[- ]person\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|on[- ]?site\s+(?:role|position|work|requirement)\b|on[- ]?site\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|willing(?:ness)? to|expected to|need to) relocate|relocation (?:is )?required)\b/i;
@@ -124,13 +129,27 @@ function detectStates(text: string): string[] {
       continue;
     }
     // "Remote - TX", "(TX)", "TX, USA"
-    const codeRe = new RegExp('[\\s,\\-()]' + code + '(?=[\\s,\\-)|])');
+    const codeRe = new RegExp('[\\s,\\-()]' + code + '(?=[\\s,;\\-)|]|$)');
     if (codeRe.test(text)) {
       const ambiguous = AMBIGUOUS_CODES.has(code) && !/(,|\(|remote|united states)/i.test(text);
       if (!ambiguous) found.add(code);
     }
   }
   return [...found];
+}
+
+function isForeignListedLocation(location: string): boolean {
+  if (
+    US_MARKERS.test(location)
+    || /\bunited states\b/i.test(location)
+    || detectStates(location).length > 0
+  ) return false;
+  const normalizedLocation = location.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return REGION_MARKERS.test(normalizedLocation)
+    || ISO3_FOREIGN_CODE_TOKEN.test(location)
+    || CANADIAN_PROVINCE_CODE.test(location)
+    || AUSTRALIAN_STATE_CODE.test(location)
+    || FOREIGN_CITY_MARKERS.test(normalizedLocation);
 }
 
 function parseRestrictionStates(restrictions: string[]) {
@@ -172,6 +191,11 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
   const restrictionText = restrictions.join(' | ');
   const restrictionStateInfo = parseRestrictionStates(restrictions);
   const scopeText = `${locText} | ${restrictionText}`;
+  const restrictionsNameUs = restrictions.some((restriction) =>
+    US_MARKERS.test(restriction)
+    || /\bunited states\b/i.test(restriction)
+    || (detectStates(restriction).length > 0 && !RESTRICTION_EXCLUSION.test(restriction)),
+  );
   const nationwideUsOnly = locations.length > 0
     && locations.every((location) =>
       US_MARKERS.test(location) || /^(?:united states|us|usa|united states of america)$/i.test(location),
@@ -239,6 +263,16 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
       remote,
       ca: 'not_us',
       note: `Posting is explicitly marked as outside the United States (${labels}).`,
+      states: detectStates(scopeText),
+      remoteLabel: labels,
+    };
+  }
+
+  if (locations.length > 0 && locations.every(isForeignListedLocation) && !restrictionsNameUs) {
+    return {
+      remote,
+      ca: 'not_us',
+      note: `All listed locations are outside the United States (${labels}).`,
       states: detectStates(scopeText),
       remoteLabel: labels,
     };

@@ -396,6 +396,115 @@ check(
     && countryExceptTexasIncludingCalifornia.states.includes('CA'),
 );
 
+const foreignExamples = [
+  'Warsaw, POL',
+  'Montreal, QC',
+  'Bangkok, THA',
+  'Sydney, NSW',
+  'London, GBR',
+  'San Jose,CRI',
+  'Aurangabad, MH, Bengaluru, KA, Mumbai, MH',
+  'Sweden (Remote)',
+  'Sofia, Bulgaria',
+  'Lithuania, remote',
+  'Saudi Arabia - Remote',
+  'Remote - Nicaragua',
+  'Gurugram',
+  'Deutschland',
+  'Bucharest, Romania; Iasi, Romania; Remote - Romania',
+  '3301-EDM S de RL de CV: Guadalajara, Zapopan, Jalisco,MX',
+  'Escazu, CRI; Remote - Costa Rica',
+  'Melbourne, VIC',
+  'Dordrecht',
+  'EU, Remote',
+  'GBR, Remote',
+  'London',
+  'Bengaluru',
+  'Panamá',
+  'España',
+  'México',
+  'São Paulo',
+  'Bogotá',
+  'Regina, SK',
+  'Brisbane, QLD',
+];
+for (const location of foreignExamples) {
+  const verdict = evaluateLocation({
+    locations: [location],
+    workplaceType: 'remote',
+    isRemote: true,
+  });
+  check(`${location} is outside the United States`, verdict.ca === 'not_us');
+}
+
+const allForeignNote = evaluateLocation({
+  locations: ['Warsaw, POL'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('all-foreign note includes exact labels',
+  allForeignNote.note === 'All listed locations are outside the United States (Warsaw, POL).');
+
+const foreignWithUsResidencyRestriction = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Must reside in the United States'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with US residency restriction stays eligible',
+  foreignWithUsResidencyRestriction.ca !== 'not_us');
+
+const foreignWithUsStateRestriction = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Remote within Texas'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with US state restriction stays eligible',
+  foreignWithUsStateRestriction.ca !== 'not_us');
+
+const foreignWithExcludedState = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Remote, excluding New York'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with excluded US state remains not_us',
+  foreignWithExcludedState.ca === 'not_us');
+
+const foreignWithUnavailableState = evaluateLocation({
+  locations: ['London, GBR'],
+  restrictions: ['Not available in California'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('foreign location with unavailable US state remains not_us',
+  foreignWithUnavailableState.ca === 'not_us');
+
+const lowercaseCode = evaluateLocation({
+  locations: ['pol'],
+  workplaceType: 'remote',
+  isRemote: true,
+});
+check('lowercase ISO-3 text is not treated as a country code', lowercaseCode.ca !== 'not_us');
+
+const protectedLocationExamples: [string, string[]][] = [
+  ['Dublin, OH', ['Dublin, OH']],
+  ['London, KY', ['London, KY']],
+  ['Paris, TX', ['Paris, TX']],
+  ['Toronto, OH', ['Toronto, OH']],
+  ['Remote, United States', ['Remote, United States']],
+  ['US and foreign locations in a mixed list', ['Sunnyvale, CA', 'Remote (CAN)', 'Remote (US)']],
+  ['Canada and United States in a mixed list', ['Remote, Canada', 'Remote, United States']],
+  ['US/CAN in one location', ['Remote (US/CAN)']],
+  ['Irving', ['Irving']],
+  ['empty locations', []],
+];
+for (const [label, locations] of protectedLocationExamples) {
+  const verdict = evaluateLocation({ locations, workplaceType: 'remote', isRemote: true });
+  check(`${label} is not classified outside the United States`, verdict.ca !== 'not_us');
+}
+
 if (failures) {
   console.error(`${failures} location check(s) failed`);
   process.exit(1);

@@ -144,9 +144,11 @@ ALTER TABLE employers ADD COLUMN IF NOT EXISTS last_resolve_at TIMESTAMPTZ;
 ALTER TABLE discovery_queue ADD COLUMN IF NOT EXISTS company_size TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS link_status TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS duplicate_of INTEGER;
 CREATE INDEX IF NOT EXISTS jobs_bucket_idx ON jobs (bucket, match_score DESC);
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs (company);
 CREATE INDEX IF NOT EXISTS jobs_posted_idx ON jobs (posted_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_duplicate_of_idx ON jobs (duplicate_of);
 
 -- Employer discovery queue: portfolio and directory companies waiting to be probed for a board.
 CREATE TABLE IF NOT EXISTS discovery_queue (
