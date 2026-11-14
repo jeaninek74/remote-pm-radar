@@ -24,3 +24,4 @@ jobs:
       - run: npm run build
       - run: npm run check:location
       - run: npm run check:dedupe
+      - run: npm run check:evaluate
