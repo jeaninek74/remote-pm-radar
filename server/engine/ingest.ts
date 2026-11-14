@@ -906,7 +906,6 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
           AND employers.active = FALSE
           AND employers.last_error ILIKE '%404%'
           AND jobs.bucket IN ('tab0','tab1','tab2','unsalaried','queue')
-          AND jobs.duplicate_of IS NULL
         RETURNING jobs.id`,
     );
     counters.archived += retiredBoardRows.length;
