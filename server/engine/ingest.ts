@@ -5,7 +5,7 @@ import { OWNERSHIP_RECORDS } from '../data/ownership';
 import { BLACK_OWNED_DIRECTORY } from '../data/black-owned-directory';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { TRACKED_STATE_EMPLOYERS } from '../data/state-employers';
-import { fetchBoard } from './sources';
+import { fetchBoard, parseWorkdayUrl } from './sources';
 import { evaluateLocation, LOCATION_RULES_VERSION } from './location';
 import { classifyCategory } from './category';
 import { classifySalary } from './salary';
@@ -572,6 +572,22 @@ export async function ingestBoardResult(
     counters.closed += closed.length;
   }
 
+  if (result.closedKeys?.length) {
+    const closed = await q<{ id: number }>(
+      `UPDATE jobs
+          SET bucket='archived',
+              bucket_reason='No longer listed on the employer''s job board (closed or filled).',
+              updated_at=now()
+        WHERE employer_id = $1
+          AND job_key = ANY($2)
+          AND bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+        RETURNING id`,
+      [employer.id, result.closedKeys],
+    );
+    counts.closed += closed.length;
+    counters.closed += closed.length;
+  }
+
   await q(
     `UPDATE employers
         SET last_searched_at = now(), last_status = $2, last_error = NULL,
@@ -880,6 +896,20 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
 
   try {
     await dedupeJobs();
+    const retiredBoardRows = await q<{ id: number }>(
+      `UPDATE jobs
+          SET bucket = 'archived',
+              bucket_reason = 'Employer''s job board no longer exists.',
+              updated_at = now()
+         FROM employers
+        WHERE jobs.employer_id = employers.id
+          AND employers.active = FALSE
+          AND employers.last_error ILIKE '%404%'
+          AND jobs.bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+          AND jobs.duplicate_of IS NULL
+        RETURNING jobs.id`,
+    );
+    counters.archived += retiredBoardRows.length;
     const employerCount = await one<{ count: string }>(`SELECT count(*)::text AS count FROM employers`);
     if (!employerCount || employerCount.count === '0') {
       await progress('Seeding employer inventory');
@@ -936,7 +966,19 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         [employer.id, LOCATION_RULES_VERSION],
       );
       const known = new Set(knownRows.map((row) => row.job_key));
-      const result = await fetchBoard(employer, known);
+      const storedRows = parseWorkdayUrl(employer.careers_url)
+        ? await q<{ job_key: string }>(
+          `SELECT job_key
+             FROM jobs
+            WHERE employer_id = $1
+              AND bucket IN ('tab0','tab1','tab2','unsalaried','queue')`,
+          [employer.id],
+        )
+        : [];
+      const stored = parseWorkdayUrl(employer.careers_url)
+        ? new Set(storedRows.map((row) => row.job_key))
+        : undefined;
+      const result = await fetchBoard(employer, known, stored);
       counters.sourcesChecked += 1;
 
       if (!result.ok) {

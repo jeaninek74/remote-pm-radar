@@ -57,6 +57,8 @@ export interface BoardFetchResult {
   uniqueRead?: number;
   /** True when the employer time budget ended the read early: unseen postings are not evidence of closure. */
   truncated?: boolean;
+  /** Job keys individually proven closed by the adapter; valid evidence even when truncated. */
+  closedKeys?: string[];
 }
 
 export interface FeedSource {
