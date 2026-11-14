@@ -6,7 +6,7 @@ import { BLACK_OWNED_DIRECTORY } from '../data/black-owned-directory';
 import { MANUAL_EMPLOYERS } from '../data/manual-employers';
 import { TRACKED_STATE_EMPLOYERS } from '../data/state-employers';
 import { fetchBoard } from './sources';
-import { evaluateLocation } from './location';
+import { evaluateLocation, LOCATION_RULES_VERSION } from './location';
 import { classifyCategory } from './category';
 import { classifySalary } from './salary';
 import { scoreJob } from './match';
@@ -181,17 +181,31 @@ function standardiseOwnership(status: string): string {
 /** A verb of ownership within a clause of the noun: "lead cross-functional projects", "manage the program budget". */
 const PROJECT_RESPONSIBILITY = /\b(?:manag\w*|lead\w*|oversee\w*|own\w*|driv\w*|deliver\w*|coordinat\w*|direct\w*|run\w*|execut\w*)\b[^.;]{0,60}\b(?:projects?|programs?|programmes?|(?:project|program|programme)\s+management|initiatives?|pmo|portfolio|implementations?)\b/i;
 
-export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): EvaluatedJob | null {
+function rawJobKey(raw: RawJob): string {
+  return `${raw.source}:${raw.externalId}`.slice(0, 190);
+}
+
+export function evaluateRawDetailed(
+  raw: RawJob,
+  employer?: EmployerRow | null,
+): { job: EvaluatedJob; reason: null } | { job: null; reason: string } {
   const description = (raw.descriptionText ?? '').replace(/\s+/g, ' ').trim();
   const postedAt = raw.postedAt ?? null;
   const age = daysBetween(postedAt);
 
-  if (age !== null && age > RULES.archiveDays) return null;
+  if (age !== null && age > RULES.archiveDays) {
+    return { job: null, reason: `Posting is older than the ${RULES.archiveDays}-day archive window.` };
+  }
 
   // A watched title at a Black-owned employer (master prompt §9) qualifies only when the posting
   // actually describes project or program responsibilities; the title alone is not evidence.
   if (!isRoleTitle(raw.title) && isOwnershipWatchTitle(raw.title, employer)) {
-    if (!PROJECT_RESPONSIBILITY.test(description)) return null;
+    if (!PROJECT_RESPONSIBILITY.test(description)) {
+      return {
+        job: null,
+        reason: 'Black-owned watchlist title lacks project or program responsibilities in the description.',
+      };
+    }
   }
 
   const loc = evaluateLocation({
@@ -209,13 +223,21 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
   let forced: { bucket: 'queue'; reason: string } | null = null;
   // A posting outside the United States can never be applied to from California, so it is the one
   // case that is dropped rather than queued.
-  if (loc.ca === 'not_us') return null;
+  if (loc.ca === 'not_us') {
+    return { job: null, reason: loc.note || 'All listed locations are outside the United States.' };
+  }
   // Jeanine, 7 Nov 2026: "there should be no hybrid / on-site at all" — those postings, and roles
   // that demand routine travel, are dropped at ingestion rather than queued (RULES.md §4.1).
-  if (loc.remote === 'hybrid' || loc.remote === 'onsite' || loc.travelHeavy) return null;
+  if (loc.remote === 'hybrid' || loc.remote === 'onsite' || loc.travelHeavy) {
+    return { job: null, reason: 'Work arrangement is hybrid, on-site or travel-heavy.' };
+  }
   // Jeanine's no-hybrid rule also applies when office or hybrid wording appears only in the title.
-  if (/\b(hybrid|in[- ]office|in[- ]person)\b/i.test(raw.title)) return null;
-  if (/\bon[- ]?site\b/i.test(raw.title) && loc.remote !== 'remote') return null;
+  if (/\b(hybrid|in[- ]office|in[- ]person)\b/i.test(raw.title)) {
+    return { job: null, reason: 'Title says hybrid, in-office or in-person.' };
+  }
+  if (/\bon[- ]?site\b/i.test(raw.title) && loc.remote !== 'remote') {
+    return { job: null, reason: 'Title says on-site but the work arrangement is not remote.' };
+  }
   if (loc.remote !== 'remote') {
     forced = { bucket: 'queue', reason: `Work arrangement not confirmed remote — ${loc.note || loc.remoteLabel}.` };
   } else if (loc.ca === 'state_restricted') {
@@ -266,47 +288,54 @@ export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): Evaluat
     }
   }
 
-  const jobKey = `${raw.source}:${raw.externalId}`.slice(0, 190);
+  const jobKey = rawJobKey(raw);
 
   return {
-    jobKey,
-    employerId: employer?.id ?? null,
-    company: raw.company,
-    title: raw.title,
-    category,
-    industry: raw.industry ?? employer?.industry ?? null,
-    companySize: raw.companySize ?? employer?.company_size ?? null,
-    hqState: raw.hqState ?? employer?.hq_state ?? null,
-    remoteStatus: loc.remoteLabel || 'Remote',
-    caEligibility: loc.ca,
-    caNote: loc.note,
-    employmentType: raw.employmentType ?? null,
-    salaryMin: salary?.min ?? null,
-    salaryMax: salary?.max ?? null,
-    salaryInterval: salary?.interval ?? null,
-    hourlyRate: salary?.hourlyRate ?? null,
-    salarySource: raw.salarySource ?? (salary ? 'Employer posting' : null),
-    salaryNote: salary?.evidence ?? null,
-    matchScore: match.score,
-    bestResume: match.bestResume,
-    matchReasons: match.reasons,
-    gaps: match.gaps,
-    urgency: urgency.level,
-    urgencyEvidence: urgency.evidence,
-    blackOwnedVerification: ownership.label,
-    ownershipSource: ownership.source,
-    applyUrl: raw.applyUrl,
-    linkType: raw.linkType,
-    requisitionId: raw.requisitionId ?? null,
-    postedAt,
-    postedSource: raw.source,
-    postedConfidence: raw.postedConfidence ?? 'unknown',
-    bucket,
-    bucketReason: reason,
-    descriptionExcerpt: truncate(description, 900),
-    source: raw.source,
-    remoteLabel: loc.remoteLabel,
+    job: {
+      jobKey,
+      employerId: employer?.id ?? null,
+      company: raw.company,
+      title: raw.title,
+      category,
+      industry: raw.industry ?? employer?.industry ?? null,
+      companySize: raw.companySize ?? employer?.company_size ?? null,
+      hqState: raw.hqState ?? employer?.hq_state ?? null,
+      remoteStatus: loc.remoteLabel || 'Remote',
+      caEligibility: loc.ca,
+      caNote: loc.note,
+      employmentType: raw.employmentType ?? null,
+      salaryMin: salary?.min ?? null,
+      salaryMax: salary?.max ?? null,
+      salaryInterval: salary?.interval ?? null,
+      hourlyRate: salary?.hourlyRate ?? null,
+      salarySource: raw.salarySource ?? (salary ? 'Employer posting' : null),
+      salaryNote: salary?.evidence ?? null,
+      matchScore: match.score,
+      bestResume: match.bestResume,
+      matchReasons: match.reasons,
+      gaps: match.gaps,
+      urgency: urgency.level,
+      urgencyEvidence: urgency.evidence,
+      blackOwnedVerification: ownership.label,
+      ownershipSource: ownership.source,
+      applyUrl: raw.applyUrl,
+      linkType: raw.linkType,
+      requisitionId: raw.requisitionId ?? null,
+      postedAt,
+      postedSource: raw.source,
+      postedConfidence: raw.postedConfidence ?? 'unknown',
+      bucket,
+      bucketReason: reason,
+      descriptionExcerpt: truncate(description, 900),
+      source: raw.source,
+      remoteLabel: loc.remoteLabel,
+    },
+    reason: null,
   };
+}
+
+export function evaluateRaw(raw: RawJob, employer?: EmployerRow | null): EvaluatedJob | null {
+  return evaluateRawDetailed(raw, employer).job;
 }
 
 /* -------------------------------------------------------------------- upsert */
@@ -327,10 +356,10 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
         match_score, best_resume, match_reasons, gaps, urgency, urgency_evidence,
         black_owned_verification, ownership_source, apply_url, link_type, requisition_id,
         posted_at, posted_source, posted_confidence, last_verified_at,
-        bucket, bucket_reason, description_excerpt, source
+        bucket, bucket_reason, description_excerpt, source, location_rules_version
      ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21::jsonb,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30::date,$31,$32,now(),$33,$34,$35,$36
+        $21::jsonb,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30::date,$31,$32,now(),$33,$34,$35,$36,$37
      )
      ON CONFLICT (job_key) DO UPDATE SET
         company = EXCLUDED.company,
@@ -369,6 +398,7 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
         last_verified_at = now(),
         bucket = EXCLUDED.bucket,
         bucket_reason = EXCLUDED.bucket_reason,
+        location_rules_version = EXCLUDED.location_rules_version,
         description_excerpt = EXCLUDED.description_excerpt,
         employer_id = COALESCE(EXCLUDED.employer_id, jobs.employer_id),
         updated_at = now()
@@ -381,6 +411,7 @@ async function upsertJob(ev: EvaluatedJob): Promise<UpsertOutcome> {
       ev.blackOwnedVerification, ev.ownershipSource, ev.applyUrl, ev.linkType, ev.requisitionId,
       ev.postedAt, ev.postedSource, ev.postedConfidence,
       ev.bucket, ev.bucketReason, ev.descriptionExcerpt, ev.source,
+      LOCATION_RULES_VERSION,
     ],
   );
   const inserted = rows[0];
@@ -452,7 +483,7 @@ export async function ingestBoardResult(
 
   for (const raw of result.jobs) {
     if (raw.unchanged) {
-      const key = `${raw.source}:${raw.externalId}`.slice(0, 190);
+      const key = rawJobKey(raw);
       if (raw.ats === 'phenom' && raw.requisitionId) {
         await q(
           `UPDATE jobs
@@ -468,11 +499,22 @@ export async function ingestBoardResult(
       counts.unchanged += 1;
       continue;
     }
-    const ev = evaluateRaw(raw, employer);
-    if (!ev) {
+    const evaluation = evaluateRawDetailed(raw, employer);
+    if (evaluation.job === null) {
+      await q(
+        `UPDATE jobs
+            SET bucket = 'excluded',
+                bucket_reason = $2,
+                updated_at = now(),
+                last_seen_at = now()
+          WHERE job_key = $1
+            AND bucket IN ('tab0','tab1','tab2','unsalaried','queue')`,
+        [rawJobKey(raw), `No longer qualifies: ${evaluation.reason}`],
+      );
       counts.skipped += 1;
       continue;
     }
+    const ev = evaluation.job;
     matched += 1;
     seenKeys.add(ev.jobKey);
     const outcome = await upsertJob(ev);
@@ -868,7 +910,17 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
     async function sweepEmployer(employer: EmployerRow): Promise<void> {
       // Postings already stored for this employer are recognised by key and not re-read in
       // detail; they are marked seen below. Only new postings cost a detail request.
-      const knownRows = await q<{ job_key: string }>(`SELECT job_key FROM jobs WHERE employer_id = $1`, [employer.id]);
+      const knownRows = await q<{ job_key: string }>(
+        `SELECT job_key
+           FROM jobs
+          WHERE employer_id = $1
+            AND NOT (
+              bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+              AND ca_eligibility = 'unknown'
+              AND COALESCE(location_rules_version, 0) < $2
+            )`,
+        [employer.id, LOCATION_RULES_VERSION],
+      );
       const known = new Set(knownRows.map((row) => row.job_key));
       const result = await fetchBoard(employer, known);
       counters.sourcesChecked += 1;

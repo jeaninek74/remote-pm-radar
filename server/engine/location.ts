@@ -68,6 +68,8 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 // Workday lists offices and the remote option side by side ("US - VA, McLean, US - Remote (Any
 // location)"); the "US - Remote" entry is a nationwide scope, not a second office. A bare
 // "Remote (Any location)" says nothing about the country and is not treated as US.
+export const LOCATION_RULES_VERSION = 1;
+
 const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|(?:us|usa)\s*\/\s*(?:can|canada)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|eu|united kingdom|uk|ireland|germany|deutschland|france|spain|españa|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|méxico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai|sweden|norway|denmark|finland|lithuania|latvia|estonia|bulgaria|romania|hungary|czech|slovakia|austria|switzerland|belgium|italy|greece|turkey|ukraine|saudi arabia|qatar|egypt|morocco|nicaragua|costa rica|panama|panamá|peru|ecuador|guatemala|honduras|el salvador|dominican republic|thailand|vietnam|malaysia|indonesia|taiwan|hong kong)\b/i;
 const EXPLICIT_NON_US_SCOPE = /\b(?:outside (?:the )?(?:united states|u\.?s\.?)|non[- ]us)\b/i;

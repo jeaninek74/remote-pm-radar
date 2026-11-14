@@ -145,6 +145,7 @@ ALTER TABLE discovery_queue ADD COLUMN IF NOT EXISTS company_size TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS link_status TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS duplicate_of INTEGER;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_rules_version INTEGER;
 CREATE INDEX IF NOT EXISTS jobs_bucket_idx ON jobs (bucket, match_score DESC);
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs (company);
 CREATE INDEX IF NOT EXISTS jobs_posted_idx ON jobs (posted_at DESC);
