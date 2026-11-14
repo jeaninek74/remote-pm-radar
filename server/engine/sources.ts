@@ -2087,6 +2087,13 @@ export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
 const WORKDAY_PACE_MS = Number(process.env.WORKDAY_PACE_MS ?? 400);
 const WORKDAY_MAX_RETRY_WAIT_MS = 20_000;
 const WORKDAY_FULL_READ_MAX = Number(process.env.WORKDAY_FULL_READ_MAX ?? 2000);
+const WORKDAY_JOB_KEY_MAX = 190; // Keep in sync with rawJobKey() in ingest.ts.
+
+export function workdayStoredKeyNeedsRecheck(key: string, collectedKeys: ReadonlySet<string>): boolean {
+  return key.startsWith('Workday:')
+    && !collectedKeys.has(key)
+    && key.length < WORKDAY_JOB_KEY_MAX;
+}
 
 /**
  * One tenant is asked for hundreds of pages per sweep (249 phrases, 20 postings a page), and in
@@ -2277,10 +2284,13 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>, stored?:
     jobs.push(workdayRawJob(employer, tenant, wd, site, path, posting, detail.kind === 'live' ? detail.info : null, listedAt));
   }
   if (truncated) {
+    const collectedKeys = new Set(
+      [...collected.keys()].map((path) => `Workday:${path}`.slice(0, WORKDAY_JOB_KEY_MAX)),
+    );
     for (const key of stored ?? []) {
-      if (!key.startsWith('Workday:')) continue;
+      if (!workdayStoredKeyNeedsRecheck(key, collectedKeys)) continue;
       const path = key.slice('Workday:'.length);
-      if (!path || collected.has(path)) continue;
+      if (!path) continue;
       if (Date.now() > deadline + REFRESH.employerBudgetMs) { truncated = true; break; }
       const detail = await workdayDetail(tenant, wd, site, path);
       if (detail.kind === 'closed') {
