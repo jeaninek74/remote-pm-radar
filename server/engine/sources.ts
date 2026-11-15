@@ -1995,6 +1995,22 @@ interface WorkdayPosting {
   bulletFields?: string[];
 }
 
+interface WorkdayJobPostingInfo {
+  title?: string;
+  jobDescription?: string;
+  location?: string;
+  additionalLocations?: string[];
+  startDate?: string;
+  timeType?: string;
+  remoteType?: string;
+  externalUrl?: string;
+}
+
+type WorkdayDetailResult =
+  | { kind: 'live'; info: WorkdayJobPostingInfo }
+  | { kind: 'closed' }
+  | { kind: 'error' };
+
 export function parseWorkdayUrl(url: string | null | undefined): { tenant: string; wd: string; site: string } | null {
   if (!url) return null;
   const m = WORKDAY_HOST.exec(url);
@@ -2071,6 +2087,13 @@ export function rotatedSearchTerms(seed: string, now = Date.now()): string[] {
 const WORKDAY_PACE_MS = Number(process.env.WORKDAY_PACE_MS ?? 400);
 const WORKDAY_MAX_RETRY_WAIT_MS = 20_000;
 const WORKDAY_FULL_READ_MAX = Number(process.env.WORKDAY_FULL_READ_MAX ?? 2000);
+const WORKDAY_JOB_KEY_MAX = 190; // Keep in sync with rawJobKey() in ingest.ts.
+
+export function workdayStoredKeyNeedsRecheck(key: string, collectedKeys: ReadonlySet<string>): boolean {
+  return key.startsWith('Workday:')
+    && !collectedKeys.has(key)
+    && key.length < WORKDAY_JOB_KEY_MAX;
+}
 
 /**
  * One tenant is asked for hundreds of pages per sweep (249 phrases, 20 postings a page), and in
@@ -2118,22 +2141,73 @@ export function isRetryableBoardError(err: unknown): boolean {
   return /abort|timeout|timed out|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|maintenance/i.test(message);
 }
 
-async function workdayDetail(tenant: string, wd: string, site: string, externalPath: string) {
-  const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}${externalPath}`, {
-    headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    jobPostingInfo?: {
-      title?: string; jobDescription?: string; location?: string; additionalLocations?: string[];
-      startDate?: string; timeType?: string; remoteType?: string; externalUrl?: string;
-    };
-  };
-  return data.jobPostingInfo ?? null;
+export function workdayDetailClosed(status: number, body: unknown): boolean {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return false;
+  const errorCode = (body as { errorCode?: unknown }).errorCode;
+  return (status === 403 && errorCode === 'S22') || (status === 404 && errorCode === 'S21');
 }
 
-async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+async function workdayDetail(tenant: string, wd: string, site: string, externalPath: string): Promise<WorkdayDetailResult> {
+  try {
+    await new Promise((resolve) => setTimeout(resolve, WORKDAY_PACE_MS));
+    const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}${externalPath}`, {
+      redirect: 'manual',
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; RemotePMRadar/1.0)' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return workdayDetailClosed(res.status, body) ? { kind: 'closed' } : { kind: 'error' };
+    }
+    const data = await res.json() as { jobPostingInfo?: unknown };
+    const info = data.jobPostingInfo;
+    if (typeof info !== 'object' || info === null || Array.isArray(info)) return { kind: 'error' };
+    return { kind: 'live', info: info as WorkdayJobPostingInfo };
+  } catch {
+    return { kind: 'error' };
+  }
+}
+
+function workdayRawJob(
+  employer: EmployerRow,
+  tenant: string,
+  wd: string,
+  site: string,
+  path: string,
+  posting: WorkdayPosting | undefined,
+  info: WorkdayJobPostingInfo | null,
+  listedAt: Date,
+): RawJob {
+  const html = info?.jobDescription ?? null;
+  const text = html ? stripHtml(html) : '';
+  const locations = [info?.location, ...(info?.additionalLocations ?? [])].filter(Boolean) as string[];
+  const posted = workdayPostedDate(info?.startDate, posting?.postedOn, listedAt);
+  return {
+    source: 'Workday',
+    ats: 'workday',
+    board: `${tenant}/${site}`,
+    externalId: path,
+    company: employer.name,
+    title: info?.title ?? posting?.title ?? '',
+    locations: locations.length ? locations : [posting?.locationsText ?? ''],
+    workplaceType: info?.remoteType ?? null,
+    isRemote: /remote/i.test(`${info?.remoteType ?? ''} ${posting?.locationsText ?? ''}`) ? true : null,
+    descriptionHtml: html,
+    descriptionText: text,
+    applyUrl: `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`,
+    linkType: 'employer',
+    postedAt: posted.date,
+    postedConfidence: posted.confidence,
+    employmentType: info?.timeType ?? null,
+    salary: parseSalaryFromText(text),
+    salarySource: 'description',
+    industry: employer.industry,
+    companySize: employer.company_size,
+    hqState: employer.hq_state,
+  };
+}
+
+async function fetchWorkday(employer: EmployerRow, known?: Set<string>, stored?: Set<string>): Promise<BoardFetchResult> {
   const coords = parseWorkdayUrl(employer.careers_url);
   if (!coords) return { jobs: [], ok: false, error: 'not a workday url', totalListed: 0 };
   const { tenant, wd, site } = coords;
@@ -2199,42 +2273,39 @@ async function fetchWorkday(employer: EmployerRow, known?: Set<string>): Promise
   if (truncated && !fullReadIncomplete) console.warn(`[workday] ${tenant}/${site}: time budget reached with ${collected.size} matching postings`);
 
   const jobs: RawJob[] = [];
+  const closedKeys: string[] = [];
   for (const [path, posting] of collected) {
     if (Date.now() > deadline + REFRESH.employerBudgetMs) { truncated = true; break; }
     if (known?.has(`Workday:${path}`)) {
       jobs.push(unchangedJob('Workday', 'workday', path, employer.name, posting.title ?? '', `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`));
       continue;
     }
-    const detail = await workdayDetail(tenant, wd, site, path).catch(() => null);
-    const html = detail?.jobDescription ?? null;
-    const text = html ? stripHtml(html) : '';
-    const locations = [detail?.location, ...(detail?.additionalLocations ?? [])].filter(Boolean) as string[];
-    const posted = workdayPostedDate(detail?.startDate, posting.postedOn, listedAt);
-    jobs.push({
-      source: 'Workday',
-      ats: 'workday' as unknown as Ats,
-      board: `${tenant}/${site}`,
-      externalId: path,
-      company: employer.name,
-      title: detail?.title ?? posting.title ?? '',
-      locations: locations.length ? locations : [posting.locationsText ?? ''],
-      workplaceType: detail?.remoteType ?? null,
-      isRemote: /remote/i.test(`${detail?.remoteType ?? ''} ${posting.locationsText ?? ''}`) ? true : null,
-      descriptionHtml: html,
-      descriptionText: text,
-      applyUrl: `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`,
-      linkType: 'employer',
-      postedAt: posted.date,
-      postedConfidence: posted.confidence,
-      employmentType: detail?.timeType ?? null,
-      salary: parseSalaryFromText(text),
-      salarySource: 'description',
-      industry: employer.industry,
-      companySize: employer.company_size,
-      hqState: employer.hq_state,
-    });
+    const detail = await workdayDetail(tenant, wd, site, path);
+    jobs.push(workdayRawJob(employer, tenant, wd, site, path, posting, detail.kind === 'live' ? detail.info : null, listedAt));
   }
-  return { jobs, ok: true, totalListed: collected.size, truncated };
+  if (truncated) {
+    const collectedKeys = new Set(
+      [...collected.keys()].map((path) => `Workday:${path}`.slice(0, WORKDAY_JOB_KEY_MAX)),
+    );
+    for (const key of stored ?? []) {
+      if (!workdayStoredKeyNeedsRecheck(key, collectedKeys)) continue;
+      const path = key.slice('Workday:'.length);
+      if (!path) continue;
+      if (Date.now() > deadline + REFRESH.employerBudgetMs) { truncated = true; break; }
+      const detail = await workdayDetail(tenant, wd, site, path);
+      if (detail.kind === 'closed') {
+        closedKeys.push(key);
+      } else if (detail.kind === 'live') {
+        const applyUrl = `https://${tenant}.${wd}.myworkdayjobs.com/${site}${path}`;
+        if (known?.has(key)) {
+          jobs.push(unchangedJob('Workday', 'workday', path, employer.name, detail.info.title ?? '', applyUrl));
+        } else {
+          jobs.push(workdayRawJob(employer, tenant, wd, site, path, undefined, detail.info, listedAt));
+        }
+      }
+    }
+  }
+  return { jobs, ok: true, totalListed: collected.size, truncated, closedKeys };
 }
 
 /**
@@ -2266,7 +2337,7 @@ function unchangedJob(
 }
 
 /** `known` holds the job keys (`source:externalId`) already stored for this employer. */
-export async function fetchBoard(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
+export async function fetchBoard(employer: EmployerRow, known?: Set<string>, stored?: Set<string>): Promise<BoardFetchResult> {
   if (employer.ats === 'browser') {
     return {
       jobs: [],
@@ -2276,7 +2347,7 @@ export async function fetchBoard(employer: EmployerRow, known?: Set<string>): Pr
       totalListed: 0,
     };
   }
-  if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer, known);
+  if (parseWorkdayUrl(employer.careers_url)) return fetchWorkday(employer, known, stored);
   if (employer.ats === 'manual') return fetchCareersPage(employer, known).catch((err) => ({ jobs: [], ok: false, error: (err as Error).message.slice(0, 200), retryable: isRetryableBoardError(err), totalListed: 0 }));
   const adapter = ADAPTERS[employer.ats];
   if (!adapter) return { jobs: [], ok: false, error: `Unsupported ATS: ${employer.ats}`, totalListed: 0 };

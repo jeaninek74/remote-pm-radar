@@ -17,6 +17,7 @@
     "check:location": "tsx scripts/check-location.ts",
     "check:dedupe": "tsx scripts/check-dedupe.ts",
     "check:evaluate": "tsx scripts/check-evaluate.ts",
+    "check:workday": "tsx scripts/check-workday.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:employers": "tsx scripts/seed-employers.ts",
     "refresh": "tsx scripts/refresh.ts"
