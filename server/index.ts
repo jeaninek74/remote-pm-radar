@@ -20,7 +20,12 @@ import {
   isBrowserIngestAuthorized,
   isBrowserIngestPayload,
 } from './engine/browser-pull';
-import { verifyGithubOidcToken } from './engine/github-oidc';
+import {
+  HARVEST_BOARDS_OIDC_POLICY,
+  verifyGithubOidcToken,
+  type GithubOidcPolicy,
+} from './engine/github-oidc';
+import { isBoardCandidatePayload } from './engine/harvest';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
@@ -70,9 +75,22 @@ const app = express();
 app.disable('x-powered-by');
 const apiJsonParser = express.json({ limit: '256kb' });
 app.use((req, res, next) => {
-  if (req.path === '/api/browser-ingest') return next();
+  if (req.path === '/api/browser-ingest' || req.path === '/api/board-candidates') return next();
   return apiJsonParser(req, res, next);
 });
+
+function requireGithubOidcPolicy(policy: GithubOidcPolicy): express.RequestHandler {
+  return (req, res, next) => {
+    void (async () => {
+      const bearer = /^Bearer\s+(.+)$/i.exec(req.get('Authorization') ?? '')?.[1];
+      if (!bearer || !await verifyGithubOidcToken(bearer, policy)) {
+        res.sendStatus(401);
+        return;
+      }
+      next();
+    })().catch(() => res.sendStatus(401));
+  };
+}
 
 function requireBrowserIngestToken(
   req: express.Request,
@@ -194,6 +212,41 @@ app.get('/api/browser-employers', requireBrowserIngestToken, async (_req, res, n
     next(err);
   }
 });
+
+app.post(
+  '/api/board-candidates',
+  requireGithubOidcPolicy(HARVEST_BOARDS_OIDC_POLICY),
+  express.json({ limit: '8mb' }),
+  async (req, res, next) => {
+    try {
+      if (!isBoardCandidatePayload(req.body)) {
+        res.status(400).json({ error: 'Invalid board candidate payload' });
+        return;
+      }
+      const candidates = req.body.candidates;
+      const inserted = await q<{ id: number }>(
+        `INSERT INTO board_candidates (ats, slug, source)
+         SELECT incoming.ats, incoming.slug, incoming.source
+           FROM unnest($1::text[], $2::text[], $3::text[]) AS incoming(ats, slug, source)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM employers
+             WHERE employers.ats = incoming.ats
+               AND employers.slug = incoming.slug
+          )
+         ON CONFLICT (ats, slug) DO NOTHING
+         RETURNING id`,
+        [
+          candidates.map((candidate) => candidate.ats),
+          candidates.map((candidate) => candidate.slug),
+          candidates.map((candidate) => candidate.source),
+        ],
+      );
+      res.json({ received: candidates.length, inserted: inserted.length });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 app.post(
   '/api/browser-ingest',

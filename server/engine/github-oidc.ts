@@ -21,6 +21,16 @@ export const BROWSER_PULL_OIDC_POLICY: GithubOidcPolicy = {
   eventNames: ['schedule', 'workflow_dispatch'],
 };
 
+export const HARVEST_BOARDS_OIDC_POLICY: GithubOidcPolicy = {
+  issuer: 'https://token.actions.githubusercontent.com',
+  audience: 'remote-pm-radar-board-harvest',
+  repository: 'jeaninek74/remote-pm-radar',
+  repositoryId: '1448647530',
+  workflowRef: 'jeaninek74/remote-pm-radar/.github/workflows/harvest-boards.yml@refs/heads/master',
+  ref: 'refs/heads/master',
+  eventNames: ['schedule', 'workflow_dispatch'],
+};
+
 type GithubJwksFetcher = (url: string) => Promise<JsonWebKey[]>;
 
 interface CachedJwks {
