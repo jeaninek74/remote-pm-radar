@@ -283,12 +283,15 @@ async function readCandidateBoard(ats: HarvestAts, slug: string, deadline: numbe
         offset += page.length;
         if (Date.now() >= deadline) throw new Error('Board candidate validation deadline exceeded');
       } while (postings.length);
-      const company = await fetchJson<{ name?: unknown }>(
-        `https://api.smartrecruiters.com/v1/companies/${encoded}`,
-        timeoutFor(deadline),
-      );
+      const postingName = text(record(record(postings[0]).company).name);
+      const company = postingName
+        ? null
+        : await fetchJson<{ name?: unknown }>(
+          `https://api.smartrecruiters.com/v1/companies/${encoded}`,
+          timeoutFor(deadline),
+        ).catch(() => null);
       return {
-        name: text(company.name) || null,
+        name: postingName || text(company?.name) || null,
         careersUrl: `https://jobs.smartrecruiters.com/${encoded}`,
         postingLocations: postings.map((posting) => {
           const location = record(record(posting).location);
