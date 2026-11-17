@@ -78,11 +78,13 @@ async function fetchTextWithRetry(url: string): Promise<{ status: number; text: 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     await paceRequest();
     let response: Response;
+    let text: string;
     try {
       response = await fetch(url, {
         headers: { 'User-Agent': 'remote-pm-radar board discovery' },
         signal: AbortSignal.timeout(45_000),
       });
+      text = await response.text();
     } catch (error) {
       lastError = error as Error;
       if (attempt === MAX_ATTEMPTS - 1) break;
@@ -90,7 +92,7 @@ async function fetchTextWithRetry(url: string): Promise<{ status: number; text: 
       continue;
     }
     if (response.ok || response.status === 404) {
-      return { status: response.status, text: await response.text() };
+      return { status: response.status, text };
     }
     lastError = new Error(`Common Crawl index returned HTTP ${response.status}`);
     if (response.status < 500 && response.status !== 429) throw lastError;
@@ -258,15 +260,25 @@ async function main(): Promise<void> {
   console.log(`Scanning ${crawls.length} crawls: ${crawls.map((crawl) => crawl.id).join(', ')}`);
 
   const candidates = new Map<string, BoardCandidateInput>();
+  const scanFailures: string[] = [];
   for (const crawl of crawls) {
     for (const ats of options.ats) {
       for (const pattern of HOST_PATTERNS[ats]) {
-        await crawlPattern(crawl, ats, pattern, candidates);
+        try {
+          await crawlPattern(crawl, ats, pattern, candidates);
+        } catch (error) {
+          const message = (error as Error).message;
+          scanFailures.push(`${crawl.id} ${ats} ${pattern}: ${message}`);
+          console.error(`[harvest] scan failed after retries (${crawl.id} ${ats} ${pattern}): ${message}`);
+        }
       }
     }
   }
 
   const results = [...candidates.values()];
+  if (scanFailures.length) {
+    console.warn(`[harvest] continuing with partial results after ${scanFailures.length} scan failure(s)`);
+  }
   reportCandidates(results);
   if (options.outputPath) {
     const outputPath = path.resolve(options.outputPath);
