@@ -5,6 +5,7 @@ import {
   pageTitle,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
+import { discoveryBudget } from '../server/engine/discovery-budget';
 
 let failures = 0;
 
@@ -66,6 +67,15 @@ check('strip Ashby suffix after the role label',
   pageTitle('<title>Crusoe Careers | Ashby</title>') === 'Crusoe');
 check('keep a company name without a title suffix',
   pageTitle('<title>Acme, Inc.</title>') === 'Acme, Inc.');
+const dayStart = Date.UTC(2026, 0, 1);
+check('decline discovery 20 seconds before a sweep slot',
+  discoveryBudget(dayStart + 29 * 60_000 + 40_000, 20 * 60_000) === null);
+check('cap discovery at 19 minutes with 20 minutes before a sweep',
+  discoveryBudget(dayStart + 10 * 60_000, 30 * 60_000) === 19 * 60_000);
+check('discovery budget is capped by the configured budget',
+  discoveryBudget(dayStart + 10 * 60_000, 5 * 60_000) === 5 * 60_000);
+check('leave one minute of headroom at two minutes before a sweep',
+  discoveryBudget(dayStart + 28 * 60_000, 30 * 60_000) === 60_000);
 check('harvest OIDC is scoped to the master workflow',
   HARVEST_BOARDS_OIDC_POLICY.workflowRef
     === 'jeaninek74/remote-pm-radar/.github/workflows/harvest-boards.yml@refs/heads/master'

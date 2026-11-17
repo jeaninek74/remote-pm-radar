@@ -21,6 +21,7 @@ import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
 import { validateBoardCandidate } from './harvest';
+import { discoveryBudget } from './discovery-budget';
 
 export { sharedBoardPostingKey } from './dedupe';
 
@@ -850,18 +851,21 @@ export function discoveryStatus(): { running: boolean; startedAt?: string } {
  */
 export async function startDiscovery(budgetMs: number): Promise<{ started: boolean; reason?: string }> {
   if (discoveryPass) return { started: false, reason: 'A discovery pass is already running.' };
+  const now = Date.now();
+  const budget = discoveryBudget(now, budgetMs);
+  if (budget === null) return { started: false, reason: 'Too close to the next sweep slot.' };
   const lock = await acquireRefreshLock();
   if (!lock) return { started: false, reason: 'A refresh is running; discovery waits for the next gap.' };
-  // Never run into the next :00/:30 sweep: the pass ends at least a minute before the slot.
-  const now = Date.now();
-  const slotMs = 30 * 60_000;
-  const nextSlot = Math.ceil((now + 1) / slotMs) * slotMs;
-  const budget = Math.max(30_000, Math.min(budgetMs, nextSlot - now - 60_000));
+  const deadline = now + budget;
+  if (Date.now() >= deadline) {
+    await lock.release().catch(() => undefined);
+    return { started: false, reason: 'Too close to the next sweep slot.' };
+  }
   const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0, cutoff: Infinity };
   discoveryPass = pass;
   void (async () => {
     try {
-      const result = await discoverEmployers(Date.now() + budget);
+      const result = await discoverEmployers(deadline);
       pass.probed = result.probed;
       pass.found = result.found;
       console.log(`[discovery] pass finished: ${result.probed} probed, ${result.found} new employers`);
