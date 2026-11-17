@@ -26,3 +26,4 @@ jobs:
       - run: npm run check:dedupe
       - run: npm run check:evaluate
       - run: npm run check:workday
+      - run: npm run check:workday-pull

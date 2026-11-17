@@ -10,6 +10,7 @@ import {
   emptyCounters,
   ingestBoardResult,
   isRefreshing,
+  recordWorkdayPullFailure,
   runRefresh,
   seedEmployers,
   startDiscovery,
@@ -20,14 +21,20 @@ import {
   isBrowserIngestAuthorized,
   isBrowserIngestPayload,
 } from './engine/browser-pull';
-import { verifyGithubOidcToken } from './engine/github-oidc';
+import {
+  verifyGithubOidcToken,
+  WORKDAY_PULL_OIDC_POLICY,
+  type GithubOidcPolicy,
+} from './engine/github-oidc';
+import { LOCATION_RULES_VERSION } from './engine/location';
+import { isWorkdayIngestPayload, type WorkdayPullEmployer } from './engine/workday-pull';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
 import { buildCsv, buildWorkbook } from './export';
 import { PROFILE, describeProfile } from './profile';
 import { buildIdFromHtml } from '../client/src/buildVersion';
-import type { EmployerRow } from './engine/types';
+import type { BoardFetchResult, EmployerRow } from './engine/types';
 
 /** Filename stem for exports, derived from the board name so nothing is branded by hand. */
 function exportSlug(): string {
@@ -70,7 +77,7 @@ const app = express();
 app.disable('x-powered-by');
 const apiJsonParser = express.json({ limit: '256kb' });
 app.use((req, res, next) => {
-  if (req.path === '/api/browser-ingest') return next();
+  if (req.path === '/api/browser-ingest' || req.path === '/api/workday-ingest') return next();
   return apiJsonParser(req, res, next);
 });
 
@@ -95,6 +102,19 @@ function requireBrowserIngestToken(
       res.sendStatus(401);
     }
   })();
+}
+
+function requireGithubOidcPolicy(policy: GithubOidcPolicy) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    void (async () => {
+      const token = /^Bearer\s+(.+)$/i.exec(req.get('Authorization') ?? '')?.[1];
+      if (!token || !await verifyGithubOidcToken(token, policy)) {
+        res.sendStatus(401);
+        return;
+      }
+      next();
+    })().catch(() => res.sendStatus(401));
+  };
 }
 
 function nextScheduledRefresh(from = new Date()): string | null {
@@ -254,6 +274,78 @@ app.post(
         [],
         browserPullAllowsClosure(req.body.complete, req.body.timedOut, listedUrls.length),
       );
+      res.json(counts);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+app.get('/api/workday-employers', requireGithubOidcPolicy(WORKDAY_PULL_OIDC_POLICY), async (_req, res, next) => {
+  try {
+    const employers = await q<WorkdayPullEmployer>(
+      `SELECT e.id, e.slug, e.ats, e.name, e.industry, e.company_size, e.hq_state, e.careers_url,
+              e.black_owned, e.ownership_status, e.ownership_source, e.last_searched_at::text,
+              e.last_resolve_at::text, e.active,
+              COALESCE(known.job_keys, ARRAY[]::text[]) AS known,
+              COALESCE(stored.job_keys, ARRAY[]::text[]) AS stored
+         FROM employers e
+         LEFT JOIN LATERAL (
+           SELECT array_agg(j.job_key) AS job_keys
+             FROM jobs j
+            WHERE j.employer_id = e.id
+              AND NOT (
+                j.bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+                AND j.ca_eligibility = 'unknown'
+                AND COALESCE(j.location_rules_version, 0) < $1
+              )
+         ) known ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT array_agg(j.job_key) AS job_keys
+             FROM jobs j
+            WHERE j.employer_id = e.id
+              AND j.bucket IN ('tab0','tab1','tab2','unsalaried','queue')
+         ) stored ON TRUE
+        WHERE e.active = TRUE AND e.ats = 'workday'
+        ORDER BY e.id`,
+      [LOCATION_RULES_VERSION],
+    );
+    res.json({ employers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  '/api/workday-ingest',
+  requireGithubOidcPolicy(WORKDAY_PULL_OIDC_POLICY),
+  express.json({ limit: '8mb' }),
+  async (req, res, next) => {
+    try {
+      if (!isWorkdayIngestPayload(req.body)) {
+        res.status(400).json({ error: 'Invalid Workday ingest payload' });
+        return;
+      }
+      const employerRows = await q<EmployerRow>(
+        `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
+                black_owned, ownership_status, ownership_source, last_searched_at::text,
+                last_resolve_at::text, active
+           FROM employers
+          WHERE id = $1 AND active = TRUE AND ats = 'workday'`,
+        [req.body.employerId],
+      );
+      const employer = employerRows[0];
+      if (!employer) {
+        res.status(404).json({ error: 'Active Workday employer not found' });
+        return;
+      }
+      if ('error' in req.body) {
+        await recordWorkdayPullFailure(employer, req.body.error);
+        res.json({ recorded: true });
+        return;
+      }
+      const result: BoardFetchResult = { ...req.body.result, ok: true };
+      const counts = await ingestBoardResult(employer, result, emptyCounters(), [], true);
       res.json(counts);
     } catch (err) {
       next(err);

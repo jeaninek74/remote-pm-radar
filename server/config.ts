@@ -60,6 +60,8 @@ export const REFRESH = {
   feedPages: Number(process.env.FEED_PAGES ?? 0),
   /** Parallel network requests. */
   concurrency: Number(process.env.FETCH_CONCURRENCY ?? 7),
+  /** Workday boards are pulled by the dedicated GitHub Actions runner unless explicitly disabled. */
+  workdayViaRunner: process.env.WORKDAY_VIA_RUNNER !== '0',
   /** Per-request timeout. */
   timeoutMs: Number(process.env.FETCH_TIMEOUT_MS ?? 20_000),
   /**

@@ -21,6 +21,16 @@ export const BROWSER_PULL_OIDC_POLICY: GithubOidcPolicy = {
   eventNames: ['schedule', 'workflow_dispatch'],
 };
 
+export const WORKDAY_PULL_OIDC_POLICY: GithubOidcPolicy = {
+  issuer: 'https://token.actions.githubusercontent.com',
+  audience: 'remote-pm-radar-workday-pull',
+  repository: 'jeaninek74/remote-pm-radar',
+  repositoryId: '1448647530',
+  workflowRef: 'jeaninek74/remote-pm-radar/.github/workflows/workday-pull.yml@refs/heads/master',
+  ref: 'refs/heads/master',
+  eventNames: ['schedule', 'workflow_dispatch'],
+};
+
 type GithubJwksFetcher = (url: string) => Promise<JsonWebKey[]>;
 
 interface CachedJwks {

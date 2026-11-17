@@ -1,0 +1,41 @@
+name: Pull Workday boards
+
+on:
+  schedule:
+    - cron: '5,35 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: workday-pull
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Wake Radar
+        env:
+          RADAR_URL: https://remote-pm-radar.onrender.com
+        run: |
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error "$RADAR_URL/api/health"; then
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
+      - name: Pull Workday boards
+        env:
+          RADAR_URL: https://remote-pm-radar.onrender.com
+        run: npx tsx scripts/workday-pull.ts

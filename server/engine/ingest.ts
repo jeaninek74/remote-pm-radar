@@ -20,6 +20,7 @@ import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
+import { sweepSkipsEmployer } from './workday-pull';
 
 export { sharedBoardPostingKey } from './dedupe';
 
@@ -805,6 +806,19 @@ async function recordSource(source: string, label: string, ok: boolean, jobs: nu
   );
 }
 
+export async function recordWorkdayPullFailure(employer: EmployerRow, error: string): Promise<void> {
+  const message = error.slice(0, 200);
+  await q(
+    `UPDATE employers
+        SET last_searched_at = now(),
+            last_status = 'Board temporarily unavailable — will retry next run',
+            last_error = $2
+      WHERE id = $1`,
+    [employer.id, message],
+  );
+  await recordSource(`${employer.ats}:${employer.slug}`, employer.name, false, 0, message);
+}
+
 /* ---------------------------------------------------------------- main cycle */
 
 async function createRunRow(trigger: string): Promise<number> {
@@ -881,6 +895,7 @@ function counterValues(c: RunCounters): unknown[] {
 async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   running = true;
   const counters = emptyCounters();
+  const skipsWorkday = sweepSkipsEmployer({ ats: 'workday' }, REFRESH);
 
   // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
   // how many employers it searched and how many postings it read, instead of zeros.
@@ -905,8 +920,10 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         WHERE jobs.employer_id = employers.id
           AND employers.active = FALSE
           AND employers.last_error ILIKE '%404%'
+          AND (NOT $1::boolean OR employers.ats <> 'workday')
           AND jobs.bucket IN ('tab0','tab1','tab2','unsalaried','queue')
         RETURNING jobs.id`,
+      [skipsWorkday],
     );
     counters.archived += retiredBoardRows.length;
     const employerCount = await one<{ count: string }>(`SELECT count(*)::text AS count FROM employers`);
@@ -917,12 +934,15 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
       await applyOwnership();
     }
 
+    const employerWhere = skipsWorkday
+      ? `${SWEEP_EMPLOYER_WHERE} AND ats <> 'workday'`
+      : SWEEP_EMPLOYER_WHERE;
     const employers = await q<EmployerRow>(
       `SELECT id, slug, ats, name, industry, company_size, hq_state, careers_url,
               black_owned, ownership_status, ownership_source, last_searched_at::text,
               last_resolve_at::text, active
         FROM employers
-        WHERE ${SWEEP_EMPLOYER_WHERE}
+        WHERE ${employerWhere}
         ORDER BY last_searched_at ASC NULLS FIRST
         ${REFRESH.employersPerRun > 0 ? 'LIMIT $1' : ''}`,
       REFRESH.employersPerRun > 0 ? [REFRESH.employersPerRun] : [],
