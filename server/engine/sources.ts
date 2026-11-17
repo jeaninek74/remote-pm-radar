@@ -2155,7 +2155,7 @@ export function isRetryableBoardError(err: unknown): boolean {
   const message = (err as Error)?.message ?? '';
   const status = (err as { status?: number })?.status ?? Number(/\b(429|5\d\d)\b/.exec(message)?.[1] ?? 0);
   if (status === 429 || status >= 500) return true;
-  return /abort|timeout|timed out|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|maintenance/i.test(message);
+  return /abort|timeout|timed out|ENETUNREACH|EHOSTUNREACH|ENOTFOUND|EPIPE|ECONNABORTED|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|maintenance/i.test(message);
 }
 
 export function workdayDetailClosed(status: number, body: unknown): boolean {

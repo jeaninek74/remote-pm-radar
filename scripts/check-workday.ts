@@ -1,4 +1,4 @@
-import { workdayDetailClosed, workdayStoredKeyNeedsRecheck } from '../server/engine/sources';
+import { isRetryableBoardError, workdayDetailClosed, workdayStoredKeyNeedsRecheck } from '../server/engine/sources';
 
 let failures = 0;
 
@@ -14,6 +14,8 @@ check('other 403 error is not confirmed closed', !workdayDetailClosed(403, { err
 check('429 is not confirmed closed', !workdayDetailClosed(429, {}));
 check('500 S22 is not confirmed closed', !workdayDetailClosed(500, { errorCode: 'S22' }));
 check('200 live response is not confirmed closed', !workdayDetailClosed(200, { jobPostingInfo: {} }));
+check('network unreachable errors are retryable',
+  isRetryableBoardError(new Error('connect ENETUNREACH 1.2.3.4:443')));
 
 const collectedKey = 'Workday:/job/London-GBR/Regional-Real-Estate-Portfolio-Manager_REQ545119';
 const collectedKeys = new Set([`Workday:${collectedKey.slice('Workday:'.length)}`.slice(0, 190)]);
