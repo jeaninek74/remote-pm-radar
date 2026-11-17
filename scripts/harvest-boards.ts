@@ -278,6 +278,7 @@ async function main(): Promise<void> {
   const results = [...candidates.values()];
   if (scanFailures.length) {
     console.warn(`[harvest] continuing with partial results after ${scanFailures.length} scan failure(s)`);
+    process.exitCode = 1;
   }
   reportCandidates(results);
   if (options.outputPath) {
