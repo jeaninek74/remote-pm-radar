@@ -946,7 +946,10 @@ async function currentRunningRun(): Promise<number | null> {
  * Blocking refresh used by the CLI and the schedule. Only one sweep may run per database,
  * whichever process asks: a second caller gets the id of the run already in flight.
  */
-export async function runRefresh(trigger: string): Promise<number> {
+export async function runRefresh(
+  trigger: string,
+  { discoverAfter = true }: { discoverAfter?: boolean } = {},
+): Promise<number> {
   await migrate();
   const lock = await acquireRefreshLock();
   if (!lock) {
@@ -954,7 +957,7 @@ export async function runRefresh(trigger: string): Promise<number> {
     if (existing) return existing;
     throw new Error('A refresh is already running in another process');
   }
-  return executeRun(await claimRun(trigger, lock), lock);
+  return executeRun(await claimRun(trigger, lock), lock, discoverAfter);
 }
 
 /** Creates the run row; if that fails the lock is given back rather than held until exit. */
@@ -998,7 +1001,11 @@ function counterValues(c: RunCounters): unknown[] {
   ];
 }
 
-async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
+async function executeRun(
+  runId: number,
+  lock: RefreshLock,
+  discoverAfter = true,
+): Promise<number> {
   running = true;
   const counters = emptyCounters();
   let completedSuccessfully = false;
@@ -1292,7 +1299,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   } finally {
     running = false;
     await lock.release();
-    if (completedSuccessfully) {
+    if (completedSuccessfully && discoverAfter) {
       void startDiscovery(REFRESH.discoverPassBudgetMs)
         .then((result) => {
           console.log(`[discovery] post-refresh ${result.started ? 'started' : `not started: ${result.reason ?? 'unknown reason'}`}`);

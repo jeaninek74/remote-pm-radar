@@ -12,7 +12,7 @@ async function main(): Promise<void> {
     console.log(`Seeded ${seeded} employers`);
   }
   const started = Date.now();
-  const runId = await runRefresh(trigger);
+  const runId = await runRefresh(trigger, { discoverAfter: false });
   const stats = await getStats();
   const run = await q<Record<string, unknown>>(`SELECT * FROM refresh_runs WHERE id = $1`, [runId]);
   console.log('--- run summary ---');
