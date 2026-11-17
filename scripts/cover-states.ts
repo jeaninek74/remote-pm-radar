@@ -15,6 +15,7 @@ import { writeFileSync } from 'node:fs';
 import { STATE_TARGETS } from '../server/data/state-employers';
 import type { StateTarget } from '../server/data/state-employers';
 import { isRoleTitle } from '../server/engine/titles';
+import { httpsRequest } from '../server/engine/http';
 
 const TIMEOUT_MS = 15_000;
 const CONCURRENCY = 14;
@@ -100,14 +101,14 @@ async function probeCareers(target: StateTarget): Promise<{ ats: string; slug: s
     const pod = wd[2];
     const site = wd[3].replace(/[^A-Za-z0-9_-]+$/, '');
     const careersUrl = `https://${tenant}.${pod}.myworkdayjobs.com/${site}`;
-    const search = await fetch(`https://${tenant}.${pod}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
+    const search = await httpsRequest(`https://${tenant}.${pod}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'RemotePMRadar/1.0' },
       body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: 'project manager' }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      timeoutMs: TIMEOUT_MS,
     });
-    if (!search.ok) return null;
-    const data = (await search.json()) as { jobPostings?: { title?: string; locationsText?: string }[] };
+    if (search.status < 200 || search.status >= 300) return null;
+    const data = JSON.parse(search.text) as { jobPostings?: { title?: string; locationsText?: string }[] };
     const jobs = (data.jobPostings ?? []).map((j) => ({ title: j.title ?? '', location: j.locationsText ?? '' }));
     if (!jobs.length) return null;
     return { ats: 'workday', slug: `${tenant}/${site}`, careersUrl, jobs };

@@ -1,4 +1,5 @@
 import type { Ats } from './types';
+import { httpsRequest } from './http';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
@@ -775,12 +776,24 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     if (candidate.ats === 'avionte') return await validateAvionteCandidate(candidate, deadline);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
-      const data = await fetchJson<{ total?: unknown }>(
+      const response = await httpsRequest(
         `https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`,
-        deadline,
-        'POST',
-        JSON.stringify({ appliedFacets: {}, limit: 1, offset: 0, searchText: '' }),
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': BROWSER_USER_AGENT,
+          },
+          body: JSON.stringify({ appliedFacets: {}, limit: 1, offset: 0, searchText: '' }),
+          timeoutMs: timeoutFor(deadline),
+        },
       );
+      if (response.status >= 300 && response.status < 400) {
+        throw new Error(`Workday search redirected (${response.status})`);
+      }
+      if (response.status < 200 || response.status >= 300) throw new Error(`HTTP ${response.status}`);
+      const data = JSON.parse(response.text) as { total?: unknown };
       if (typeof data.total !== 'number' || !Number.isFinite(data.total)) {
         return { kind: 'unknown', reason: 'Workday response had no numeric total' };
       }
