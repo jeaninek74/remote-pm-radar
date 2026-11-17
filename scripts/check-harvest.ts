@@ -2,6 +2,7 @@ import {
   classifyBoardCandidate,
   extractBoardSlug,
   isBoardCandidatePayload,
+  pageTitle,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
 
@@ -57,6 +58,14 @@ check('matching existing employer is classified duplicate',
   classifyBoardCandidate('Acme', [['United States']], true) === 'duplicate');
 check('eligible nonduplicate board is accepted',
   classifyBoardCandidate('Acme', [['United States']]) === 'added');
+check('strip a bare Ashby jobs title suffix',
+  pageTitle('<title>OpenAI Jobs</title>') === 'OpenAI');
+check('strip ATS and job-title suffixes',
+  pageTitle('<title>Acme - Jobs | Lever</title>') === 'Acme');
+check('strip Ashby suffix after the role label',
+  pageTitle('<title>Crusoe Careers | Ashby</title>') === 'Crusoe');
+check('keep a company name without a title suffix',
+  pageTitle('<title>Acme, Inc.</title>') === 'Acme, Inc.');
 check('harvest OIDC is scoped to the master workflow',
   HARVEST_BOARDS_OIDC_POLICY.workflowRef
     === 'jeaninek74/remote-pm-radar/.github/workflows/harvest-boards.yml@refs/heads/master'

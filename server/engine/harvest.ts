@@ -148,9 +148,22 @@ function locationGroup(...values: unknown[]): string[] {
   return parts.length ? [parts.join(', ')] : [];
 }
 
-function pageTitle(html: string): string | null {
+const ATS_TITLE_SUFFIX = /\s*[|–—-]\s*(?:lever|ashby|greenhouse|workable|smartrecruiters|recruitee)\s*$/i;
+const ROLE_TITLE_SUFFIX = /(?:\s*[|–—-]\s*|\s+)(?:jobs?|careers?|open roles?)\s*$/i;
+
+export function pageTitle(html: string): string | null {
   const match = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(html);
-  const title = match ? stripHtml(match[1]) : '';
+  let title = match ? stripHtml(match[1]).trim() : '';
+  while (title) {
+    const withoutAts = title.replace(ATS_TITLE_SUFFIX, '').trim();
+    if (withoutAts !== title) {
+      title = withoutAts;
+      continue;
+    }
+    const withoutRoleSuffix = title.replace(ROLE_TITLE_SUFFIX, '').trim();
+    if (withoutRoleSuffix === title) break;
+    title = withoutRoleSuffix;
+  }
   if (!title || /^(?:careers|jobs|open roles?)(?:\s*[|–-]\s*(?:lever|ashby|recruitee))?$/i.test(title)) {
     return null;
   }
