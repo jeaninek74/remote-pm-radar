@@ -44,6 +44,7 @@ export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      request.destroy(error);
       reject(error);
     };
     const finishResponse = (response: HttpsResponse) => {
@@ -77,7 +78,6 @@ export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {
         } catch (error) {
           const encodingError = error as Error;
           finishError(encodingError);
-          request.destroy(encodingError);
           return;
         }
 
@@ -90,8 +90,7 @@ export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {
           if (bytesRead > HTTPS_RESPONSE_MAX_BYTES) {
             const sizeError = new Error(`HTTPS response exceeds ${HTTPS_RESPONSE_MAX_BYTES} byte limit`);
             finishError(sizeError);
-            request.destroy(sizeError);
-            bodyStream.destroy(sizeError);
+            bodyStream.destroy();
             return;
           }
           chunks.push(buffer);
@@ -107,7 +106,6 @@ export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {
     request.on('error', finishError);
     timer = setTimeout(() => {
       const timeoutError = new Error(`HTTPS request timeout after ${timeoutMs}ms`);
-      request.destroy(timeoutError);
       finishError(timeoutError);
     }, timeoutMs);
     if (options.body !== undefined) request.write(options.body);
