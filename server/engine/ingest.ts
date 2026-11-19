@@ -20,6 +20,8 @@ import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
+import { validateBoardCandidate } from './harvest';
+import { discoveryBudget } from './discovery-budget';
 
 export { sharedBoardPostingKey } from './dedupe';
 
@@ -655,10 +657,124 @@ export async function discoverEmployers(
 ): Promise<{ probed: number; found: number }> {
   const pageSize = 100;
   let probed = 0;
+  let queueProbed = 0;
   let found = 0;
   const seenIds = new Set<number>();
-  while (Date.now() < passDeadline(deadline) && (maxProbes <= 0 || probed < maxProbes)) {
-    const limit = maxProbes > 0 ? Math.min(pageSize, maxProbes - probed) : pageSize;
+  const existingEmployerNames = (await q<{ name: string }>(`SELECT name FROM employers`))
+    .map((row) => row.name);
+  let boardInsertQueue: Promise<void> = Promise.resolve();
+
+  const insertBoardEmployer = async (
+    ats: string,
+    slug: string,
+    name: string,
+    careersUrl: string,
+  ): Promise<boolean> => {
+    let release!: () => void;
+    const previous = boardInsertQueue;
+    boardInsertQueue = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try {
+      if (existingEmployerNames.some((existingName) => namesAgree(existingName, name))) return false;
+      const inserted = await q<{ id: number }>(
+        `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+         VALUES ($1,$2,$3,NULL,'Unknown',NULL,$4,'Board directory',TRUE)
+         ON CONFLICT (ats, slug) DO NOTHING
+         RETURNING id`,
+        [name, ats, slug, careersUrl],
+      );
+      if (!inserted.length) return false;
+      existingEmployerNames.push(name);
+      return true;
+    } finally {
+      release();
+    }
+  };
+
+  const passStartedAt = await one<{ started_at: string }>(`SELECT now()::text AS started_at`);
+  while (Date.now() < passDeadline(deadline)) {
+    const candidates = await q<{ id: number; ats: string; slug: string }>(
+      `SELECT id, ats, slug
+         FROM board_candidates
+        WHERE status = 'pending'
+          AND tries < 3
+          AND (checked_at IS NULL OR checked_at < $1)
+        ORDER BY tries ASC, id ASC
+        LIMIT $2`,
+      [passStartedAt?.started_at ?? new Date().toISOString(), pageSize],
+    );
+    if (!candidates.length) break;
+    await mapLimit(candidates, 6, async (candidate) => {
+      if (Date.now() >= passDeadline(deadline)) return;
+      probed += 1;
+      try {
+        const alreadyRegistered = await one<{ id: number }>(
+          `SELECT id FROM employers WHERE ats = $1 AND slug = $2 LIMIT 1`,
+          [candidate.ats, candidate.slug],
+        );
+        if (alreadyRegistered) {
+          await q(
+            `UPDATE board_candidates
+                SET status = 'duplicate', note = 'ATS board is already registered.', checked_at = now()
+              WHERE id = $1`,
+            [candidate.id],
+          );
+          return;
+        }
+
+        const validation = await validateBoardCandidate(
+          candidate.ats,
+          candidate.slug,
+          passDeadline(deadline),
+          (name) => existingEmployerNames.some((existingName) => namesAgree(existingName, name)),
+        );
+        if (validation.status !== 'added') {
+          const note = {
+            empty: 'The public board has no postings.',
+            no_name: 'The public board did not provide a company name.',
+            foreign: 'Every posting is located outside the United States.',
+            duplicate: 'An existing employer name matches the board company name.',
+            added: null,
+          }[validation.status];
+          await q(
+            `UPDATE board_candidates SET status = $2, note = $3, checked_at = now() WHERE id = $1`,
+            [candidate.id, validation.status, note],
+          );
+          return;
+        }
+
+        if (Date.now() >= passDeadline(deadline)) return;
+        const inserted = await insertBoardEmployer(
+          candidate.ats,
+          candidate.slug,
+          validation.name!,
+          validation.careersUrl!,
+        );
+        await q(
+          `UPDATE board_candidates
+              SET status = $2, note = $3, checked_at = now()
+            WHERE id = $1`,
+          [
+            candidate.id,
+            inserted ? 'added' : 'duplicate',
+            inserted ? null : 'An employer with this name or ATS board was added during validation.',
+          ],
+        );
+        if (inserted) found += 1;
+      } catch (err) {
+        await q(
+          `UPDATE board_candidates
+              SET tries = tries + 1, note = $2, checked_at = now()
+            WHERE id = $1`,
+          [candidate.id, truncate((err as Error).message, 300)],
+        );
+      }
+    });
+    if (progress) await progress(`Validated ${probed} employer candidates, ${found} new boards`);
+  }
+
+  while (Date.now() < passDeadline(deadline) && (maxProbes <= 0 || queueProbed < maxProbes)) {
+    const limit = maxProbes > 0 ? Math.min(pageSize, maxProbes - queueProbed) : pageSize;
     const pending = await q<{ id: number; name: string; industry: string | null; hq_state: string | null; company_size: string | null }>(
       `SELECT id, name, industry, hq_state, company_size FROM discovery_queue
         WHERE status='pending' AND tries < 3
@@ -676,6 +792,7 @@ export async function discoverEmployers(
     await mapLimit(fresh, 6, async (row) => {
       if (Date.now() > passDeadline(deadline)) return;
       probed += 1;
+      queueProbed += 1;
       const hit = await probeAts(row.name, passDeadline(deadline));
       if (hit) {
         const inserted = await q<{ id: number }>(
@@ -734,18 +851,21 @@ export function discoveryStatus(): { running: boolean; startedAt?: string } {
  */
 export async function startDiscovery(budgetMs: number): Promise<{ started: boolean; reason?: string }> {
   if (discoveryPass) return { started: false, reason: 'A discovery pass is already running.' };
+  const now = Date.now();
+  const budget = discoveryBudget(now, budgetMs);
+  if (budget === null) return { started: false, reason: 'Too close to the next sweep slot.' };
   const lock = await acquireRefreshLock();
   if (!lock) return { started: false, reason: 'A refresh is running; discovery waits for the next gap.' };
-  // Never run into the next :00/:30 sweep: the pass ends at least a minute before the slot.
-  const now = Date.now();
-  const slotMs = 30 * 60_000;
-  const nextSlot = Math.ceil((now + 1) / slotMs) * slotMs;
-  const budget = Math.max(30_000, Math.min(budgetMs, nextSlot - now - 60_000));
+  const deadline = now + budget;
+  if (Date.now() >= deadline) {
+    await lock.release().catch(() => undefined);
+    return { started: false, reason: 'Too close to the next sweep slot.' };
+  }
   const pass = { startedAt: new Date().toISOString(), probed: 0, found: 0, cutoff: Infinity };
   discoveryPass = pass;
   void (async () => {
     try {
-      const result = await discoverEmployers(Date.now() + budget);
+      const result = await discoverEmployers(deadline);
       pass.probed = result.probed;
       pass.found = result.found;
       console.log(`[discovery] pass finished: ${result.probed} probed, ${result.found} new employers`);
@@ -826,7 +946,10 @@ async function currentRunningRun(): Promise<number | null> {
  * Blocking refresh used by the CLI and the schedule. Only one sweep may run per database,
  * whichever process asks: a second caller gets the id of the run already in flight.
  */
-export async function runRefresh(trigger: string): Promise<number> {
+export async function runRefresh(
+  trigger: string,
+  { discoverAfter = true }: { discoverAfter?: boolean } = {},
+): Promise<number> {
   await migrate();
   const lock = await acquireRefreshLock();
   if (!lock) {
@@ -834,7 +957,7 @@ export async function runRefresh(trigger: string): Promise<number> {
     if (existing) return existing;
     throw new Error('A refresh is already running in another process');
   }
-  return executeRun(await claimRun(trigger, lock), lock);
+  return executeRun(await claimRun(trigger, lock), lock, discoverAfter);
 }
 
 /** Creates the run row; if that fails the lock is given back rather than held until exit. */
@@ -878,9 +1001,14 @@ function counterValues(c: RunCounters): unknown[] {
   ];
 }
 
-async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
+async function executeRun(
+  runId: number,
+  lock: RefreshLock,
+  discoverAfter = true,
+): Promise<number> {
   running = true;
   const counters = emptyCounters();
+  let completedSuccessfully = false;
 
   // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
   // how many employers it searched and how many postings it read, instead of zeros.
@@ -1152,6 +1280,7 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
         ...counterValues(counters),
       ],
     );
+    completedSuccessfully = true;
     return runId;
   } catch (err) {
     const message = (err as Error).message;
@@ -1170,6 +1299,13 @@ async function executeRun(runId: number, lock: RefreshLock): Promise<number> {
   } finally {
     running = false;
     await lock.release();
+    if (completedSuccessfully && discoverAfter) {
+      void startDiscovery(REFRESH.discoverPassBudgetMs)
+        .then((result) => {
+          console.log(`[discovery] post-refresh ${result.started ? 'started' : `not started: ${result.reason ?? 'unknown reason'}`}`);
+        })
+        .catch((err) => console.error('[discovery] post-refresh start failed', err));
+    }
   }
 }
 

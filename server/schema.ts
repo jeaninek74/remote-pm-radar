@@ -99,6 +99,20 @@ CREATE INDEX IF NOT EXISTS discovery_pending_idx ON discovery_queue (status, tri
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs (company);
 CREATE INDEX IF NOT EXISTS jobs_employer_idx ON jobs (employer_id);
 
+CREATE TABLE IF NOT EXISTS board_candidates (
+  id SERIAL PRIMARY KEY,
+  ats TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  source TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  tries INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (ats, slug)
+);
+CREATE INDEX IF NOT EXISTS board_candidates_pending_idx ON board_candidates (status, tries);
+
 CREATE TABLE IF NOT EXISTS refresh_runs (
   id SERIAL PRIMARY KEY,
   trigger TEXT NOT NULL,
