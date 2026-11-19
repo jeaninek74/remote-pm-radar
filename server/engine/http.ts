@@ -1,4 +1,117 @@
+import { request as httpsRequestRaw } from 'node:https';
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
+import type { Readable, Transform } from 'node:stream';
 import { REFRESH, USER_AGENT } from '../config';
+
+const HTTPS_RESPONSE_MAX_BYTES = 20 * 1024 * 1024;
+
+export interface HttpsRequestOptions {
+  method?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  body?: string | Buffer | Uint8Array;
+  timeoutMs?: number;
+}
+
+export interface HttpsResponse {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  text: string;
+}
+
+function decompressor(encoding: string): Transform | null {
+  switch (encoding) {
+    case '':
+    case 'identity':
+      return null;
+    case 'gzip':
+    case 'x-gzip':
+      return createGunzip();
+    case 'br':
+      return createBrotliDecompress();
+    case 'deflate':
+      return createInflate();
+    default:
+      throw new Error(`Unsupported HTTPS content encoding: ${encoding}`);
+  }
+}
+
+export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {}): Promise<HttpsResponse> {
+  const timeoutMs = Math.max(1, options.timeoutMs ?? 15_000);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: NodeJS.Timeout;
+    const finishError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      request.destroy(error);
+      reject(error);
+    };
+    const finishResponse = (response: HttpsResponse) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(response);
+    };
+
+    const request = httpsRequestRaw(
+      url,
+      { method: options.method ?? 'GET', headers: options.headers },
+      (response) => {
+        response.on('error', finishError);
+        response.on('aborted', () => finishError(new Error('HTTPS response aborted')));
+
+        let bodyStream: Readable = response;
+        const contentEncoding = response.headers['content-encoding'];
+        const encodings = (Array.isArray(contentEncoding) ? contentEncoding.join(',') : contentEncoding ?? '')
+          .split(',')
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean)
+          .reverse();
+        try {
+          for (const encoding of encodings) {
+            const decoder = decompressor(encoding);
+            if (!decoder) continue;
+            decoder.on('error', finishError);
+            bodyStream = bodyStream.pipe(decoder);
+          }
+        } catch (error) {
+          const encodingError = error as Error;
+          finishError(encodingError);
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let bytesRead = 0;
+        bodyStream.on('data', (chunk: Buffer | string) => {
+          if (settled) return;
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytesRead += buffer.length;
+          if (bytesRead > HTTPS_RESPONSE_MAX_BYTES) {
+            const sizeError = new Error(`HTTPS response exceeds ${HTTPS_RESPONSE_MAX_BYTES} byte limit`);
+            finishError(sizeError);
+            bodyStream.destroy();
+            return;
+          }
+          chunks.push(buffer);
+        });
+        bodyStream.on('error', finishError);
+        bodyStream.on('end', () => finishResponse({
+          status: response.statusCode ?? 0,
+          headers: response.headers,
+          text: Buffer.concat(chunks, bytesRead).toString('utf8'),
+        }));
+      },
+    );
+    request.on('error', finishError);
+    timer = setTimeout(() => {
+      const timeoutError = new Error(`HTTPS request timeout after ${timeoutMs}ms`);
+      finishError(timeoutError);
+    }, timeoutMs);
+    if (options.body !== undefined) request.write(options.body);
+    request.end();
+  });
+}
 
 export class HttpError extends Error {
   status: number;

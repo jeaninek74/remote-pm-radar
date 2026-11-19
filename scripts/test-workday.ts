@@ -1,4 +1,5 @@
 import { q, pool } from '../server/db';
+import { httpsRequest } from '../server/engine/http';
 
 function parseWorkday(url: string): { tenant: string; wd: string; site: string } | null {
   const m = /https?:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/?#]+)/i.exec(url);
@@ -7,14 +8,14 @@ function parseWorkday(url: string): { tenant: string; wd: string; site: string }
 }
 
 async function search(tenant: string, wd: string, site: string, text: string) {
-  const res = await fetch(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
+  const res = await httpsRequest(`https://${tenant}.${wd}.myworkdayjobs.com/wday/cxs/${tenant}/${site}/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' },
     body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: text }),
-    signal: AbortSignal.timeout(15000),
+    timeoutMs: 15_000,
   });
-  if (!res.ok) throw new Error(String(res.status));
-  return res.json() as Promise<{ total?: number; jobPostings?: { title: string; externalPath: string; locationsText?: string }[] }>;
+  if (res.status < 200 || res.status >= 300) throw new Error(String(res.status));
+  return JSON.parse(res.text) as { total?: number; jobPostings?: { title: string; externalPath: string; locationsText?: string }[] };
 }
 
 async function main() {
