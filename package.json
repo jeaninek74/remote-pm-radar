@@ -19,6 +19,7 @@
     "check:evaluate": "tsx scripts/check-evaluate.ts",
     "check:workday": "tsx scripts/check-workday.ts",
     "check:harvest": "tsx scripts/check-harvest.ts",
+    "check:orphan": "tsx scripts/check-orphan.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:employers": "tsx scripts/seed-employers.ts",
     "refresh": "tsx scripts/refresh.ts"

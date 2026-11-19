@@ -15,6 +15,7 @@ import {
   startDiscovery,
   startRefresh,
 } from './engine/ingest';
+import { runIsOrphaned } from './engine/orphan';
 import {
   browserJobsFromPages,
   isBrowserIngestAuthorized,
@@ -46,6 +47,14 @@ const PORT = Number(process.env.PORT ?? 3000);
 // sets ENABLE_CRON=1; every other copy (previews, scratch containers) stays quiet.
 const CRON_ENABLED = process.env.ENABLE_CRON === '1';
 const CRON_EXPRESSION = process.env.REFRESH_CRON ?? '*/30 * * * *';
+let shuttingDown = false;
+
+process.once('SIGTERM', () => {
+  shuttingDown = true;
+  console.log('[shutdown] SIGTERM received; no new refreshes will start');
+  process.kill(process.pid, 'SIGTERM');
+});
+
 /** Works whether the server runs from dist/ (production) or server/ (tsx dev). */
 const PUBLIC_DIR = [
   path.join(__dirname, 'client'),
@@ -479,6 +488,43 @@ async function markInterruptedRuns(): Promise<void> {
   );
 }
 
+let orphanWatchdogChecking = false;
+
+async function checkForOrphanedRun(): Promise<void> {
+  if (shuttingDown || orphanWatchdogChecking) return;
+  orphanWatchdogChecking = true;
+  try {
+    const runningRun = await one<{ id: number }>(
+      `SELECT id FROM refresh_runs WHERE status='running' ORDER BY id DESC LIMIT 1`,
+    );
+    if (!runningRun || shuttingDown) return;
+    const lockHeldElsewhere = await refreshLockHeldElsewhere();
+    if (!runIsOrphaned({
+      runningRunId: runningRun.id,
+      refreshingHere: isRefreshing(),
+      lockHeldElsewhere,
+    })) return;
+    if (shuttingDown) return;
+    const interrupted = await q<{ id: number }>(
+      `UPDATE refresh_runs
+          SET status='interrupted', finished_at=now(), message='Owner process stopped before this run finished.'
+        WHERE id=$1 AND status='running'
+        RETURNING id`,
+      [runningRun.id],
+    );
+    if (!interrupted.length || shuttingDown) return;
+    console.log(`[watchdog] refresh ${runningRun.id} was orphaned; marked interrupted`);
+    const { runId, alreadyRunning } = await startRefresh('catch-up');
+    console.log(
+      `[watchdog] catch-up refresh ${runId}${alreadyRunning ? ' joined an existing run' : ' started'}`,
+    );
+  } catch (err) {
+    console.error('[watchdog] orphan recovery check failed', (err as Error).message);
+  } finally {
+    orphanWatchdogChecking = false;
+  }
+}
+
 async function main(): Promise<void> {
   await migrate();
   await markInterruptedRuns();
@@ -504,7 +550,7 @@ async function main(): Promise<void> {
       last?.status === 'completed' &&
       last.finished_epoch !== null &&
       Number(last.finished_epoch) * 1000 < lastBoundary;
-    if (CRON_ENABLED && last && (last.status === 'interrupted' || missedSlot)) {
+    if (!shuttingDown && CRON_ENABLED && last && (last.status === 'interrupted' || missedSlot)) {
       console.log(`[startup] last run ${last.status}${missedSlot ? ', slot missed' : ''} — starting a catch-up refresh`);
       startRefresh('catch-up')
         .then(({ runId, alreadyRunning }) => console.log(`[startup] catch-up refresh ${runId}${alreadyRunning ? ' joined an existing run' : ' started'}`))
@@ -519,7 +565,7 @@ async function main(): Promise<void> {
   // in the background so the server still begins listening on time.
   try {
     const [row] = await q<{ count: string }>('SELECT count(*)::text AS count FROM jobs');
-    if (Number(row?.count ?? 0) === 0) {
+    if (!shuttingDown && Number(row?.count ?? 0) === 0) {
       console.log('[startup] no postings yet — starting a bootstrap refresh');
       startRefresh('manual')
         .then(({ runId, alreadyRunning }) =>
@@ -533,6 +579,7 @@ async function main(): Promise<void> {
 
   if (CRON_ENABLED && cron.validate(CRON_EXPRESSION)) {
     cron.schedule(CRON_EXPRESSION, () => {
+      if (shuttingDown) return;
       console.log('[cron] scheduled refresh starting');
       runRefresh('schedule')
         .then((id) => console.log(`[cron] refresh ${id} complete`))
@@ -541,6 +588,13 @@ async function main(): Promise<void> {
     console.log(`[cron] scheduled refresh active: ${CRON_EXPRESSION} (UTC)`);
   } else {
     console.log('[cron] scheduled refresh disabled; manual refresh only');
+  }
+
+  if (CRON_ENABLED) {
+    const orphanWatchdog = setInterval(() => {
+      if (!shuttingDown) void checkForOrphanedRun();
+    }, 60_000);
+    orphanWatchdog.unref();
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
