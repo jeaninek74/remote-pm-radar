@@ -532,7 +532,7 @@ async function checkForOrphanedRun(): Promise<void> {
 }
 
 function checkMemoryForRecycle(): void {
-  if (shuttingDown) return;
+  if (shuttingDown || CRON_EXPRESSION !== '*/30 * * * *') return;
   const { heapUsed } = process.memoryUsage();
   const heapLimit = getHeapStatistics().heap_size_limit;
   if (!shouldRecycle({
