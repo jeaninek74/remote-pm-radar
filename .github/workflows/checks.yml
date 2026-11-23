@@ -28,3 +28,4 @@ jobs:
       - run: npm run check:workday
       - run: npm run check:harvest
       - run: npm run check:orphan
+      - run: npm run check:memory

@@ -14,6 +14,47 @@ export const HARVEST_ATS = [
 
 export type HarvestAts = (typeof HARVEST_ATS)[number];
 
+export interface ClusterIndexEntry {
+  key: string;
+  file: string;
+  offset: number;
+  length: number;
+  clusterId: string;
+}
+
+const SURT_PREFIX_BY_PATTERN: Record<string, string> = {
+  'jobs.lever.co/*': 'co,lever,jobs)/',
+  'boards.greenhouse.io/*': 'io,greenhouse,boards)/',
+  'job-boards.greenhouse.io/*': 'io,greenhouse,job-boards)/',
+  'jobs.ashbyhq.com/*': 'com,ashbyhq,jobs)/',
+  'apply.workable.com/*': 'com,workable,apply)/',
+  'jobs.smartrecruiters.com/*': 'com,smartrecruiters,jobs)/',
+  'careers.smartrecruiters.com/*': 'com,smartrecruiters,careers)/',
+  '*.recruitee.com/*': 'com,recruitee,',
+};
+
+export function surtPrefix(hostPattern: string): string | null {
+  return SURT_PREFIX_BY_PATTERN[hostPattern] ?? null;
+}
+
+export function blocksForPrefix<T extends { key: string }>(
+  entries: readonly T[],
+  prefix: string,
+): T[] {
+  let preceding: T | null = null;
+  const matching: T[] = [];
+  for (const entry of entries) {
+    if (entry.key < prefix) {
+      preceding = entry;
+    } else if (entry.key.startsWith(prefix)) {
+      matching.push(entry);
+    } else {
+      break;
+    }
+  }
+  return [...(preceding ? [preceding] : []), ...matching];
+}
+
 export interface BoardCandidateInput {
   ats: HarvestAts;
   slug: string;

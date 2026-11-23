@@ -1,8 +1,10 @@
 import {
   classifyBoardCandidate,
+  blocksForPrefix,
   extractBoardSlug,
   isBoardCandidatePayload,
   pageTitle,
+  surtPrefix,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
 import { discoveryBudget } from '../server/engine/discovery-budget';
@@ -82,5 +84,35 @@ check('harvest OIDC is scoped to the master workflow',
     && HARVEST_BOARDS_OIDC_POLICY.ref === 'refs/heads/master'
     && HARVEST_BOARDS_OIDC_POLICY.eventNames.includes('schedule')
     && HARVEST_BOARDS_OIDC_POLICY.eventNames.includes('workflow_dispatch'));
+
+const surtPatterns: [string, string][] = [
+  ['jobs.lever.co/*', 'co,lever,jobs)/'],
+  ['boards.greenhouse.io/*', 'io,greenhouse,boards)/'],
+  ['job-boards.greenhouse.io/*', 'io,greenhouse,job-boards)/'],
+  ['jobs.ashbyhq.com/*', 'com,ashbyhq,jobs)/'],
+  ['apply.workable.com/*', 'com,workable,apply)/'],
+  ['jobs.smartrecruiters.com/*', 'com,smartrecruiters,jobs)/'],
+  ['careers.smartrecruiters.com/*', 'com,smartrecruiters,careers)/'],
+  ['*.recruitee.com/*', 'com,recruitee,'],
+];
+for (const [pattern, prefix] of surtPatterns) {
+  check(`map ${pattern} to its SURT prefix`, surtPrefix(pattern) === prefix);
+}
+const indexEntry = (key: string) => ({ key, file: 'cdx-00000.gz', offset: 0, length: 1, clusterId: '0' });
+check('select the block spanning a prefix inside the first index range',
+  blocksForPrefix([indexEntry('a'), indexEntry('c')], 'b').map((entry) => entry.key).join(',') === 'a');
+check('select the preceding and every block spanning a prefix',
+  blocksForPrefix([
+    indexEntry('a'),
+    indexEntry('co,lever,jobs)/'),
+    indexEntry('co,lever,jobs)/a'),
+    indexEntry('co,lever,jobs)/z'),
+    indexEntry('z'),
+  ], 'co,lever,jobs)/').map((entry) => entry.key).join('|')
+    === 'a|co,lever,jobs)/|co,lever,jobs)/a|co,lever,jobs)/z');
+check('select the preceding block when a prefix is absent',
+  blocksForPrefix([indexEntry('a'), indexEntry('z')], 'm').map((entry) => entry.key).join(',') === 'a');
+check('return no block when a prefix is before the first index key',
+  blocksForPrefix([indexEntry('m'), indexEntry('z')], 'a').length === 0);
 
 if (failures) throw new Error(`${failures} harvest check(s) failed`);

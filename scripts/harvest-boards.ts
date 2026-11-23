@@ -1,18 +1,29 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { createInterface } from 'node:readline';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { promisify } from 'node:util';
+import { gunzip } from 'node:zlib';
 import {
+  blocksForPrefix,
   extractBoardSlug,
   HARVEST_ATS,
+  surtPrefix,
   type BoardCandidateInput,
+  type ClusterIndexEntry,
   type HarvestAts,
 } from '../server/engine/harvest';
 
 const INDEX_HOST = 'https://index.commoncrawl.org';
+const DATA_HOST = 'https://data.commoncrawl.org';
+const COLLECTIONS_PATH = '/cc-index/collections';
 const HARVEST_AUDIENCE = 'remote-pm-radar-board-harvest';
-const REQUEST_PACE_MS = 1_000;
+const REQUEST_PACE_MS = 200;
 const MAX_ATTEMPTS = 5;
 const PAGE_SIZE = 2_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const gunzipAsync = promisify(gunzip);
+const retryDelay = (attempt: number) => Math.min(2_000 * (2 ** attempt), 30_000);
 
 const HOST_PATTERNS: Record<HarvestAts, string[]> = {
   lever: ['jobs.lever.co/*'],
@@ -48,7 +59,7 @@ function optionValue(args: string[], name: string): string | undefined {
 
 function parseOptions(args: string[]): HarvestOptions {
   const rawCrawlCount = optionValue(args, 'crawls');
-  const crawlCount = rawCrawlCount === undefined ? 3 : Number(rawCrawlCount);
+  const crawlCount = rawCrawlCount === undefined ? 6 : Number(rawCrawlCount);
   if (!Number.isInteger(crawlCount) || crawlCount < 1) {
     throw new Error('--crawls must be a positive integer');
   }
@@ -82,13 +93,13 @@ async function fetchTextWithRetry(url: string): Promise<{ status: number; text: 
     try {
       response = await fetch(url, {
         headers: { 'User-Agent': 'remote-pm-radar board discovery' },
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout(120_000),
       });
       text = await response.text();
     } catch (error) {
       lastError = error as Error;
       if (attempt === MAX_ATTEMPTS - 1) break;
-      await sleep(1_000 * (2 ** attempt));
+      await sleep(retryDelay(attempt));
       continue;
     }
     if (response.ok || response.status === 404) {
@@ -96,110 +107,224 @@ async function fetchTextWithRetry(url: string): Promise<{ status: number; text: 
     }
     lastError = new Error(`Common Crawl index returned HTTP ${response.status}`);
     if (response.status < 500 && response.status !== 429) throw lastError;
-    if (attempt < MAX_ATTEMPTS - 1) await sleep(1_000 * (2 ** attempt));
+    if (attempt < MAX_ATTEMPTS - 1) await sleep(retryDelay(attempt));
   }
   throw lastError ?? new Error('Common Crawl request failed');
 }
 
-function indexApi(crawl: CrawlInfo): string {
-  const value = crawl['cdx-api'] ?? `${INDEX_HOST}/${crawl.id}-index`;
-  const url = new URL(value);
-  if (url.protocol !== 'https:' || url.hostname !== 'index.commoncrawl.org') {
-    throw new Error(`Unexpected Common Crawl index URL for ${crawl.id}`);
-  }
-  return url.toString().replace(/\/$/, '');
+function parseClusterEntry(line: string): ClusterIndexEntry | null {
+  const columns = line.split('\t');
+  const keyAndTimestamp = columns[0];
+  const file = columns[1]?.trim();
+  const separator = keyAndTimestamp?.lastIndexOf(' ') ?? -1;
+  const key = separator > 0 ? keyAndTimestamp.slice(0, separator) : '';
+  const offset = Number(columns[2]);
+  const length = Number(columns[3]);
+  if (
+    !key
+    || !file
+    || !Number.isSafeInteger(offset)
+    || offset < 0
+    || !Number.isSafeInteger(length)
+    || length <= 0
+  ) return null;
+  return { key, file, offset, length, clusterId: columns[4]?.trim() ?? '' };
 }
 
-function indexQuery(index: string, pattern: string, page?: number, showNumPages = false): string {
-  const url = new URL(index);
-  url.searchParams.set('url', pattern);
-  url.searchParams.set('output', 'json');
-  if (page !== undefined) {
-    url.searchParams.set('fl', 'url');
-    url.searchParams.set('page', String(page));
-  } else if (showNumPages) {
-    url.searchParams.set('showNumPages', 'true');
-  }
-  return url.toString();
+interface PrefixBlockState {
+  prefix: string;
+  preceding: ClusterIndexEntry | null;
+  matching: ClusterIndexEntry[];
+  done: boolean;
 }
 
-function pageCount(response: { status: number; text: string }): number {
-  if (response.status === 404 || !response.text.trim()) return 0;
-  const body = response.text.trim();
-  const direct = Number(body);
-  if (Number.isInteger(direct) && direct >= 0) return direct;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === 'number' && Number.isInteger(parsed) && parsed >= 0) return parsed;
-    if (parsed && typeof parsed === 'object') {
-      const object = parsed as Record<string, unknown>;
-      for (const key of ['pages', 'numPages', 'pageCount', 'totalPages']) {
-        const count = object[key];
-        if (typeof count === 'number' && Number.isInteger(count) && count >= 0) return count;
-      }
-    }
-  } catch {
-    // A malformed page-count response is reported below with the response sample.
+function uniqueBlocks(entries: ClusterIndexEntry[]): ClusterIndexEntry[] {
+  const blocks = new Map<string, ClusterIndexEntry>();
+  for (const entry of entries) {
+    blocks.set(`${entry.file}:${entry.offset}:${entry.length}`, entry);
   }
-  throw new Error(`Could not read Common Crawl page count: ${body.slice(0, 200)}`);
+  return [...blocks.values()].sort((left, right) =>
+    left.file.localeCompare(right.file) || left.offset - right.offset);
 }
 
-function urlsFromPage(body: string): string[] {
-  const urls: string[] = [];
-  for (const line of body.split(/\r?\n/)) {
-    if (!line.trim()) continue;
+async function clusterBlocks(crawlId: string, prefixes: string[]): Promise<ClusterIndexEntry[]> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    await paceRequest();
+    let bodyStream: Readable | undefined;
+    let lines: ReturnType<typeof createInterface> | undefined;
     try {
-      const value: unknown = JSON.parse(line);
-      if (typeof value === 'string') urls.push(value);
-      else if (value && typeof value === 'object' && typeof (value as Record<string, unknown>).url === 'string') {
-        urls.push((value as Record<string, string>).url);
+      const response = await fetch(
+        `${DATA_HOST}${COLLECTIONS_PATH}/${encodeURIComponent(crawlId)}/indexes/cluster.idx`,
+        {
+          headers: { 'User-Agent': 'remote-pm-radar board discovery' },
+          signal: AbortSignal.timeout(120_000),
+        },
+      );
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`Common Crawl cluster index returned HTTP ${response.status}`);
       }
-    } catch {
-      if (/^https?:\/\//i.test(line)) urls.push(line.trim());
+      if (!response.body) throw new Error('Common Crawl cluster index had no response body');
+      bodyStream = Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>);
+      lines = createInterface({ input: bodyStream, crlfDelay: Infinity });
+      const states: PrefixBlockState[] = prefixes.map((prefix) => ({
+        prefix,
+        preceding: null,
+        matching: [],
+        done: false,
+      }));
+      for await (const line of lines) {
+        const entry = parseClusterEntry(line);
+        if (!entry) continue;
+        for (const state of states) {
+          if (state.done) continue;
+          if (entry.key < state.prefix) {
+            state.preceding = entry;
+          } else if (entry.key.startsWith(state.prefix)) {
+            state.matching.push(entry);
+          } else {
+            state.done = true;
+          }
+        }
+      }
+      return uniqueBlocks(states.flatMap((state) => blocksForPrefix(
+        [...(state.preceding ? [state.preceding] : []), ...state.matching],
+        state.prefix,
+      )));
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < MAX_ATTEMPTS - 1) await sleep(retryDelay(attempt));
+    } finally {
+      lines?.close();
+      bodyStream?.destroy();
     }
   }
-  return urls;
+  throw lastError ?? new Error(`Could not read Common Crawl cluster index for ${crawlId}`);
+}
+
+async function fetchClusterBlock(crawlId: string, entry: ClusterIndexEntry): Promise<Buffer> {
+  const collectionUrl = `${DATA_HOST}${COLLECTIONS_PATH}/${encodeURIComponent(crawlId)}/`;
+  const file = entry.file.replace(/^\/+/, '');
+  const relativePath = file.startsWith('indexes/') ? file : `indexes/${file}`;
+  const url = new URL(relativePath, collectionUrl).toString();
+  const rangeEnd = entry.offset + entry.length - 1;
+  if (!Number.isSafeInteger(rangeEnd)) throw new Error('Common Crawl range exceeds safe integer bounds');
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    await paceRequest();
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'remote-pm-radar board discovery',
+          Range: `bytes=${entry.offset}-${rangeEnd}`,
+        },
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (response.status !== 206) {
+        await response.body?.cancel();
+        throw new Error(`Common Crawl range returned HTTP ${response.status}`);
+      }
+      const compressed = Buffer.from(await response.arrayBuffer());
+      if (compressed.length !== entry.length) {
+        throw new Error(`Common Crawl range returned ${compressed.length} bytes; expected ${entry.length}`);
+      }
+      return await gunzipAsync(compressed);
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < MAX_ATTEMPTS - 1) await sleep(retryDelay(attempt));
+    }
+  }
+  throw lastError ?? new Error('Common Crawl range request failed');
+}
+
+function collectCandidatesFromBlock(
+  crawlId: string,
+  body: Buffer,
+  prefixes: string[],
+  candidates: Map<string, BoardCandidateInput>,
+): void {
+  for (const line of body.toString('utf8').split(/\r?\n/)) {
+    const firstSpace = line.indexOf(' ');
+    const secondSpace = line.indexOf(' ', firstSpace + 1);
+    if (firstSpace <= 0 || secondSpace < 0) continue;
+    const surt = line.slice(0, firstSpace);
+    if (!prefixes.some((prefix) => surt.startsWith(prefix))) continue;
+    let record: unknown;
+    try {
+      record = JSON.parse(line.slice(secondSpace + 1));
+    } catch {
+      continue;
+    }
+    const url = record && typeof record === 'object'
+      ? (record as Record<string, unknown>).url
+      : null;
+    if (typeof url !== 'string') continue;
+    const candidate = extractBoardSlug(url);
+    if (!candidate) continue;
+    const key = `${candidate.ats}:${candidate.slug}`;
+    if (!candidates.has(key)) {
+      candidates.set(key, {
+        ...candidate,
+        source: `${crawlId}:${new URL(url).hostname.toLowerCase()}`,
+      });
+    }
+  }
 }
 
 async function latestCrawls(count: number): Promise<CrawlInfo[]> {
-  const response = await fetchTextWithRetry(`${INDEX_HOST}/collinfo.json`);
-  if (response.status !== 200) throw new Error(`Common Crawl collection list returned HTTP ${response.status}`);
-  const body: unknown = JSON.parse(response.text);
-  if (!Array.isArray(body)) throw new Error('Common Crawl collection list was not an array');
-  const crawls = body.filter((item): item is CrawlInfo =>
-    item !== null && typeof item === 'object' && typeof (item as CrawlInfo).id === 'string',
-  );
-  crawls.sort((left, right) => {
-    const a = Date.parse(left.time ?? '');
-    const b = Date.parse(right.time ?? '');
-    return Number.isFinite(a) && Number.isFinite(b) ? b - a : 0;
-  });
-  return crawls.slice(0, count);
+  try {
+    const response = await fetchTextWithRetry(`${INDEX_HOST}/collinfo.json`);
+    if (response.status !== 200) throw new Error(`Common Crawl collection list returned HTTP ${response.status}`);
+    const body: unknown = JSON.parse(response.text);
+    if (!Array.isArray(body)) throw new Error('Common Crawl collection list was not an array');
+    const crawls = body.filter((item): item is CrawlInfo =>
+      item !== null && typeof item === 'object' && typeof (item as CrawlInfo).id === 'string',
+    );
+    if (!crawls.length) throw new Error('Common Crawl collection list was empty');
+    crawls.sort((left, right) => {
+      const a = Date.parse(left.time ?? '');
+      const b = Date.parse(right.time ?? '');
+      return Number.isFinite(a) && Number.isFinite(b) ? b - a : 0;
+    });
+    return crawls.slice(0, count);
+  } catch (error) {
+    console.warn(`[harvest] collinfo.json failed; falling back to collections index: ${(error as Error).message}`);
+  }
+  const response = await fetchTextWithRetry(`${DATA_HOST}${COLLECTIONS_PATH}/index.html`);
+  if (response.status !== 200) throw new Error(`Common Crawl collections index returned HTTP ${response.status}`);
+  const crawlIds = [...new Set(response.text.match(/CC-MAIN-\d{4}-\d{2}/g) ?? [])]
+    .sort((left, right) => right.localeCompare(left))
+    .slice(0, count);
+  if (!crawlIds.length) throw new Error('Common Crawl collections index contained no crawl ids');
+  return crawlIds.map((id) => ({ id }));
 }
 
-async function crawlPattern(
-  crawl: CrawlInfo,
-  ats: HarvestAts,
-  pattern: string,
+async function scanCrawl(
+  crawlId: string,
+  patterns: string[],
   candidates: Map<string, BoardCandidateInput>,
+  scanFailures: string[],
 ): Promise<void> {
-  const index = indexApi(crawl);
-  const countResponse = await fetchTextWithRetry(indexQuery(index, pattern, undefined, true));
-  const count = pageCount(countResponse);
-  console.log(`${crawl.id} ${ats} ${pattern}: ${count} pages`);
-  for (let page = 0; page < count; page += 1) {
-    const response = await fetchTextWithRetry(indexQuery(index, pattern, page));
-    if (response.status === 404) continue;
-    for (const url of urlsFromPage(response.text)) {
-      const candidate = extractBoardSlug(url);
-      if (!candidate || candidate.ats !== ats) continue;
-      const key = `${candidate.ats}:${candidate.slug}`;
-      if (!candidates.has(key)) {
-        candidates.set(key, {
-          ...candidate,
-          source: `${crawl.id}:${new URL(url).hostname.toLowerCase()}`,
-        });
-      }
+  const prefixes = [...new Set(patterns.map(surtPrefix).filter((prefix): prefix is string => prefix !== null))];
+  let blocks: ClusterIndexEntry[];
+  try {
+    blocks = await clusterBlocks(crawlId, prefixes);
+  } catch (error) {
+    const message = (error as Error).message;
+    scanFailures.push(`${crawlId} cluster.idx: ${message}`);
+    console.error(`[harvest] cluster index failed after retries (${crawlId}): ${message}`);
+    return;
+  }
+  console.log(`${crawlId}: ${blocks.length} overlapping range blocks for ${prefixes.length} SURT prefixes`);
+  for (const block of blocks) {
+    try {
+      const body = await fetchClusterBlock(crawlId, block);
+      collectCandidatesFromBlock(crawlId, body, prefixes, candidates);
+    } catch (error) {
+      const message = (error as Error).message;
+      scanFailures.push(`${crawlId} ${block.file} bytes=${block.offset}-${block.offset + block.length - 1}: ${message}`);
+      console.error(`[harvest] range scan failed after retries (${crawlId} ${block.file} ${block.offset}+${block.length}): ${message}`);
     }
   }
 }
@@ -254,6 +379,7 @@ async function postCandidates(candidates: BoardCandidateInput[]): Promise<void> 
 }
 
 async function main(): Promise<void> {
+  const startedAt = Date.now();
   const options = parseOptions(process.argv.slice(2));
   const crawls = await latestCrawls(options.crawlCount);
   if (!crawls.length) throw new Error('Common Crawl returned no collections');
@@ -261,26 +387,19 @@ async function main(): Promise<void> {
 
   const candidates = new Map<string, BoardCandidateInput>();
   const scanFailures: string[] = [];
+  const patterns = options.ats.flatMap((ats) => HOST_PATTERNS[ats]);
   for (const crawl of crawls) {
-    for (const ats of options.ats) {
-      for (const pattern of HOST_PATTERNS[ats]) {
-        try {
-          await crawlPattern(crawl, ats, pattern, candidates);
-        } catch (error) {
-          const message = (error as Error).message;
-          scanFailures.push(`${crawl.id} ${ats} ${pattern}: ${message}`);
-          console.error(`[harvest] scan failed after retries (${crawl.id} ${ats} ${pattern}): ${message}`);
-        }
-      }
-    }
+    await scanCrawl(crawl.id, patterns, candidates, scanFailures);
   }
 
   const results = [...candidates.values()];
+  console.log(`[harvest] scan failures ${scanFailures.length}`);
   if (scanFailures.length) {
     console.warn(`[harvest] continuing with partial results after ${scanFailures.length} scan failure(s)`);
     process.exitCode = 1;
   }
   reportCandidates(results);
+  console.log(`[harvest] wall time ${((Date.now() - startedAt) / 1000).toFixed(1)} seconds`);
   if (options.outputPath) {
     const outputPath = path.resolve(options.outputPath);
     await mkdir(path.dirname(outputPath), { recursive: true });

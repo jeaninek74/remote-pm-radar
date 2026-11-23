@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { getHeapStatistics } from 'node:v8';
 import express from 'express';
 import cron from 'node-cron';
 import { healthCheck, migrate, q, refreshLockHeldElsewhere, one } from './db';
@@ -10,12 +11,16 @@ import {
   emptyCounters,
   ingestBoardResult,
   isRefreshing,
+  requestFollowUpSweep,
   runRefresh,
   seedEmployers,
   startDiscovery,
   startRefresh,
+  stopFollowUps,
 } from './engine/ingest';
 import { runIsOrphaned } from './engine/orphan';
+import { msToNextSlot } from './engine/discovery-budget';
+import { shouldRecycle } from './engine/memory';
 import {
   browserJobsFromPages,
   isBrowserIngestAuthorized,
@@ -51,6 +56,7 @@ let shuttingDown = false;
 
 process.once('SIGTERM', () => {
   shuttingDown = true;
+  stopFollowUps();
   console.log('[shutdown] SIGTERM received; no new refreshes will start');
   process.kill(process.pid, 'SIGTERM');
 });
@@ -525,6 +531,25 @@ async function checkForOrphanedRun(): Promise<void> {
   }
 }
 
+function checkMemoryForRecycle(): void {
+  if (shuttingDown) return;
+  const { heapUsed } = process.memoryUsage();
+  const heapLimit = getHeapStatistics().heap_size_limit;
+  if (!shouldRecycle({
+    heapUsed,
+    heapLimit,
+    refreshing: isRefreshing(),
+    discoveryRunning: discoveryStatus().running,
+    msToNextSlot: msToNextSlot(Date.now()),
+  })) return;
+  console.log(
+    `[memory] heap ${(heapUsed / 1024 / 1024).toFixed(1)} MB of ${(heapLimit / 1024 / 1024).toFixed(1)} MB with no sweep running; restarting between sweeps`,
+  );
+  shuttingDown = true;
+  stopFollowUps();
+  process.exit(0);
+}
+
 async function main(): Promise<void> {
   await migrate();
   await markInterruptedRuns();
@@ -580,6 +605,11 @@ async function main(): Promise<void> {
   if (CRON_ENABLED && cron.validate(CRON_EXPRESSION)) {
     cron.schedule(CRON_EXPRESSION, () => {
       if (shuttingDown) return;
+      if (isRefreshing()) {
+        requestFollowUpSweep();
+        console.log('[cron] previous sweep still running; next sweep starts as soon as it finishes');
+        return;
+      }
       console.log('[cron] scheduled refresh starting');
       runRefresh('schedule')
         .then((id) => console.log(`[cron] refresh ${id} complete`))
@@ -591,10 +621,17 @@ async function main(): Promise<void> {
   }
 
   if (CRON_ENABLED) {
-    const orphanWatchdog = setInterval(() => {
-      if (!shuttingDown) void checkForOrphanedRun();
+    const maintenanceWatchdog = setInterval(() => {
+      if (shuttingDown) return;
+      void checkForOrphanedRun().then(
+        () => checkMemoryForRecycle(),
+        (err) => {
+          console.error('[watchdog] orphan recovery check failed', (err as Error).message);
+          checkMemoryForRecycle();
+        },
+      );
     }, 60_000);
-    orphanWatchdog.unref();
+    maintenanceWatchdog.unref();
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {

@@ -59,7 +59,7 @@ export const REFRESH = {
    */
   feedPages: Number(process.env.FEED_PAGES ?? 0),
   /** Parallel network requests. */
-  concurrency: Number(process.env.FETCH_CONCURRENCY ?? 7),
+  concurrency: Number(process.env.FETCH_CONCURRENCY ?? 10),
   /** Per-request timeout. */
   timeoutMs: Number(process.env.FETCH_TIMEOUT_MS ?? 20_000),
   /**

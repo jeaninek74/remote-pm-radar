@@ -22,4 +22,4 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+CMD ["node", "--max-old-space-size=320", "dist/server.js"]
