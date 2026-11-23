@@ -23,6 +23,7 @@ import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
 import { validateBoardCandidate } from './harvest';
 import { discoveryBudget } from './discovery-budget';
+import { heapIsHigh } from './memory';
 
 export { sharedBoardPostingKey } from './dedupe';
 
@@ -1318,7 +1319,9 @@ async function executeRun(
     );
     if (followUpRequested) {
       followUpRequested = false;
-      if (followUpsEnabled) {
+      if (followUpsEnabled && heapIsHigh(heapUsed, heapLimit)) {
+        console.log(`[memory] heap high after refresh ${runId}; skipping follow-up so the server can restart before the next slot`);
+      } else if (followUpsEnabled) {
         void startRefresh('follow-up')
           .then(({ runId: followUpRunId, alreadyRunning }) => {
             console.log(

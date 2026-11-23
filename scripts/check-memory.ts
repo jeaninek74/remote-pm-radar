@@ -1,5 +1,10 @@
 import { msToNextSlot } from '../server/engine/discovery-budget';
-import { RECYCLE_HEAP_FRACTION, RECYCLE_SLOT_HEADROOM_MS, shouldRecycle } from '../server/engine/memory';
+import {
+  heapIsHigh,
+  RECYCLE_HEAP_FRACTION,
+  RECYCLE_SLOT_HEADROOM_MS,
+  shouldRecycle,
+} from '../server/engine/memory';
 
 let failures = 0;
 
@@ -21,6 +26,8 @@ check('do not recycle during a sweep', !shouldRecycle({ ...eligible, refreshing:
 check('do not recycle during discovery', !shouldRecycle({ ...eligible, discoveryRunning: true }));
 check('do not recycle too close to the next slot',
   !shouldRecycle({ ...eligible, msToNextSlot: RECYCLE_SLOT_HEADROOM_MS - 1 }));
+check('heap is high at the recycle threshold', heapIsHigh(750, 1_000));
+check('heap is not high below the recycle threshold', !heapIsHigh(749, 1_000));
 check('heap threshold is 75 percent', RECYCLE_HEAP_FRACTION === 0.75);
 check('slot headroom is three minutes', RECYCLE_SLOT_HEADROOM_MS === 3 * 60_000);
 
