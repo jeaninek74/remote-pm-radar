@@ -521,26 +521,26 @@ export async function inspectCareersPage(
 ): Promise<CareersPageProbe> {
   const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], postingIdentities: [], truncated: false };
   if (Date.now() >= deadline) return { ...result, truncated: true };
-  const readText = async (pageUrl: string, timeoutMs: number) => {
-    if (options.useHttpsFallback) return (await fetchTextWithHttpsFallback(pageUrl, timeoutMs)).text;
-    return fetchText(pageUrl, timeoutMs);
+  const readPage = async (pageUrl: string, timeoutMs: number): Promise<{ text: string; url: string }> => {
+    if (options.useHttpsFallback) return fetchTextWithHttpsFallback(pageUrl, timeoutMs);
+    return { text: await fetchText(pageUrl, timeoutMs), url: pageUrl };
   };
-  let pageHtml: string;
+  let page: { text: string; url: string };
   try {
-    pageHtml = await readText(url, Math.min(20_000, deadline - Date.now()));
+    page = await readPage(url, Math.min(20_000, deadline - Date.now()));
   } catch {
     return result;
   }
-  const pageUrl = new URL(url);
+  const requestedPageUrl = new URL(url);
   const candidates = new Map<string, { text: string }>();
-  for (const link of candidatePostingLinks(pageHtml, url)) {
+  for (const link of candidatePostingLinks(page.text, page.url)) {
     let candidate: URL;
     try {
       candidate = new URL(link.url);
     } catch {
       continue;
     }
-    if (!sameCareerSite(candidate.hostname, pageUrl.hostname)) continue;
+    if (!sameCareerSite(candidate.hostname, requestedPageUrl.hostname)) continue;
     candidate.hash = '';
     if (!candidates.has(candidate.toString())) candidates.set(candidate.toString(), { text: link.text });
   }
@@ -554,7 +554,7 @@ export async function inspectCareersPage(
     if (NON_POSTING_FILE.test(candidateUrl)) continue;
     let html = '';
     try {
-      html = await readText(candidateUrl, Math.min(20_000, deadline - Date.now()));
+      html = (await readPage(candidateUrl, Math.min(20_000, deadline - Date.now()))).text;
     } catch {
       continue;
     }
@@ -594,8 +594,8 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
 
   const candidates = new Map<string, string>();
   try {
-    const { text: html } = await fetchTextWithHttpsFallback(base, 20_000);
-    for (const link of sweepCareersPostingLinks(html, base)) {
+    const { text: html, url: listingUrl } = await fetchTextWithHttpsFallback(base, 20_000);
+    for (const link of sweepCareersPostingLinks(html, listingUrl)) {
       if (isSafeCareerPageUrl(link.url, careersUrl.hostname)) candidates.set(link.url, link.text);
     }
   } catch (err) {
