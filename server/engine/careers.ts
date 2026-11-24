@@ -594,7 +594,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
 
   const candidates = new Map<string, string>();
   try {
-    const html = await fetchText(base, 20_000);
+    const { text: html } = await fetchTextWithHttpsFallback(base, 20_000);
     for (const link of sweepCareersPostingLinks(html, base)) {
       if (isSafeCareerPageUrl(link.url, careersUrl.hostname)) candidates.set(link.url, link.text);
     }
@@ -621,7 +621,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
       continue;
     }
     let html = '';
-    try { html = await fetchText(url, 20_000); } catch { continue; }
+    try { html = (await fetchTextWithHttpsFallback(url, 20_000)).text; } catch { continue; }
     const rawJob = rawJobFromCareersPage(employer, source, origin, url, text, html);
     if (rawJob) jobs.push(rawJob);
   }
