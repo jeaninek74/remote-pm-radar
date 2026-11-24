@@ -167,6 +167,7 @@ async function request(
   accept: string,
 ): Promise<{ response: Response; release: () => void }> {
   const hostname = new URL(url).hostname.toLowerCase();
+  const hostLimited = HOST_CONCURRENCY[hostname] !== undefined;
   const releaseHostSlot = await acquireHostSlot(hostname);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -187,6 +188,7 @@ async function request(
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
+    if (!hostLimited) clearTimeout(timer);
     return { response, release };
   } catch (error) {
     release();

@@ -15,6 +15,7 @@ async function main(): Promise<void> {
   let activeRequests = 0;
   let maxActiveRequests = 0;
   let stalledBodyRequests = 0;
+  let delayedBodyRequests = 0;
   let markStallStarted: () => void = () => {};
   const stallStarted = new Promise<void>((resolve) => { markStallStarted = resolve; });
 
@@ -50,6 +51,13 @@ async function main(): Promise<void> {
     }
     if (req.url === '/quick') {
       res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
+      return;
+    }
+    if (req.url === '/delayed-body') {
+      delayedBodyRequests += 1;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.flushHeaders();
+      setTimeout(() => res.end('{"ok":true}'), 800);
       return;
     }
     if (req.url === '/limited') {
@@ -115,9 +123,10 @@ async function main(): Promise<void> {
     const queuedResult = await queuedRequest;
     const stalledResult = await stalledRequest;
     check(
-      'timed-out response body rejects normally and frees the host slot for a queued request',
+      'timed-out body surfaces as an abort and frees the host slot for a queued request',
       stalledResult.error instanceof Error
         && !(stalledResult.error instanceof HttpError && stalledResult.error.status === 429)
+        && ['AbortError', 'TimeoutError'].includes(stalledResult.error.name)
         && stalledBodyRequests === 2
         && queuedResult.ok,
     );
@@ -125,6 +134,15 @@ async function main(): Promise<void> {
     setHostConcurrencyLimit(host, 2);
     await Promise.all(Array.from({ length: 6 }, () => fetchJson(`${baseUrl}/limited`)));
     check('host limiter never exceeds two concurrent requests', maxActiveRequests === 2);
+
+    setHostConcurrencyLimit(host, null);
+    const delayedStartedAt = Date.now();
+    const delayedResult = await fetchJson<{ ok: boolean }>(`${baseUrl}/delayed-body`, 500);
+    const delayedElapsedMs = Date.now() - delayedStartedAt;
+    check(
+      'unlimited host completes a response body after the request timeout',
+      delayedResult.ok && delayedBodyRequests === 1 && delayedElapsedMs >= 700,
+    );
   } finally {
     setHostConcurrencyLimit(host, null);
     await new Promise<void>((resolve, reject) => {
