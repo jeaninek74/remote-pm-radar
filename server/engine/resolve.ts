@@ -1,4 +1,5 @@
 import type { Ats } from './types';
+import { isNonEmployerBoard } from './harvest';
 import { httpsRequest } from './http';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
@@ -764,6 +765,9 @@ async function validateAvionteCandidate(
 
 async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
   try {
+    if (isNonEmployerBoard(candidate.ats, candidate.slug)) {
+      return { kind: 'unknown', reason: 'Board is a job aggregator, not an employer board' };
+    }
     if (candidate.ats === 'adp') return await validateAdpCandidate(candidate, deadline);
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
     if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);

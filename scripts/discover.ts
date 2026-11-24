@@ -2,6 +2,7 @@ import { migrate, pool, q } from '../server/db';
 import { fetchJson, mapLimit } from '../server/engine/http';
 import { isPmTitle } from '../server/engine/titles';
 import { companyKey, slugify } from '../server/engine/text';
+import { isNonEmployerBoard } from '../server/engine/harvest';
 import type { Ats } from '../server/engine/types';
 
 const ATS: Ats[] = ['greenhouse', 'ashby', 'lever', 'workable'];
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     const variants = [...new Set([slug, slug.replace(/-/g, '')])];
     for (const variant of variants) {
       for (const ats of ATS) {
+        if (isNonEmployerBoard(ats, variant)) continue;
         const count = await boardHasJobs(ats, variant);
         if (count && count > 0) {
           const inserted = await q<{ id: number }>(

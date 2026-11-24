@@ -14,6 +14,12 @@ export const HARVEST_ATS = [
 
 export type HarvestAts = (typeof HARVEST_ATS)[number];
 
+export const NON_EMPLOYER_BOARDS = new Set<string>(['lever:jobgether']);
+
+export function isNonEmployerBoard(ats: string, slug: string): boolean {
+  return NON_EMPLOYER_BOARDS.has(`${ats.toLowerCase()}:${slug.toLowerCase()}`);
+}
+
 export interface ClusterIndexEntry {
   key: string;
   file: string;
@@ -65,7 +71,7 @@ export interface BoardCandidatePayload {
   candidates: BoardCandidateInput[];
 }
 
-export type BoardCandidateStatus = 'empty' | 'no_name' | 'foreign' | 'duplicate' | 'added';
+export type BoardCandidateStatus = 'empty' | 'no_name' | 'foreign' | 'duplicate' | 'added' | 'aggregator';
 
 export interface BoardCandidateValidation {
   status: BoardCandidateStatus;
@@ -370,6 +376,7 @@ export async function validateBoardCandidate(
   if (!isHarvestAts(ats) || !isBoardCandidateSlug(slug)) {
     throw new Error('Invalid board candidate');
   }
+  if (isNonEmployerBoard(ats, slug)) return { status: 'aggregator' };
   const board = await readCandidateBoard(ats, slug.toLowerCase(), deadline);
   const statusWithoutDuplicate = classifyBoardCandidate(board.name, board.postingLocations);
   if (statusWithoutDuplicate !== 'added') {

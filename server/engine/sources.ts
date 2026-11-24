@@ -1,4 +1,4 @@
-import { fetchJson, httpsRequest, type HttpsResponse } from './http';
+import { fetchJson, HttpError, httpsRequest, type HttpsResponse } from './http';
 import { REFRESH, RULES } from '../config';
 import { isRoleTitle, searchTerms } from './titles';
 import { fetchCareersPage, jobPostingFrom, type JobPostingLd } from './careers';
@@ -106,7 +106,11 @@ async function greenhouse(employer: EmployerRow, known?: Set<string>): Promise<B
       );
       rawContent = detail.content ?? '';
       description = clean(rawContent);
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpError && (error.status === 429 || error.status === 503)) {
+        truncated = true;
+        continue;
+      }
       description = '';
     }
     const metadata = detail?.metadata ?? job.metadata ?? null;

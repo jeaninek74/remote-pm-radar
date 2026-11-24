@@ -123,11 +123,62 @@ export class HttpError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function request(url: string, timeoutMs: number, accept: string): Promise<Response> {
+const HOST_CONCURRENCY: Record<string, number> = { 'boards-api.greenhouse.io': 4 };
+const hostSemaphores = new Map<string, { active: number; waiters: Array<() => void> }>();
+
+export function setHostConcurrencyLimit(hostname: string, limit: number | null): void {
+  const host = hostname.toLowerCase();
+  if (limit === null) {
+    delete HOST_CONCURRENCY[host];
+    return;
+  }
+  if (!Number.isInteger(limit) || limit < 1) throw new RangeError('Host concurrency limit must be a positive integer');
+  HOST_CONCURRENCY[host] = limit;
+}
+
+async function acquireHostSlot(hostname: string): Promise<() => void> {
+  const limit = HOST_CONCURRENCY[hostname];
+  if (limit === undefined) return () => {};
+
+  let semaphore = hostSemaphores.get(hostname);
+  if (!semaphore) {
+    semaphore = { active: 0, waiters: [] };
+    hostSemaphores.set(hostname, semaphore);
+  }
+  if (semaphore.active < limit) {
+    semaphore.active += 1;
+  } else {
+    await new Promise<void>((resolve) => semaphore!.waiters.push(resolve));
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = semaphore!.waiters.shift();
+    if (next) next();
+    else semaphore!.active -= 1;
+  };
+}
+
+async function request(
+  url: string,
+  timeoutMs: number,
+  accept: string,
+): Promise<{ response: Response; release: () => void }> {
+  const hostname = new URL(url).hostname.toLowerCase();
+  const releaseHostSlot = await acquireHostSlot(hostname);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    clearTimeout(timer);
+    releaseHostSlot();
+  };
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
@@ -136,33 +187,82 @@ async function request(url: string, timeoutMs: number, accept: string): Promise<
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-  } finally {
     clearTimeout(timer);
+    return { response, release };
+  } catch (error) {
+    release();
+    throw error;
   }
 }
 
-/** GET JSON with one retry. Throws HttpError with a short, loggable message. */
+function retryDelayMs(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get('Retry-After');
+  const retryAfterSeconds = retryAfter?.trim();
+  if (retryAfterSeconds) {
+    const seconds = Number(retryAfterSeconds);
+    if (Number.isFinite(seconds)) return Math.min(20_000, Math.max(0, seconds * 1000));
+  }
+  const backoff = [2_000, 5_000, 10_000][Math.min(attempt, 2)];
+  return backoff + Math.floor(Math.random() * 501);
+}
+
+function discardResponseBody(response: Response): void {
+  if (response.body) void response.body.cancel().catch(() => undefined);
+}
+
+/** GET JSON with status-aware retries. Throws HttpError with a short, loggable message. */
 export async function fetchJson<T = unknown>(url: string, timeoutMs = REFRESH.timeoutMs): Promise<T> {
   let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let retryDelay: number | null = null;
     try {
-      const res = await request(url, timeoutMs, 'application/json');
-      if (res.status === 404) throw new HttpError('Not found (404)', 404);
-      if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
-      return (await res.json()) as T;
+      const { response: res, release } = await request(url, timeoutMs, 'application/json');
+      try {
+        if (res.status === 404) {
+          discardResponseBody(res);
+          throw new HttpError('Not found (404)', 404);
+        }
+        if (res.status === 429 || res.status === 503) {
+          retryDelay = retryDelayMs(res, attempt);
+          discardResponseBody(res);
+          throw new HttpError(`HTTP ${res.status}`, res.status);
+        }
+        if (!res.ok) {
+          discardResponseBody(res);
+          throw new HttpError(`HTTP ${res.status}`, res.status);
+        }
+        return (await res.json()) as T;
+      } finally {
+        release();
+      }
     } catch (err) {
       lastError = err as Error;
-      if ((lastError as HttpError).status === 404) break;
-      if (attempt === 0) await sleep(400);
+      const status = (lastError as HttpError).status;
+      if (status === 404) break;
+      if (status === 429 || status === 503) {
+        if (attempt === 3) break;
+        await sleep(retryDelay ?? [2_000, 5_000, 10_000][attempt] + Math.floor(Math.random() * 501));
+      } else if (attempt === 0) {
+        await sleep(400);
+      } else {
+        break;
+      }
     }
   }
   throw lastError ?? new HttpError('Unknown fetch failure');
 }
 
 export async function fetchText(url: string, timeoutMs = REFRESH.timeoutMs): Promise<string> {
-  const res = await request(url, timeoutMs, 'text/html,application/xhtml+xml');
-  if (!res.ok) throw new HttpError(`HTTP ${res.status}`, res.status);
-  return res.text();
+  const { response: res, release } = await request(url, timeoutMs, 'text/html,application/xhtml+xml');
+  try {
+    if (!res.ok) {
+      discardResponseBody(res);
+      throw new HttpError(`HTTP ${res.status}`, res.status);
+    }
+    return await res.text();
+  } finally {
+    release();
+  }
 }
 
 /** Lightweight reachability check used to verify application links. */

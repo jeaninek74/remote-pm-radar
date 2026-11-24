@@ -2,9 +2,11 @@ import {
   classifyBoardCandidate,
   blocksForPrefix,
   extractBoardSlug,
+  isNonEmployerBoard,
   isBoardCandidatePayload,
   pageTitle,
   surtPrefix,
+  validateBoardCandidate,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
 import { discoveryBudget } from '../server/engine/discovery-budget';
@@ -61,6 +63,10 @@ check('matching existing employer is classified duplicate',
   classifyBoardCandidate('Acme', [['United States']], true) === 'duplicate');
 check('eligible nonduplicate board is accepted',
   classifyBoardCandidate('Acme', [['United States']]) === 'added');
+check('Jobgether is listed as a non-employer board',
+  isNonEmployerBoard('lever', 'jobgether'));
+check('a normal Lever board is unaffected',
+  !isNonEmployerBoard('lever', 'acme'));
 check('strip a bare Ashby jobs title suffix',
   pageTitle('<title>OpenAI Jobs</title>') === 'OpenAI');
 check('strip ATS and job-title suffixes',
@@ -115,4 +121,11 @@ check('select the preceding block when a prefix is absent',
 check('return no block when a prefix is before the first index key',
   blocksForPrefix([indexEntry('m'), indexEntry('z')], 'a').length === 0);
 
-if (failures) throw new Error(`${failures} harvest check(s) failed`);
+void (async () => {
+  const result = await validateBoardCandidate('lever', 'jobgether', Date.now() + 1_000);
+  check('Jobgether candidate validation returns aggregator without a board fetch', result.status === 'aggregator');
+  if (failures) throw new Error(`${failures} harvest check(s) failed`);
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

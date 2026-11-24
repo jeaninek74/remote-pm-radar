@@ -6,6 +6,7 @@ import cron from 'node-cron';
 import { healthCheck, migrate, q, refreshLockHeldElsewhere, one } from './db';
 import { APP, REFRESH, RULES } from './config';
 import {
+  archiveNonEmployerBoards,
   browserPullAllowsClosure,
   discoveryStatus,
   emptyCounters,
@@ -552,6 +553,10 @@ function checkMemoryForRecycle(): void {
 
 async function main(): Promise<void> {
   await migrate();
+  const archivedAggregators = await archiveNonEmployerBoards();
+  console.log(
+    `[startup] deactivated ${archivedAggregators.employers} aggregator employers and archived ${archivedAggregators.jobs} jobs`,
+  );
   await markInterruptedRuns();
 
   // Seeding is idempotent (ON CONFLICT DO NOTHING) and runs on every boot so a
