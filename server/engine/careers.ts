@@ -594,11 +594,8 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
 
   const candidates = new Map<string, string>();
   try {
-    const { text: html, url: listingUrl } = await fetchTextWithHttpsFallback(base, 20_000);
-    if (!isSafeCareerPageUrl(listingUrl, careersUrl.hostname)) {
-      return { jobs: [], ok: false, error: 'careers page redirected off-site', totalListed: 0 };
-    }
-    for (const link of sweepCareersPostingLinks(html, listingUrl)) {
+    const html = await fetchText(base, 20_000);
+    for (const link of sweepCareersPostingLinks(html, base)) {
       if (isSafeCareerPageUrl(link.url, careersUrl.hostname)) candidates.set(link.url, link.text);
     }
   } catch (err) {
@@ -624,11 +621,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
       continue;
     }
     let html = '';
-    try {
-      const detail = await fetchTextWithHttpsFallback(url, 20_000);
-      if (!isSafeCareerPageUrl(detail.url, careersUrl.hostname)) continue;
-      html = detail.text;
-    } catch { continue; }
+    try { html = await fetchText(url, 20_000); } catch { continue; }
     const rawJob = rawJobFromCareersPage(employer, source, origin, url, text, html);
     if (rawJob) jobs.push(rawJob);
   }
