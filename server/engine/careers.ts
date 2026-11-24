@@ -337,11 +337,13 @@ export function rawJobFromCareersPage(
   html: string,
   allowJobRoute = false,
 ): RawJob | null {
-  if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(linkText)) return null;
-  const posting = jobPostingFrom(html);
+  const safeHtml = html.replace(/\u0000/g, '');
+  const safeLinkText = linkText.replace(/\u0000/g, '');
+  if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(safeLinkText)) return null;
+  const posting = jobPostingFrom(safeHtml);
   if (
     !posting
-    && !looksLikePostingPage(url, linkText)
+    && !looksLikePostingPage(url, safeLinkText)
     && !(allowJobRoute && (
       JOB_URL.test(url)
       || APPLY_JOB_URL.test(url)
@@ -350,18 +352,18 @@ export function rawJobFromCareersPage(
       || QUERY_POSTING_ID.test(url)
     ))
   ) return null;
-  const title = (posting?.title ?? linkText ?? '').trim();
+  const title = (posting?.title ?? safeLinkText ?? '').trim();
   if (!title || !isRoleTitle(title, undefined, employer)) return null;
   const { locations, restrictions } = careersLocationFields(
     posting?.jobLocation,
     posting?.applicantLocationRequirements,
     url,
-    linkText,
+    safeLinkText,
   );
   const remote = /TELECOMMUTE/i.test(posting?.jobLocationType ?? '') ? true : null;
   const description = posting?.description
     ? stripHtml(posting.description)
-    : stripHtml(html).slice(0, 25_000);
+    : stripHtml(safeHtml).slice(0, 25_000);
   const posted = isoDate(posting?.datePosted ?? '');
   const identifier = typeof posting?.identifier === 'string'
     ? posting.identifier

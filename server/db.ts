@@ -90,9 +90,12 @@ export async function q<T extends QueryResultRow = QueryResultRow>(
   params: unknown[] = [],
 ): Promise<T[]> {
   let lastError: unknown;
+  const sanitizedParams = params.map((value) =>
+    typeof value === 'string' ? value.replace(/\u0000/g, '') : value,
+  );
   for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
     try {
-      const res = await pool.query<T>(sql, params as never[]);
+      const res = await pool.query<T>(sql, sanitizedParams as never[]);
       return res.rows;
     } catch (err) {
       lastError = err;

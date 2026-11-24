@@ -1,3 +1,4 @@
+import { getHeapStatistics } from 'node:v8';
 import { acquireRefreshLock, migrate, one, q, type RefreshLock } from '../db';
 import { REFRESH, RULES } from '../config';
 import { WATCHLIST, employersForRoleFamily } from '../data/employers.seed';
@@ -22,17 +23,29 @@ import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
 import { validateBoardCandidate } from './harvest';
 import { discoveryBudget } from './discovery-budget';
+import { heapIsHigh } from './memory';
 
 export { sharedBoardPostingKey } from './dedupe';
 
 export { nameTokens, namesAgree };
 
 let running = false;
+let followUpRequested = false;
+let followUpsEnabled = true;
 
 export const SWEEP_EMPLOYER_WHERE = "active = TRUE AND careers_url IS NOT NULL AND ats <> 'browser'";
 
 export function isRefreshing(): boolean {
   return running;
+}
+
+export function requestFollowUpSweep(): void {
+  if (running && followUpsEnabled) followUpRequested = true;
+}
+
+export function stopFollowUps(): void {
+  followUpRequested = false;
+  followUpsEnabled = false;
 }
 
 /* ------------------------------------------------------------------ seeding */
@@ -1299,7 +1312,25 @@ async function executeRun(
   } finally {
     running = false;
     await lock.release();
-    if (completedSuccessfully && discoverAfter) {
+    const { heapUsed, rss } = process.memoryUsage();
+    const heapLimit = getHeapStatistics().heap_size_limit;
+    console.log(
+      `[memory] after refresh ${runId}: heapUsed ${(heapUsed / 1024 / 1024).toFixed(1)} MB, rss ${(rss / 1024 / 1024).toFixed(1)} MB, limit ${(heapLimit / 1024 / 1024).toFixed(1)} MB`,
+    );
+    if (followUpRequested) {
+      followUpRequested = false;
+      if (followUpsEnabled && heapIsHigh(heapUsed, heapLimit)) {
+        console.log(`[memory] heap high after refresh ${runId}; skipping follow-up so the server can restart before the next slot`);
+      } else if (followUpsEnabled) {
+        void startRefresh('follow-up')
+          .then(({ runId: followUpRunId, alreadyRunning }) => {
+            console.log(
+              `[refresh] previous slot was skipped; follow-up sweep ${followUpRunId}${alreadyRunning ? ' joined an existing run' : ' started'}`,
+            );
+          })
+          .catch((err) => console.error('[refresh] follow-up sweep failed', err));
+      }
+    } else if (completedSuccessfully && discoverAfter) {
       void startDiscovery(REFRESH.discoverPassBudgetMs)
         .then((result) => {
           console.log(`[discovery] post-refresh ${result.started ? 'started' : `not started: ${result.reason ?? 'unknown reason'}`}`);
