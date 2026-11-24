@@ -7,6 +7,7 @@ import {
   HttpError,
   resetHttpsFallbackMetrics,
   setHostConcurrencyLimit,
+  toFetchResponse,
 } from '../server/engine/http';
 
 let failures = 0;
@@ -17,6 +18,17 @@ function check(label: string, passed: boolean): void {
 }
 
 async function main(): Promise<void> {
+  const redirectedResponse = toFetchResponse({
+    status: 200,
+    headers: {},
+    text: 'ok',
+    url: 'https://redirected.example.test/careers/',
+  });
+  check(
+    'node:https fallback Response preserves its final URL',
+    redirectedResponse.url === 'https://redirected.example.test/careers/',
+  );
+
   let retryAfterRequests = 0;
   let exhaustedRequests = 0;
   let notFoundRequests = 0;

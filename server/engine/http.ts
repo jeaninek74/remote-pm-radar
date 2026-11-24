@@ -98,16 +98,18 @@ async function httpsFallbackRequest(
   return { ...result, url: String(url) };
 }
 
-function toFetchResponse(result: HttpsResponse): Response {
+export function toFetchResponse(result: HttpsResponse): Response {
   const headers = new Headers();
   for (const [key, value] of Object.entries(result.headers)) {
     if (value === undefined || /^(?:content-encoding|content-length)$/i.test(key)) continue;
     headers.set(key, Array.isArray(value) ? value.join(', ') : value);
   }
-  return new Response([204, 304].includes(result.status) ? null : result.text, {
+  const response = new Response([204, 304].includes(result.status) ? null : result.text, {
     status: result.status,
     headers,
   });
+  if (result.url) Object.defineProperty(response, 'url', { value: result.url });
+  return response;
 }
 
 export async function fetchWithHttpsFallback(
