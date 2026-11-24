@@ -9,7 +9,12 @@ import {
   validateBoardCandidate,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
-import { discoveryBudget } from '../server/engine/discovery-budget';
+import {
+  DISCOVERY_START_GUARD_MS,
+  discoveryBudget,
+  SWEEP_HEADROOM_MS,
+} from '../server/engine/discovery-budget';
+import { REFRESH } from '../server/config';
 
 let failures = 0;
 
@@ -78,12 +83,19 @@ check('keep a company name without a title suffix',
 const dayStart = Date.UTC(2026, 0, 1);
 check('decline discovery 20 seconds before a sweep slot',
   discoveryBudget(dayStart + 29 * 60_000 + 40_000, 20 * 60_000) === null);
-check('cap discovery at 19 minutes with 20 minutes before a sweep',
-  discoveryBudget(dayStart + 10 * 60_000, 30 * 60_000) === 19 * 60_000);
+check('headroom covers the configured 429 retry sequence rounded to a minute',
+  SWEEP_HEADROOM_MS === Math.ceil(Math.max(2 * 60_000, 4 * REFRESH.timeoutMs + 18_000) / 60_000) * 60_000);
+check('discovery start guard exceeds headroom by 30 seconds',
+  DISCOVERY_START_GUARD_MS === SWEEP_HEADROOM_MS + 30_000);
+check('cap discovery using retry headroom with 20 minutes before a sweep',
+  discoveryBudget(dayStart + 10 * 60_000, 30 * 60_000) === 20 * 60_000 - SWEEP_HEADROOM_MS);
 check('discovery budget is capped by the configured budget',
   discoveryBudget(dayStart + 10 * 60_000, 5 * 60_000) === 5 * 60_000);
-check('leave one minute of headroom at two minutes before a sweep',
-  discoveryBudget(dayStart + 28 * 60_000, 30 * 60_000) === 60_000);
+check('decline discovery inside the start guard before a sweep',
+  discoveryBudget(dayStart + 28 * 60_000, 30 * 60_000) === null);
+check('allow the start guard boundary with 30 seconds beyond headroom',
+  discoveryBudget(dayStart + 30 * 60_000 - DISCOVERY_START_GUARD_MS, 30 * 60_000)
+    === DISCOVERY_START_GUARD_MS - SWEEP_HEADROOM_MS);
 check('harvest OIDC is scoped to the master workflow',
   HARVEST_BOARDS_OIDC_POLICY.workflowRef
     === 'jeaninek74/remote-pm-radar/.github/workflows/harvest-boards.yml@refs/heads/master'

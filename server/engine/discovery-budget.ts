@@ -1,6 +1,10 @@
+import { REFRESH } from '../config';
+
 const SWEEP_SLOT_MS = 30 * 60_000;
-const SWEEP_HEADROOM_MS = 60_000;
-const DISCOVERY_START_GUARD_MS = 90_000;
+const SWEEP_HEADROOM_MS = Math.ceil(Math.max(2 * 60_000, 4 * REFRESH.timeoutMs + 18_000) / 60_000) * 60_000;
+const DISCOVERY_START_GUARD_MS = SWEEP_HEADROOM_MS + 30_000;
+
+export { DISCOVERY_START_GUARD_MS, SWEEP_HEADROOM_MS };
 
 export function msToNextSlot(now: number): number {
   const nextSlot = Math.ceil((now + 1) / SWEEP_SLOT_MS) * SWEEP_SLOT_MS;
