@@ -1338,6 +1338,18 @@ async function executeRun(
       }
     });
 
+    try {
+      const archivedAggregators = await archiveNonEmployerBoards();
+      if (archivedAggregators.employers || archivedAggregators.jobs) {
+        counters.archived += archivedAggregators.jobs;
+        console.log(
+          `[refresh] deactivated ${archivedAggregators.employers} aggregator employers and archived ${archivedAggregators.jobs} jobs`,
+        );
+      }
+    } catch (err) {
+      console.error('[refresh] aggregator archive failed', (err as Error).message);
+    }
+
     await progress('Finalising');
     await q(
       `UPDATE refresh_runs SET
