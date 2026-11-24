@@ -286,6 +286,7 @@ async function request(
   timeoutMs: number,
   accept: string,
   userAgent = USER_AGENT,
+  keepTimeoutThroughBody = false,
 ): Promise<{ response: Response; release: () => void }> {
   const hostname = new URL(url).hostname.toLowerCase();
   const hostLimited = HOST_CONCURRENCY[hostname] !== undefined;
@@ -309,7 +310,7 @@ async function request(
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-    if (!hostLimited) clearTimeout(timer);
+    if (!hostLimited && !keepTimeoutThroughBody) clearTimeout(timer);
     return { response, release };
   } catch (error) {
     release();
@@ -401,7 +402,7 @@ export async function fetchTextWithHttpsFallback(
   let response: Response;
   let release: () => void = () => {};
   try {
-    ({ response, release } = await request(url, timeoutMs, accept, userAgent));
+    ({ response, release } = await request(url, timeoutMs, accept, userAgent, true));
     if (!response.ok) {
       discardResponseBody(response);
       throw new HttpError(`HTTP ${response.status}`, response.status);
