@@ -21,6 +21,7 @@
     "check:harvest": "tsx scripts/check-harvest.ts",
     "check:orphan": "tsx scripts/check-orphan.ts",
     "check:memory": "tsx scripts/check-memory.ts",
+    "check:http": "tsx scripts/check-http.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:employers": "tsx scripts/seed-employers.ts",
     "refresh": "tsx scripts/refresh.ts"

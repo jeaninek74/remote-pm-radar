@@ -21,7 +21,7 @@ import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
 import { nameTokens, namesAgree, resolveBoard } from './resolve';
 import { dedupeKeys, duplicateLosers, type DedupeRow } from './dedupe';
-import { validateBoardCandidate } from './harvest';
+import { isNonEmployerBoard, NON_EMPLOYER_BOARDS, validateBoardCandidate } from './harvest';
 import { discoveryBudget } from './discovery-budget';
 import { heapIsHigh } from './memory';
 
@@ -48,12 +48,47 @@ export function stopFollowUps(): void {
   followUpsEnabled = false;
 }
 
+export async function archiveNonEmployerBoards(): Promise<{ employers: number; jobs: number }> {
+  const boards = [...NON_EMPLOYER_BOARDS].map((key) => {
+    const separator = key.indexOf(':');
+    return [key.slice(0, separator), key.slice(separator + 1)] as const;
+  });
+  if (!boards.length) return { employers: 0, jobs: 0 };
+
+  const values = boards.flatMap(([ats, slug]) => [ats, slug]);
+  const boardPredicate = boards
+    .map((_, index) => `(ats = $${index * 2 + 1} AND slug = $${index * 2 + 2})`)
+    .join(' OR ');
+  const status = 'Job aggregator — not an employer board';
+  const reason = 'Removed: job aggregator that reposts other employers’ roles, not the employer.';
+  const employers = await q<{ id: number }>(
+    `UPDATE employers
+        SET active = FALSE, last_status = $${values.length + 1}
+      WHERE (${boardPredicate})
+        AND (active IS DISTINCT FROM FALSE OR last_status IS DISTINCT FROM $${values.length + 1})
+      RETURNING id`,
+    [...values, status],
+  );
+  const jobs = await q<{ id: number }>(
+    `UPDATE jobs
+        SET bucket = 'archived', bucket_reason = $${values.length + 1}, updated_at = now()
+      WHERE bucket IS DISTINCT FROM 'archived'
+        AND employer_id IN (
+          SELECT id FROM employers WHERE (${boardPredicate})
+        )
+      RETURNING id`,
+    [...values, reason],
+  );
+  return { employers: employers.length, jobs: jobs.length };
+}
+
 /* ------------------------------------------------------------------ seeding */
 
 export async function seedEmployers(): Promise<number> {
   let inserted = 0;
   // Only the employers whose industries this role family actually recruits from.
   for (const seed of employersForRoleFamily(ACTIVE_ROLE_FAMILY.id)) {
+    if (isNonEmployerBoard(seed.ats, seed.slug)) continue;
     const res = await q<{ id: number }>(
       `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'Seed inventory',TRUE)
@@ -638,6 +673,7 @@ async function probeAts(name: string, deadline = Infinity): Promise<{ ats: Ats; 
     } catch { /* not this one */ }
     if (Date.now() > deadline) return null;
     try {
+      if (isNonEmployerBoard('lever', slug)) continue;
       const lv = await fetchJson<unknown[]>(`https://api.lever.co/v0/postings/${slug}?mode=json`, 12_000);
       if (Array.isArray(lv) && lv.length) return { ats: 'lever', slug };
     } catch { /* not this one */ }
@@ -688,6 +724,7 @@ export async function discoverEmployers(
     boardInsertQueue = new Promise((resolve) => { release = resolve; });
     await previous;
     try {
+      if (isNonEmployerBoard(ats, slug)) return false;
       if (existingEmployerNames.some((existingName) => namesAgree(existingName, name))) return false;
       const inserted = await q<{ id: number }>(
         `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
@@ -721,6 +758,15 @@ export async function discoverEmployers(
       if (Date.now() >= passDeadline(deadline)) return;
       probed += 1;
       try {
+        if (isNonEmployerBoard(candidate.ats, candidate.slug)) {
+          await q(
+            `UPDATE board_candidates
+                SET status = 'aggregator', note = 'Job aggregator — not an employer board.', checked_at = now()
+              WHERE id = $1`,
+            [candidate.id],
+          );
+          return;
+        }
         const alreadyRegistered = await one<{ id: number }>(
           `SELECT id FROM employers WHERE ats = $1 AND slug = $2 LIMIT 1`,
           [candidate.ats, candidate.slug],
@@ -748,6 +794,7 @@ export async function discoverEmployers(
             foreign: 'Every posting is located outside the United States.',
             duplicate: 'An existing employer name matches the board company name.',
             added: null,
+            aggregator: 'Job aggregator — not an employer board.',
           }[validation.status];
           await q(
             `UPDATE board_candidates SET status = $2, note = $3, checked_at = now() WHERE id = $1`,
@@ -806,7 +853,8 @@ export async function discoverEmployers(
       if (Date.now() > passDeadline(deadline)) return;
       probed += 1;
       queueProbed += 1;
-      const hit = await probeAts(row.name, passDeadline(deadline));
+      const detected = await probeAts(row.name, passDeadline(deadline));
+      const hit = detected && !isNonEmployerBoard(detected.ats, detected.slug) ? detected : null;
       if (hit) {
         const inserted = await q<{ id: number }>(
           `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
@@ -1135,7 +1183,16 @@ async function executeRun(
           } else {
             const resolution = await resolveBoard(employer.name, employer.careers_url ?? '', Date.now() + 20_000);
             const error = (result.error ?? '').slice(0, 200);
-            if (resolution.kind === 'board') {
+            if (resolution.kind === 'board' && isNonEmployerBoard(resolution.ats, resolution.slug)) {
+              const status = 'Resolved board is a job aggregator — not an employer board';
+              await q(
+                `UPDATE employers
+                    SET last_searched_at = now(), last_resolve_at = now(), last_error = $2, last_status = $3
+                  WHERE id = $1`,
+                [employer.id, error, status],
+              );
+              counters.errors.push({ source: `resolve:${employer.slug}`, message: status });
+            } else if (resolution.kind === 'board') {
               const existing = await one<{ id: number }>(
                 `SELECT id FROM employers WHERE ats = $1 AND slug = $2 AND id <> $3 LIMIT 1`,
                 [resolution.ats, resolution.slug, employer.id],
@@ -1280,6 +1337,18 @@ async function executeRun(
         );
       }
     });
+
+    try {
+      const archivedAggregators = await archiveNonEmployerBoards();
+      if (archivedAggregators.employers || archivedAggregators.jobs) {
+        counters.archived += archivedAggregators.jobs;
+        console.log(
+          `[refresh] deactivated ${archivedAggregators.employers} aggregator employers and archived ${archivedAggregators.jobs} jobs`,
+        );
+      }
+    } catch (err) {
+      console.error('[refresh] aggregator archive failed', (err as Error).message);
+    }
 
     await progress('Finalising');
     await q(

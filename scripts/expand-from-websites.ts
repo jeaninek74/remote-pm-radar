@@ -6,6 +6,7 @@ import {
   type CareersPostingIdentity,
 } from '../server/engine/careers';
 import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
+import { isNonEmployerBoard } from '../server/engine/harvest';
 import { canonicalCareersUrl, careersSlug, normalizedCareersUrl } from './expansion-urls';
 import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
 
@@ -560,6 +561,9 @@ async function main(): Promise<void> {
       } else {
         claimedNames.add(normalized);
         result = await resolveWebsite(entry.name, entry.website, Date.now() + 45_000);
+        if (result.kind === 'board' && isNonEmployerBoard(result.ats, result.slug)) {
+          result = { kind: 'skipped', reason: 'resolved ATS board is a job aggregator, not an employer board' };
+        }
         if (options.write && !options.dryRun && result.kind === 'board') {
           await pool.query(
             `INSERT INTO employers (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)

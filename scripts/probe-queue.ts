@@ -2,6 +2,7 @@ import { one, q, pool } from '../server/db';
 import { fetchJson } from '../server/engine/http';
 import { isPmTitle } from '../server/engine/titles';
 import { slugify } from '../server/engine/text';
+import { isNonEmployerBoard } from '../server/engine/harvest';
 import type { Ats } from '../server/engine/types';
 
 /**
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
       let hit: { ats: Ats; slug: string; postings: number; pm: number } | null = null;
       outer: for (const slug of slugs) {
         for (const ats of ATS_ORDER) {
+          if (isNonEmployerBoard(ats, slug)) continue;
           const res = await probe(ats, slug);
           if (res) { hit = { ats, slug, ...res }; break outer; }
         }
