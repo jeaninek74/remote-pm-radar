@@ -1,5 +1,12 @@
 import { createServer } from 'node:http';
-import { fetchJson, HttpError, setHostConcurrencyLimit } from '../server/engine/http';
+import {
+  fetchJson,
+  fetchText,
+  getHttpsFallbackMetrics,
+  HttpError,
+  resetHttpsFallbackMetrics,
+  setHostConcurrencyLimit,
+} from '../server/engine/http';
 
 let failures = 0;
 
@@ -12,6 +19,7 @@ async function main(): Promise<void> {
   let retryAfterRequests = 0;
   let exhaustedRequests = 0;
   let notFoundRequests = 0;
+  let forbiddenTextRequests = 0;
   let activeRequests = 0;
   let maxActiveRequests = 0;
   let stalledBodyRequests = 0;
@@ -37,6 +45,11 @@ async function main(): Promise<void> {
     if (req.url === '/not-found') {
       notFoundRequests += 1;
       res.writeHead(404).end();
+      return;
+    }
+    if (req.url === '/text-forbidden') {
+      forbiddenTextRequests += 1;
+      res.writeHead(403).end();
       return;
     }
     if (req.url === '/stalled-body') {
@@ -111,6 +124,21 @@ async function main(): Promise<void> {
     check(
       '404 is not retried',
       notFoundError instanceof HttpError && notFoundError.status === 404 && notFoundRequests === 1,
+    );
+
+    resetHttpsFallbackMetrics();
+    let forbiddenTextError: unknown;
+    try {
+      await fetchText(`${baseUrl}/text-forbidden`);
+    } catch (error) {
+      forbiddenTextError = error;
+    }
+    check(
+      'fetchText does not retry sweep reads through node:https',
+      forbiddenTextError instanceof HttpError
+        && forbiddenTextError.status === 403
+        && forbiddenTextRequests === 1
+        && getHttpsFallbackMetrics().attempts === 0,
     );
 
     setHostConcurrencyLimit(host, 1);

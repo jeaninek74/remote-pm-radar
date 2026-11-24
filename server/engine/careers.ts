@@ -1,5 +1,5 @@
 import { REFRESH } from '../config';
-import { fetchText } from './http';
+import { fetchText, fetchTextWithHttpsFallback } from './http';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -494,12 +494,20 @@ function titleFromUrl(url: string): string {
   }
 }
 
-export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
+export async function inspectCareersPage(
+  url: string,
+  deadline: number,
+  options: { useHttpsFallback?: boolean } = {},
+): Promise<CareersPageProbe> {
   const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], postingIdentities: [], truncated: false };
   if (Date.now() >= deadline) return { ...result, truncated: true };
+  const readText = async (pageUrl: string, timeoutMs: number) => {
+    if (options.useHttpsFallback) return (await fetchTextWithHttpsFallback(pageUrl, timeoutMs)).text;
+    return fetchText(pageUrl, timeoutMs);
+  };
   let pageHtml: string;
   try {
-    pageHtml = await fetchText(url, Math.min(20_000, deadline - Date.now()));
+    pageHtml = await readText(url, Math.min(20_000, deadline - Date.now()));
   } catch {
     return result;
   }
@@ -526,7 +534,7 @@ export async function inspectCareersPage(url: string, deadline: number): Promise
     if (NON_POSTING_FILE.test(candidateUrl)) continue;
     let html = '';
     try {
-      html = await fetchText(candidateUrl, Math.min(20_000, deadline - Date.now()));
+      html = await readText(candidateUrl, Math.min(20_000, deadline - Date.now()));
     } catch {
       continue;
     }

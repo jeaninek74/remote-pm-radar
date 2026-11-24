@@ -5,7 +5,7 @@ import {
 } from './careers';
 import { isNonEmployerBoard, NON_EMPLOYER_BOARDS } from './harvest';
 import { resolveBoard, type BoardResolution } from './resolve';
-import { fetchText, fetchWithHttpsFallback } from './http';
+import { fetchTextWithHttpsFallback } from './http';
 
 export type ExpansionResult = BoardResolution
   | {
@@ -117,12 +117,13 @@ export async function careersLinks(pageUrl: string, deadline: number): Promise<s
   const remaining = deadline - Date.now();
   if (remaining <= 0) return [];
   try {
-    const response = await fetchWithHttpsFallback(pageUrl, {
-      redirect: 'follow',
-      headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-    }, Math.min(10_000, remaining));
-    const html = await response.text();
-    const base = new URL(response.url || pageUrl);
+    const { text: html, url } = await fetchTextWithHttpsFallback(
+      pageUrl,
+      Math.min(10_000, remaining),
+      'text/html,application/xhtml+xml',
+      BROWSER_USER_AGENT,
+    );
+    const base = new URL(url || pageUrl);
     const anchors = html.matchAll(
       /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi,
     );
@@ -199,7 +200,7 @@ export async function resolveWebsite(name: string, website: string, deadline: nu
     }
     if (triedUrls.has(normalizedUrl)) return null;
     triedUrls.add(normalizedUrl);
-    const result = await resolveBoard(name, normalizedUrl, deadline);
+    const result = await resolveBoard(name, normalizedUrl, deadline, { useHttpsFallback: true });
     if (result.kind === 'board') {
       return result;
     }
@@ -255,7 +256,7 @@ export async function resolveWebsite(name: string, website: string, deadline: nu
 
   for (const careersUrl of careerPages) {
     if (Date.now() >= deadline) break;
-    const probe = await inspectCareersPage(careersUrl, deadline);
+    const probe = await inspectCareersPage(careersUrl, deadline, { useHttpsFallback: true });
     if (probe.postings > 0) {
       return {
         kind: 'careers',
@@ -322,12 +323,12 @@ export async function resolveWdcPostingPages(
     if (!sameSite(page, homepage)) continue;
     page.protocol = 'https:';
     try {
-      await fetchText(page.toString(), Math.min(15_000, deadline - Date.now()));
+      await fetchTextWithHttpsFallback(page.toString(), Math.min(15_000, deadline - Date.now()));
     } catch {
       continue;
     }
 
-    const board = await resolveBoard(name, page.toString(), deadline);
+    const board = await resolveBoard(name, page.toString(), deadline, { useHttpsFallback: true });
     if (board.kind === 'board') return board;
 
     const paths = [page.pathname];
@@ -342,7 +343,7 @@ export async function resolveWdcPostingPages(
       const key = target.toString();
       if (visited.has(key)) continue;
       visited.add(key);
-      const probe = await inspectCareersPage(key, deadline);
+      const probe = await inspectCareersPage(key, deadline, { useHttpsFallback: true });
       if (probe.postings > 0) {
         careersPages.push({
           careersUrl: key,

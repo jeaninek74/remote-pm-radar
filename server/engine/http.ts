@@ -11,12 +11,14 @@ export interface HttpsRequestOptions {
   headers?: Record<string, string | string[] | undefined>;
   body?: string | Buffer | Uint8Array;
   timeoutMs?: number;
+  maxResponseBytes?: number;
 }
 
 export interface HttpsResponse {
   status: number;
   headers: Record<string, string | string[] | undefined>;
   text: string;
+  url?: string;
 }
 
 let httpsFallbackAttempts = 0;
@@ -53,11 +55,18 @@ async function httpsFallbackRequest(
   body?: string | Buffer | Uint8Array | null,
   redirect: RequestRedirect = 'follow',
   redirects = 0,
+  maxResponseBytes = HTTPS_RESPONSE_MAX_BYTES,
 ): Promise<HttpsResponse> {
   httpsFallbackAttempts += 1;
   const context = httpsFallbackContext.getStore();
   if (context) context.attempts += 1;
-  const result = await httpsRequest(url, { timeoutMs, headers, method, body: body ?? undefined });
+  const result = await httpsRequest(url, {
+    timeoutMs,
+    headers,
+    method,
+    body: body ?? undefined,
+    maxResponseBytes,
+  });
   const location = result.headers.location;
   if (
     redirect === 'follow'
@@ -78,6 +87,7 @@ async function httpsFallbackRequest(
         nextMethod === 'GET' ? undefined : body,
         redirect,
         redirects + 1,
+        maxResponseBytes,
       );
     }
   }
@@ -85,7 +95,7 @@ async function httpsFallbackRequest(
     httpsFallbackRecoveries += 1;
     if (context) context.recoveries += 1;
   }
-  return result;
+  return { ...result, url: String(url) };
 }
 
 function toFetchResponse(result: HttpsResponse): Response {
@@ -146,6 +156,7 @@ function decompressor(encoding: string): Transform | null {
 
 export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {}): Promise<HttpsResponse> {
   const timeoutMs = Math.max(1, options.timeoutMs ?? 15_000);
+  const maxResponseBytes = options.maxResponseBytes ?? HTTPS_RESPONSE_MAX_BYTES;
   return new Promise((resolve, reject) => {
     let settled = false;
     let timer: NodeJS.Timeout;
@@ -196,8 +207,8 @@ export function httpsRequest(url: string | URL, options: HttpsRequestOptions = {
           if (settled) return;
           const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
           bytesRead += buffer.length;
-          if (bytesRead > HTTPS_RESPONSE_MAX_BYTES) {
-            const sizeError = new Error(`HTTPS response exceeds ${HTTPS_RESPONSE_MAX_BYTES} byte limit`);
+          if (bytesRead > maxResponseBytes) {
+            const sizeError = new Error(`HTTPS response exceeds ${maxResponseBytes} byte limit`);
             finishError(sizeError);
             bodyStream.destroy();
             return;
@@ -274,6 +285,7 @@ async function request(
   url: string,
   timeoutMs: number,
   accept: string,
+  userAgent = USER_AGENT,
 ): Promise<{ response: Response; release: () => void }> {
   const hostname = new URL(url).hostname.toLowerCase();
   const hostLimited = HOST_CONCURRENCY[hostname] !== undefined;
@@ -292,7 +304,7 @@ async function request(
       signal: controller.signal,
       redirect: 'follow',
       headers: {
-        'User-Agent': USER_AGENT,
+        'User-Agent': userAgent,
         Accept: accept,
         'Accept-Language': 'en-US,en;q=0.9',
       },
@@ -363,29 +375,57 @@ export async function fetchJson<T = unknown>(url: string, timeoutMs = REFRESH.ti
 }
 
 export async function fetchText(url: string, timeoutMs = REFRESH.timeoutMs): Promise<string> {
-  let res: Response;
-  let release: () => void = () => {};
+  const { response: res, release } = await request(url, timeoutMs, 'text/html,application/xhtml+xml');
   try {
-    ({ response: res, release } = await request(url, timeoutMs, 'text/html,application/xhtml+xml'));
     if (!res.ok) {
       discardResponseBody(res);
       throw new HttpError(`HTTP ${res.status}`, res.status);
     }
-    const text = await res.text();
+    return await res.text();
+  } finally {
     release();
-    return text;
+  }
+}
+
+export async function fetchTextWithHttpsFallback(
+  url: string,
+  timeoutMs = REFRESH.timeoutMs,
+  accept = 'text/html,application/xhtml+xml',
+  userAgent = USER_AGENT,
+): Promise<{ text: string; url: string }> {
+  const headers = {
+    'User-Agent': userAgent,
+    Accept: accept,
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+  let response: Response;
+  let release: () => void = () => {};
+  try {
+    ({ response, release } = await request(url, timeoutMs, accept, userAgent));
+    if (!response.ok) {
+      discardResponseBody(response);
+      throw new HttpError(`HTTP ${response.status}`, response.status);
+    }
+    return { text: await response.text(), url: response.url || url };
   } catch (error) {
     release();
     if (!shouldRetryOverHttps(error)) throw error;
-    const fallback = await httpsFallbackRequest(url, timeoutMs, {
-      'User-Agent': USER_AGENT,
-      Accept: 'text/html,application/xhtml+xml',
-      'Accept-Language': 'en-US,en;q=0.9',
-    }, 'GET', undefined, 'follow');
+    const fallback = await httpsFallbackRequest(
+      url,
+      timeoutMs,
+      headers,
+      'GET',
+      undefined,
+      'follow',
+      0,
+      5 * 1024 * 1024,
+    );
     if (fallback.status < 200 || fallback.status >= 300) {
       throw new HttpError(`HTTP ${fallback.status}`, fallback.status);
     }
-    return fallback.text;
+    return { text: fallback.text, url: fallback.url ?? url };
+  } finally {
+    release();
   }
 }
 
