@@ -1,13 +1,17 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
 import {
-  inspectCareersPage,
   sameCareersPostingSet,
   type CareersPostingIdentity,
 } from '../server/engine/careers';
-import { resolveBoard, type BoardResolution } from '../server/engine/resolve';
 import { isNonEmployerBoard } from '../server/engine/harvest';
-import { canonicalCareersUrl, careersSlug, normalizedCareersUrl } from './expansion-urls';
+import {
+  canonicalCareersUrl,
+  careersSlug,
+  normalizedCareersUrl,
+  resolveWebsite,
+  type ExpansionResult,
+} from '../server/engine/website';
 import { isAlreadyWrittenResult, matchesRetryResult } from './expansion-retry';
 
 interface WebsiteEmployer {
@@ -18,10 +22,6 @@ interface WebsiteEmployer {
   size: string;
   source: string;
 }
-
-type ExpansionResult = BoardResolution
-  | { kind: 'careers'; careersUrl: string; postings: number; matching: number; postingPaths?: string[]; postingIdentities?: CareersPostingIdentity[]; examplePostingUrl?: string; truncated?: boolean }
-  | { kind: 'skipped'; reason: string };
 
 interface ExpansionRecord {
   name: string;
@@ -35,245 +35,9 @@ const DRY_RUN_OUTPUT_FILE = '/home/ubuntu/expansion-results-dry-run.jsonl';
 const NEON_URI_ENDPOINT =
   'https://console.neon.tech/api/v2/projects/still-cell-79180440/connection_uri' +
   '?branch_id=br-withered-wildflower-ar6s3tkz&database_name=neondb&role_name=neondb_owner&pooled=true';
-const BROWSER_USER_AGENT =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const CAREERS_LINK = /careers?|jobs|employment|join (?:us|our team)|work (?:with|for|at) us|job (?:postings|openings|opportunities)|open positions|current openings|human resources|\bhr\b/i;
-const STRONG_CAREERS_LINK = /\b(careers?|jobs? (?:at|with)|job (?:postings|openings|opportunities)|employment(?: opportunities)?|work (?:with|for|at) us|join (?:us|our team)|open positions|current openings|human resources|hr)\b/i;
-const EXCLUDED_CAREERS_LINK = /career[\s_-]*(?:services?|ed(?:ucation)?|center|development|readiness|pathways?)|student|alumni|hire[\s-]*a[\s-]*grad|externship|internship program|employee[\s-]*directory/i;
-const STAFF_CAREERS_LINK = /\b(staff|faculty|employees?|administrative)\b/i;
-const ATS_HOSTS = [
-  'myworkdayjobs.com',
-  'greenhouse.io',
-  'lever.co',
-  'ashbyhq.com',
-  'workable.com',
-  'smartrecruiters.com',
-  'oraclecloud.com',
-  'dayforcehcm.com',
-  'icims.com',
-  'phenompeople.com',
-  'phenom.com',
-  'successfactors.com',
-  'jobs.sap.com',
-  'avature.net',
-  'taleo.net',
-  'eightfold.ai',
-  'talentbrew.com',
-  'tbcdn.com',
-  'paradox.ai',
-  'ultipro.com',
-  'ukg.com',
-  'jobvite.com',
-  'adp.com',
-  'csod.com',
-  'rippling.com',
-  'entertimeonline.com',
-  'peopleadmin.com',
-  'governmentjobs.com',
-  'schooljobs.com',
-  'applitrack.com',
-];
 
 function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
-}
-
-function normalizeWebsite(website: string): string {
-  const value = website.trim();
-  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`;
-  const url = new URL(withScheme);
-  if (url.protocol === 'http:') url.protocol = 'https:';
-  if (url.protocol !== 'https:') throw new Error('website must use http or https');
-  return url.toString();
-}
-
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
-}
-
-function sameSite(url: URL, homepage: URL): boolean {
-  const host = url.hostname.toLowerCase();
-  const homeHost = homepage.hostname.toLowerCase();
-  if (host === homeHost || host.endsWith(`.${homeHost}`) || homeHost.endsWith(`.${host}`)) return true;
-  const baseDomain = (value: string) => value.split('.').slice(-2).join('.');
-  return baseDomain(host) === baseDomain(homeHost);
-}
-
-function isAtsHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return ATS_HOSTS.some((atsHost) => host === atsHost || host.endsWith(`.${atsHost}`));
-}
-
-function sameSiteOrAts(url: URL, homepage: URL): boolean {
-  return sameSite(url, homepage) || isAtsHost(url.hostname);
-}
-
-function excludedCareerLink(href: string, text = ''): boolean {
-  const value = `${href}\n${text}`;
-  return (EXCLUDED_CAREERS_LINK.test(href) || EXCLUDED_CAREERS_LINK.test(text))
-    && !STAFF_CAREERS_LINK.test(value);
-}
-
-async function careersLinks(pageUrl: string, deadline: number): Promise<string[]> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) return [];
-  try {
-    const response = await fetch(pageUrl, {
-      redirect: 'follow',
-      headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-      signal: AbortSignal.timeout(Math.min(10_000, remaining)),
-    });
-    const html = await response.text();
-    const base = new URL(response.url || pageUrl);
-    const anchors = html.matchAll(
-      /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi,
-    );
-    const seen = new Set<string>();
-    const links: { url: string; priority: number; order: number }[] = [];
-    for (const match of anchors) {
-      const href = decodeHtml(match[1] ?? match[2] ?? match[3] ?? '').trim();
-      const text = decodeHtml((match[4] ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
-      if (!CAREERS_LINK.test(href) && !CAREERS_LINK.test(text)) continue;
-      try {
-        const target = new URL(href, base);
-        if ((target.protocol === 'https:' || target.protocol === 'http:') && sameSiteOrAts(target, base)) {
-          if (excludedCareerLink(href, text) && !isAtsHost(target.hostname)) continue;
-          if (target.protocol === 'http:') target.protocol = 'https:';
-          const url = target.toString();
-          if (seen.has(url)) continue;
-          seen.add(url);
-          const studentOnly = excludedCareerLink(href, text);
-          const priority = studentOnly
-            ? 3
-            : isAtsHost(target.hostname)
-              ? 0
-              : STRONG_CAREERS_LINK.test(`${href}\n${text}`) ? 1 : 2;
-          links.push({ url, priority, order: links.length });
-        }
-      } catch {
-        continue;
-      }
-    }
-    return links
-      .sort((a, b) => a.priority - b.priority || a.order - b.order)
-      .map((link) => link.url);
-  } catch {
-    return [];
-  }
-}
-
-async function resolveWebsite(name: string, website: string, deadline: number): Promise<ExpansionResult> {
-  let homepage: string;
-  try {
-    homepage = normalizeWebsite(website);
-  } catch (error) {
-    return { kind: 'unknown', reason: `invalid website: ${(error as Error).message}` };
-  }
-
-  type UnknownResolution = Extract<BoardResolution, { kind: 'unknown' }>;
-  let unreadable: Extract<BoardResolution, { kind: 'unreadable' }> | null = null;
-  let firstCareersUnknown: UnknownResolution | null = null;
-  let homepageUnknown: UnknownResolution | null = null;
-  let firstFallbackUnknown: UnknownResolution | null = null;
-  let first404: UnknownResolution | null = null;
-  const homepageUrl = new URL(homepage);
-  const careerPages = new Set<string>();
-  const triedUrls = new Set<string>();
-  const tryUrl = async (
-    url: string,
-    source: 'homepage' | 'careers' | 'fallback' = 'careers',
-  ): Promise<Extract<BoardResolution, { kind: 'board' }> | null> => {
-    if (Date.now() >= deadline) return null;
-    let normalizedUrl: string;
-    try {
-      normalizedUrl = new URL(url).toString();
-    } catch {
-      return null;
-    }
-    if (triedUrls.has(normalizedUrl)) return null;
-    triedUrls.add(normalizedUrl);
-    const result = await resolveBoard(name, url, deadline);
-    if (result.kind === 'board') {
-      return result;
-    }
-    const inspectableCareersPage = result.kind === 'unreadable'
-      || (result.kind === 'unknown' && /\bHTTP\s+200\b/i.test(result.reason));
-    if (
-      inspectableCareersPage
-      && sameSite(new URL(normalizedUrl), homepageUrl)
-      && !isAtsHost(new URL(normalizedUrl).hostname)
-      && !excludedCareerLink(normalizedUrl)
-      && (source !== 'homepage' || CAREERS_LINK.test(new URL(normalizedUrl).pathname))
-    ) {
-      careerPages.add(canonicalCareersUrl(normalizedUrl));
-    }
-    if (result.kind === 'unreadable') unreadable ??= result;
-    else if (/\bHTTP\s+404\b/i.test(result.reason)) first404 ??= result;
-    else if (source === 'homepage') homepageUnknown ??= result;
-    else if (source === 'fallback') firstFallbackUnknown ??= result;
-    else firstCareersUnknown ??= result;
-    return null;
-  };
-
-  const homepageResult = await tryUrl(homepage, 'homepage');
-  if (homepageResult) return homepageResult;
-
-  const hopPages: string[] = [];
-  for (const careersLink of await careersLinks(homepage, deadline)) {
-    if (Date.now() >= deadline) break;
-    const normalizedUrl = new URL(careersLink).toString();
-    const wasTried = triedUrls.has(normalizedUrl);
-    const result = await tryUrl(careersLink);
-    if (result) return result;
-    if (!wasTried && triedUrls.has(normalizedUrl) && sameSite(new URL(careersLink), homepageUrl)) {
-      hopPages.push(normalizedUrl);
-    }
-  }
-
-  for (const pageUrl of hopPages) {
-    if (Date.now() >= deadline) break;
-    for (const careersLink of await careersLinks(pageUrl, deadline)) {
-      if (Date.now() >= deadline) break;
-      if (triedUrls.has(new URL(careersLink).toString())) continue;
-      const result = await tryUrl(careersLink);
-      if (result) return result;
-    }
-  }
-
-  const origin = new URL(homepage).origin;
-  for (const path of ['/careers', '/jobs', '/employment']) {
-    const result = await tryUrl(new URL(path, origin).toString(), 'fallback');
-    if (result) return result;
-  }
-
-  for (const careersUrl of careerPages) {
-    if (Date.now() >= deadline) break;
-    const probe = await inspectCareersPage(careersUrl, deadline);
-    if (probe.postings > 0) {
-      return {
-        kind: 'careers',
-        careersUrl,
-        postings: probe.postings,
-        matching: probe.matching,
-        postingPaths: probe.postingPaths,
-        postingIdentities: probe.postingIdentities,
-        examplePostingUrl: probe.examplePostingUrl,
-        truncated: probe.truncated,
-      };
-    }
-  }
-
-  return unreadable
-    ?? firstCareersUnknown
-    ?? homepageUnknown
-    ?? firstFallbackUnknown
-    ?? first404
-    ?? { kind: 'unknown', reason: 'no supported board found' };
 }
 
 async function loadOutput(path: string): Promise<ExpansionRecord[]> {

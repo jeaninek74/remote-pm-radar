@@ -28,11 +28,19 @@ import {
   isBrowserIngestPayload,
 } from './engine/browser-pull';
 import {
+  CAREERS_SITES_OIDC_POLICY,
   HARVEST_BOARDS_OIDC_POLICY,
   verifyGithubOidcToken,
   type GithubOidcPolicy,
 } from './engine/github-oidc';
-import { isBoardCandidatePayload } from './engine/harvest';
+import { isBoardCandidatePayload, isHarvestAts, isNonEmployerBoard } from './engine/harvest';
+import { namesAgree } from './engine/resolve';
+import {
+  careersSlug,
+  isCareersSitesPayload,
+  normalizedCareersUrl,
+  registrableDomain,
+} from './engine/website';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
 } from './queries';
@@ -91,7 +99,11 @@ const app = express();
 app.disable('x-powered-by');
 const apiJsonParser = express.json({ limit: '256kb' });
 app.use((req, res, next) => {
-  if (req.path === '/api/browser-ingest' || req.path === '/api/board-candidates') return next();
+  if (
+    req.path === '/api/browser-ingest'
+    || req.path === '/api/board-candidates'
+    || req.path === '/api/careers-sites'
+  ) return next();
   return apiJsonParser(req, res, next);
 });
 
@@ -258,6 +270,223 @@ app.post(
         ],
       );
       res.json({ received: candidates.length, inserted: inserted.length });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+app.get(
+  '/api/careers-sites/known',
+  requireGithubOidcPolicy(CAREERS_SITES_OIDC_POLICY),
+  async (_req, res, next) => {
+    try {
+      const [candidateRows, employerRows] = await Promise.all([
+        q<{ domain: string }>(
+          `SELECT domain
+             FROM website_candidates
+            WHERE status NOT IN ('unknown', 'unreadable')
+               OR checked_at >= now() - INTERVAL '30 days'`,
+        ),
+        q<{ careers_url: string }>(
+          `SELECT careers_url
+             FROM employers
+            WHERE careers_url IS NOT NULL AND btrim(careers_url) <> ''`,
+        ),
+      ]);
+      const domains = new Set(candidateRows.map((row) => row.domain));
+      for (const employer of employerRows) {
+        const domain = registrableDomain(employer.careers_url);
+        if (domain) domains.add(domain);
+      }
+      res.json({ domains: [...domains] });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+app.post(
+  '/api/careers-sites',
+  requireGithubOidcPolicy(CAREERS_SITES_OIDC_POLICY),
+  express.json({ limit: '8mb' }),
+  async (req, res, next) => {
+    try {
+      if (!isCareersSitesPayload(req.body)) {
+        res.status(400).json({ error: 'Invalid careers site payload' });
+        return;
+      }
+
+      const candidates = req.body.results;
+      const existingEmployers = await q<{
+        name: string;
+        careers_url: string | null;
+      }>(`SELECT name, careers_url FROM employers`);
+      const existingNames = existingEmployers.map((employer) => employer.name);
+      const existingCareersUrls = new Set<string>();
+      for (const employer of existingEmployers) {
+        if (!employer.careers_url) continue;
+        try {
+          existingCareersUrls.add(normalizedCareersUrl(employer.careers_url));
+        } catch {
+          continue;
+        }
+      }
+
+      const boardCandidates: { ats: string; slug: string; source: string }[] = [];
+      for (const candidate of candidates) {
+        const result = candidate.result;
+        if (
+          result.kind !== 'board'
+          || !isHarvestAts(result.ats)
+          || isNonEmployerBoard(result.ats, result.slug)
+        ) continue;
+        boardCandidates.push({ ats: result.ats, slug: result.slug, source: candidate.source });
+      }
+      let boardCandidatesInserted = 0;
+      if (boardCandidates.length) {
+        const inserted = await q<{ id: number }>(
+          `INSERT INTO board_candidates (ats, slug, source)
+           SELECT incoming.ats, incoming.slug, incoming.source
+             FROM unnest($1::text[], $2::text[], $3::text[]) AS incoming(ats, slug, source)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM employers
+               WHERE employers.ats = incoming.ats
+                 AND employers.slug = incoming.slug
+            )
+           ON CONFLICT (ats, slug) DO NOTHING
+           RETURNING id`,
+          [
+            boardCandidates.map((candidate) => candidate.ats),
+            boardCandidates.map((candidate) => candidate.slug),
+            boardCandidates.map((candidate) => candidate.source),
+          ],
+        );
+        boardCandidatesInserted = inserted.length;
+      }
+
+      let verifiedBoardsAdded = 0;
+      for (const candidate of candidates) {
+        if (
+          candidate.result.kind !== 'board'
+          || isHarvestAts(candidate.result.ats)
+          || isNonEmployerBoard(candidate.result.ats, candidate.result.slug)
+          || existingNames.some((name) => namesAgree(candidate.name, name))
+        ) continue;
+        const inserted = await q<{ id: number }>(
+          `INSERT INTO employers
+             (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+           VALUES ($1, $2, $3, NULL, NULL, NULL, $4, $5, TRUE)
+           ON CONFLICT (ats, slug) DO NOTHING
+           RETURNING id`,
+          [
+            candidate.name,
+            candidate.result.ats,
+            candidate.result.slug,
+            candidate.result.careersUrl,
+            'Website board resolution (Web Data Commons JobPosting)',
+          ],
+        );
+        if (inserted.length) {
+          verifiedBoardsAdded += 1;
+          existingNames.push(candidate.name);
+        }
+      }
+
+      const statuses: string[] = [];
+      const notes: (string | null)[] = [];
+      let employersAdded = 0;
+      for (const candidate of candidates) {
+        const { result } = candidate;
+        if (result.kind === 'board') {
+          if (isNonEmployerBoard(result.ats, result.slug)) {
+            statuses.push('aggregator');
+            notes.push('non-employer board');
+          } else {
+            statuses.push('board');
+            notes.push(null);
+          }
+          continue;
+        }
+        if (result.kind === 'careers' && result.postings > 0) {
+          const careersUrlKey = normalizedCareersUrl(result.careersUrl);
+          const duplicateUrl = existingCareersUrls.has(careersUrlKey);
+          const duplicateName = existingNames.some((name) => namesAgree(candidate.name, name));
+          if (duplicateUrl || duplicateName) {
+            statuses.push('duplicate');
+            notes.push(duplicateUrl ? 'careers URL already exists' : 'employer name already exists');
+            existingCareersUrls.add(careersUrlKey);
+            continue;
+          }
+          const inserted = await q<{ id: number }>(
+            `INSERT INTO employers
+               (name, ats, slug, industry, company_size, hq_state, careers_url, discovered_via, active)
+             VALUES ($1, 'manual', $2, NULL, NULL, NULL, $3, $4, TRUE)
+             ON CONFLICT (ats, slug) DO NOTHING
+             RETURNING id`,
+            [
+              candidate.name,
+              careersSlug(result.careersUrl),
+              result.careersUrl,
+              'Website careers-page (Web Data Commons JobPosting)',
+            ],
+          );
+          existingCareersUrls.add(careersUrlKey);
+          if (inserted.length) {
+            statuses.push('added');
+            notes.push(null);
+            employersAdded += 1;
+            existingNames.push(candidate.name);
+          } else {
+            statuses.push('duplicate');
+            notes.push('employer already exists');
+          }
+          continue;
+        }
+        if (result.kind === 'careers') {
+          statuses.push('careers');
+          notes.push('no job postings found');
+        } else if (result.kind === 'unknown') {
+          statuses.push('unknown');
+          notes.push(result.reason);
+        } else {
+          statuses.push('unreadable');
+          notes.push(result.platform);
+        }
+      }
+
+      const updatedCandidates = await q<{ domain: string }>(
+        `INSERT INTO website_candidates (domain, name, source, status, note)
+         SELECT incoming.domain, incoming.name, incoming.source, incoming.status, incoming.note
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+             AS incoming(domain, name, source, status, note)
+         ON CONFLICT (domain) DO UPDATE
+           SET name = EXCLUDED.name,
+               source = EXCLUDED.source,
+               status = EXCLUDED.status,
+               note = EXCLUDED.note,
+               checked_at = now()
+         RETURNING domain`,
+        [
+          candidates.map((candidate) => candidate.domain),
+          candidates.map((candidate) => candidate.name),
+          candidates.map((candidate) => candidate.source),
+          statuses,
+          notes,
+        ],
+      );
+      const counts = statuses.reduce<Record<string, number>>((result, status) => {
+        result[status] = (result[status] ?? 0) + 1;
+        return result;
+      }, {});
+      res.json({
+        received: candidates.length,
+        updated: updatedCandidates.length,
+        boardCandidatesInserted,
+        verifiedBoardsAdded,
+        employersAdded,
+        counts,
+      });
     } catch (err) {
       next(err);
     }

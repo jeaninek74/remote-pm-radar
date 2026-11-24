@@ -31,6 +31,16 @@ export const HARVEST_BOARDS_OIDC_POLICY: GithubOidcPolicy = {
   eventNames: ['schedule', 'workflow_dispatch'],
 };
 
+export const CAREERS_SITES_OIDC_POLICY: GithubOidcPolicy = {
+  issuer: 'https://token.actions.githubusercontent.com',
+  audience: 'remote-pm-radar-careers-sites',
+  repository: 'jeaninek74/remote-pm-radar',
+  repositoryId: '1448647530',
+  workflowRef: 'jeaninek74/remote-pm-radar/.github/workflows/harvest-careers-sites.yml@refs/heads/master',
+  ref: 'refs/heads/master',
+  eventNames: ['schedule', 'workflow_dispatch'],
+};
+
 type GithubJwksFetcher = (url: string) => Promise<JsonWebKey[]>;
 
 interface CachedJwks {

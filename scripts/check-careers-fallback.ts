@@ -8,7 +8,7 @@ import {
   sweepCareersPostingLinks,
 } from '../server/engine/careers';
 import { evaluateLocation } from '../server/engine/location';
-import { careersSlug, normalizedCareersUrl } from './expansion-urls';
+import { careersSlug, normalizedCareersUrl } from '../server/engine/website';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);

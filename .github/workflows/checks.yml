@@ -30,3 +30,4 @@ jobs:
       - run: npm run check:orphan
       - run: npm run check:memory
       - run: npm run check:http
+      - run: npm run check:careers-sites

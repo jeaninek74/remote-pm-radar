@@ -113,6 +113,16 @@ CREATE TABLE IF NOT EXISTS board_candidates (
 );
 CREATE INDEX IF NOT EXISTS board_candidates_pending_idx ON board_candidates (status, tries);
 
+CREATE TABLE IF NOT EXISTS website_candidates (
+  domain TEXT PRIMARY KEY,
+  name TEXT,
+  source TEXT,
+  status TEXT NOT NULL,
+  note TEXT,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS website_candidates_checked_idx ON website_candidates (status, checked_at);
+
 CREATE TABLE IF NOT EXISTS refresh_runs (
   id SERIAL PRIMARY KEY,
   trigger TEXT NOT NULL,
