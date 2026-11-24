@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import { REFRESH } from '../config';
 import { fetchText, fetchTextWithHttpsFallback } from './http';
+import { registrableDomain } from './registrable-domain';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -241,7 +242,7 @@ export function isSafeCareerPageUrl(value: string, careersHost: string): boolean
       || hostname.endsWith('.local')
       || hostname.endsWith('.internal')
     ) return false;
-    return sameCareerSite(hostname, careersHost);
+    return registrableDomain(hostname) === registrableDomain(careersHost);
   } catch {
     return false;
   }

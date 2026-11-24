@@ -6,6 +6,7 @@ import {
 import { isNonEmployerBoard, NON_EMPLOYER_BOARDS } from './harvest';
 import { resolveBoard, type BoardResolution } from './resolve';
 import { fetchTextWithHttpsFallback } from './http';
+import { registrableDomain } from './registrable-domain';
 
 export type ExpansionResult = BoardResolution
   | {
@@ -466,25 +467,6 @@ export function parseWdcQuad(line: string): ParsedWdcQuad | null {
     graph: match[4],
     property: predicate.split(/[/#]/).pop() ?? '',
   };
-}
-
-export function registrableDomain(value: string): string {
-  let hostname: string;
-  try {
-    hostname = new URL(value.includes('://') ? value : `https://${value}`).hostname.toLowerCase();
-  } catch {
-    return '';
-  }
-  const parts = hostname.replace(/\.$/, '').split('.').filter(Boolean);
-  if (!parts.length) return '';
-  if (
-    parts.length > 2
-    && ['co', 'com', 'org'].includes(parts[parts.length - 2])
-    && parts[parts.length - 1].length === 2
-  ) {
-    return parts.slice(-3).join('.');
-  }
-  return parts.length > 1 ? parts.slice(-2).join('.') : parts[0];
 }
 
 function literalValue(value: string): string | null {

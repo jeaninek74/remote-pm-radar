@@ -35,11 +35,11 @@ import {
 } from './engine/github-oidc';
 import { isBoardCandidatePayload, isHarvestAts, isNonEmployerBoard } from './engine/harvest';
 import { namesAgree } from './engine/resolve';
+import { registrableDomain } from './engine/registrable-domain';
 import {
   careersSlug,
   isCareersSitesPayload,
   normalizedCareersUrl,
-  registrableDomain,
 } from './engine/website';
 import {
   getStats, listEmployers, listJobs, listRuns, listSources, queueSummary, updateTracking,
