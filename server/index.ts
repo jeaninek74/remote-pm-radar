@@ -371,6 +371,7 @@ app.post(
           candidate.result.kind !== 'board'
           || isHarvestAts(candidate.result.ats)
           || isNonEmployerBoard(candidate.result.ats, candidate.result.slug)
+          || candidate.result.total < 1
           || existingNames.some((name) => namesAgree(candidate.name, name))
         ) continue;
         const inserted = await q<{ id: number }>(
@@ -402,6 +403,9 @@ app.post(
           if (isNonEmployerBoard(result.ats, result.slug)) {
             statuses.push('aggregator');
             notes.push('non-employer board');
+          } else if (result.total < 1) {
+            statuses.push('unknown');
+            notes.push('board validation found no open roles');
           } else {
             statuses.push('board');
             notes.push(null);
@@ -451,7 +455,7 @@ app.post(
           notes.push(result.reason);
         } else {
           statuses.push('unreadable');
-          notes.push(result.platform);
+          notes.push(result.reason ?? result.platform);
         }
       }
 

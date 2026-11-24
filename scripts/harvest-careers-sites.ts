@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import {
   filterWebsiteCandidates,
+  resolveWdcPostingPages,
   mergeWdcAggregates,
   resolveWebsite,
   WdcAggregator,
@@ -14,10 +15,15 @@ import {
   type WebsiteCandidateFilterCounts,
   type WdcDomainAggregate,
 } from '../server/engine/website';
+import {
+  collectHttpsFallbackMetrics,
+  getHttpsFallbackMetrics,
+  resetHttpsFallbackMetrics,
+} from '../server/engine/http';
 
 const WDC_BASE_URL = 'https://data.dws.informatik.uni-mannheim.de/structureddata/2024-12/quads/classspecific/JobPosting';
 const CAREERS_SITES_AUDIENCE = 'remote-pm-radar-careers-sites';
-const CACHE_VERSION = 'wdc-jobposting-2024-12-v1';
+const CACHE_VERSION = 'wdc-jobposting-2024-12-v2';
 const SOURCE = 'Web Data Commons JobPosting 2024-12';
 const REQUEST_PACE_MS = 200;
 const MAX_ATTEMPTS = 5;
@@ -168,9 +174,10 @@ function reportCandidateCounts(counts: WebsiteCandidateFilterCounts): void {
   console.log(`[careers-sites] after JobPosting-page filter: ${counts.withJobPostingPages.toLocaleString()}`);
   console.log(`[careers-sites] after <=2 organization names: ${counts.afterOrganizationLimit.toLocaleString()}`);
   console.log(`[careers-sites] after US/telecommute filter: ${counts.afterCountryFilter.toLocaleString()}`);
+  console.log(`[careers-sites] after country-code TLD filter: ${counts.afterCountryCodeFilter.toLocaleString()}`);
   console.log(`[careers-sites] after ATS/board-domain filter: ${counts.afterDomainFilter.toLocaleString()}`);
   console.log(`[careers-sites] after template-organization filter: ${counts.afterTemplateFilter.toLocaleString()}`
-    + ` (${counts.templateOrganizationNames} template names)`);
+    + ` (${counts.templateOrganizationNames} template names, ${counts.domainNameFallbacks} domain-name fallbacks)`);
 }
 
 async function oidcAuthorization(): Promise<string> {
@@ -250,6 +257,7 @@ function reportResults(counts: { careersWithPostings: number; board: number; unk
 }
 
 async function main(): Promise<void> {
+  resetHttpsFallbackMetrics();
   const options = parseOptions(process.argv.slice(2));
   const cachePath = path.resolve(
     process.env.WDC_CANDIDATES_CACHE_PATH ?? 'wdc-jobposting-2024-12-candidates.json',
@@ -281,8 +289,14 @@ async function main(): Promise<void> {
     + ` live-resolution budget ${options.minutes} minutes${options.dry ? ' (dry)' : ''}`);
 
   const resultCounts = { careersWithPostings: 0, board: 0, unknownOrUnreadable: 0 };
+  const reasonCounts = new Map<string, number>();
+  let postingPageFallbacks = 0;
   let sitesRead = 0;
   let nextCandidate = 0;
+  let primaryHttpsRetrySites = 0;
+  let wdcFallbackHttpsRetrySites = 0;
+  const primaryHttpsRetryDomains: string[] = [];
+  const wdcFallbackHttpsRetryDomains: string[] = [];
   let appendQueue = Promise.resolve();
   let postQueue = Promise.resolve();
   const postBatchBuffer: CareersSiteRecord[] = [];
@@ -299,6 +313,13 @@ async function main(): Promise<void> {
     if (record.result.kind === 'careers' && record.result.postings > 0) resultCounts.careersWithPostings += 1;
     else if (record.result.kind === 'board') resultCounts.board += 1;
     else if (record.result.kind === 'unknown' || record.result.kind === 'unreadable') resultCounts.unknownOrUnreadable += 1;
+    if (record.result.kind === 'unknown') {
+      const reason = record.result.reason.replace(/\s+/g, ' ').slice(0, 140);
+      reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    } else if (record.result.kind === 'unreadable') {
+      const reason = `unreadable: ${record.result.platform}${record.result.reason ? ` (${record.result.reason})` : ''}`;
+      reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    }
     await appendRecord(record);
     if (!options.dry) {
       postBatchBuffer.push(record);
@@ -317,12 +338,35 @@ async function main(): Promise<void> {
       const candidate = pending[candidateIndex];
       sitesRead += 1;
       let result: ExpansionResult;
+      const siteDeadline = Date.now() + 60_000;
       try {
-        result = await resolveWebsite(
+        const primary = await collectHttpsFallbackMetrics(() => resolveWebsite(
           candidate.name,
           `https://${candidate.domain}/`,
-          Date.now() + 60_000,
-        );
+          siteDeadline,
+        ));
+        result = primary.value;
+        if (primary.metrics.recoveries > 0) {
+          primaryHttpsRetrySites += 1;
+          primaryHttpsRetryDomains.push(candidate.domain);
+        }
+        if (result.kind === 'unknown' || result.kind === 'unreadable') {
+          const wdcFallback = await collectHttpsFallbackMetrics(() => resolveWdcPostingPages(
+            candidate.name,
+            candidate.domain,
+            candidate.pageUrls,
+            siteDeadline,
+          ));
+          const fallback = wdcFallback.value;
+          if (wdcFallback.metrics.recoveries > 0) {
+            wdcFallbackHttpsRetrySites += 1;
+            wdcFallbackHttpsRetryDomains.push(candidate.domain);
+          }
+          if (fallback) {
+            result = fallback;
+            postingPageFallbacks += 1;
+          }
+        }
       } catch (error) {
         result = { kind: 'unknown', reason: error instanceof Error ? error.message : String(error) };
       }
@@ -346,6 +390,12 @@ async function main(): Promise<void> {
 
   console.log(`[careers-sites] sites read: ${sitesRead}; remaining before deadline: ${pending.length - sitesRead}`);
   reportResults(resultCounts);
+  console.log(`[careers-sites] WDC posting-page fallback results: ${postingPageFallbacks}`);
+  const httpsFallbackMetrics = getHttpsFallbackMetrics();
+  console.log(`[careers-sites] node:https retries: ${httpsFallbackMetrics.attempts} attempted, ${httpsFallbackMetrics.recoveries} recovered`);
+  console.log(`[careers-sites] candidates with HTTPS retry recovery: ${primaryHttpsRetrySites} primary, ${wdcFallbackHttpsRetrySites} WDC fallback`);
+  console.log(`[careers-sites] HTTPS-recovered domains: ${JSON.stringify({ primary: primaryHttpsRetryDomains, wdcFallback: wdcFallbackHttpsRetryDomains })}`);
+  console.log(`[careers-sites] result counts by reason: ${JSON.stringify(Object.fromEntries([...reasonCounts].sort(([a], [b]) => a.localeCompare(b))))}`);
   if (outputPath) console.log(`[careers-sites] wrote live-resolution results to ${outputPath}`);
   if (options.dry) console.log('[careers-sites] dry run: skipped known-domain GET and all POST requests');
 }

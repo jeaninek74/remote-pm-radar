@@ -58,6 +58,18 @@ const fixtureLines = [
   ...posting('https://foreigncorp.ca/jobs/1', { organization: 'Foreign Corp', country: 'Canada' }),
   ...posting('https://nomadwork.net/jobs/1', { organization: 'Nomad Work', telecommute: true }),
   ...posting('https://unbranded.io/roles/1', { country: 'UNITED STATES OF AMERICA' }),
+  ...posting('https://mixed-keep.com/jobs/us', { organization: 'Mixed Site', country: 'US' }),
+  ...posting('https://mixed-keep.com/jobs/ca', { organization: 'Mixed Site', country: 'Canada' }),
+  ...posting('https://mixed-reject.com/jobs/us', { organization: 'Mixed Reject', country: 'USA' }),
+  ...posting('https://mixed-reject.com/jobs/ca1', { organization: 'Mixed Reject', country: 'Canada' }),
+  ...posting('https://mixed-reject.com/jobs/ca2', { organization: 'Mixed Reject', country: 'Canada' }),
+  ...posting('https://foreign-tld.hu/jobs/1', { organization: 'Foreign TLD', country: 'US' }),
+  ...posting('https://foreign-tld.co.uk/jobs/1', { organization: 'Foreign UK', country: 'US' }),
+  ...posting('https://allowed-co.co/jobs/1', { organization: 'Allowed Co', country: 'US' }),
+  ...posting('https://allowed-ai.ai/jobs/1', { organization: 'Allowed AI', country: 'US' }),
+  ...posting('https://allowed-us.us/jobs/1', { organization: 'Allowed US', country: 'US' }),
+  ...posting('https://generic-tech.tech/jobs/1', { organization: 'Generic Tech', country: 'US' }),
+  ...posting('https://google-one.test/jobs/1', { organization: 'Google', country: 'US' }),
   ...posting('https://jobs.lever.co/acme/role', { organization: 'Acme', country: 'US' }),
   ...posting('https://remotejobs.io/roles/1', { organization: 'Remote Jobs', country: 'US' }),
   ...posting('https://jobgether.com/roles/1', { organization: 'Jobgether', country: 'US' }),
@@ -91,6 +103,18 @@ check('US careers page with an organization name is retained',
   byDomain.get('example.com')?.name === 'Example Corp');
 check('candidate without an organization name falls back to its domain',
   byDomain.get('unbranded.io')?.name === 'unbranded.io');
+check('US country counts at exactly half of the total are retained',
+  byDomain.get('mixed-keep.com')?.name === 'Mixed Site');
+check('sites with less than half US country counts are rejected',
+  !byDomain.has('mixed-reject.com'));
+check('foreign country-code TLDs are rejected even with US country data',
+  !byDomain.has('foreign-tld.hu') && !byDomain.has('foreign-tld.co.uk'));
+check('allowed two-letter TLD exceptions remain eligible',
+  byDomain.get('allowed-co.co')?.name === 'Allowed Co'
+    && byDomain.get('allowed-ai.ai')?.name === 'Allowed AI'
+    && byDomain.get('allowed-us.us')?.name === 'Allowed US');
+check('generic multi-character TLDs remain eligible',
+  byDomain.get('generic-tech.tech')?.name === 'Generic Tech');
 check('multi-organization job board is rejected',
   !byDomain.has('agency-board.net'));
 check('foreign-only domain is rejected',
@@ -101,9 +125,22 @@ check('ATS and job-board domains are rejected',
   !byDomain.has('lever.co') && !byDomain.has('remotejobs.io'));
 check('known non-employer board domain is rejected',
   !byDomain.has('jobgether.com'));
-check('template organization on more than 20 domains is rejected',
+check('template organization on more than 20 domains falls back to the domain',
   result.counts.templateOrganizationNames === 1
-    && ![...byDomain.keys()].some((domain) => domain.startsWith('company-')));
+    && byDomain.get('company-0.test')?.name === 'company-0.test');
+check('Google organization name falls back even below the template threshold',
+  byDomain.get('google-one.test')?.name === 'google-one.test');
+const templatePartA = aggregateWdcQuads(Array.from({ length: 11 }, (_value, index) =>
+  posting(`https://multi-${index}.test/jobs/1`, { organization: 'Komplex Web+', country: 'US' })).flat());
+const templatePartB = aggregateWdcQuads(Array.from({ length: 10 }, (_value, index) =>
+  posting(`https://multi-${index + 11}.test/jobs/1`, { organization: 'Komplex Web+', country: 'US' })).flat());
+const acrossParts = new Map<string, WdcDomainAggregate>();
+mergeWdcAggregates(acrossParts, templatePartA);
+mergeWdcAggregates(acrossParts, templatePartB);
+const acrossPartsResult = filterWebsiteCandidates([...acrossParts.values()]);
+check('template-name frequency is counted across merged parts before filtering',
+  acrossPartsResult.counts.templateOrganizationNames === 1
+    && acrossPartsResult.candidates.every((candidate) => candidate.name === candidate.domain));
 const manyPages = aggregateWdcQuads(Array.from({ length: 10 }, (_value, index) =>
   posting(`https://sample.net/jobs/${index}`, { country: 'US' })).flat());
 check('domain aggregation keeps at most eight sample page URLs',
@@ -120,6 +157,15 @@ const validPayload = {
 };
 check('careers-sites payload guard accepts a valid board result',
   isCareersSitesPayload(validPayload));
+check('careers-sites payload guard accepts unreadable diagnostics',
+  isCareersSitesPayload({
+    results: [{
+      domain: 'example.org',
+      name: 'Example',
+      source: 'Web Data Commons JobPosting 2024-12',
+      result: { kind: 'unreadable', platform: 'Phenom', reason: 'widget request failed' },
+    }],
+  }));
 check('careers-sites payload guard rejects a malformed result',
   !isCareersSitesPayload({
     results: [{

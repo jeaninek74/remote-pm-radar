@@ -9,6 +9,7 @@ import {
   validateBoardCandidate,
 } from '../server/engine/harvest';
 import { HARVEST_BOARDS_OIDC_POLICY } from '../server/engine/github-oidc';
+import { namesAgree } from '../server/engine/resolve';
 import {
   DISCOVERY_START_GUARD_MS,
   discoveryBudget,
@@ -80,6 +81,8 @@ check('strip Ashby suffix after the role label',
   pageTitle('<title>Crusoe Careers | Ashby</title>') === 'Crusoe');
 check('keep a company name without a title suffix',
   pageTitle('<title>Acme, Inc.</title>') === 'Acme, Inc.');
+check('match a shortened platform name against a possessive full employer name',
+  namesAgree("Sendik's Food Market", 'Sendik'));
 const dayStart = Date.UTC(2026, 0, 1);
 check('decline discovery 20 seconds before a sweep slot',
   discoveryBudget(dayStart + 29 * 60_000 + 40_000, 20 * 60_000) === null);

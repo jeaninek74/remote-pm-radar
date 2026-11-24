@@ -1,6 +1,6 @@
 import type { Ats } from './types';
 import { isNonEmployerBoard } from './harvest';
-import { httpsRequest } from './http';
+import { fetchWithHttpsFallback, httpsRequest } from './http';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
@@ -84,7 +84,7 @@ export type BoardDetection =
 
 export type BoardResolution =
   | { kind: 'board'; ats: Ats; slug: string; careersUrl: string; total: number }
-  | { kind: 'unreadable'; platform: string }
+  | { kind: 'unreadable'; platform: string; reason?: string }
   | { kind: 'unknown'; reason: string };
 
 export function nameTokens(value: string): string[] {
@@ -104,6 +104,7 @@ export function namesAgree(company: string, boardName: string | null | undefined
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length === 1) {
     if (long.length === 1) return short[0] === long[0];
+    if (short[0].length >= 6 && long.includes(short[0])) return true;
     return long.length === 2 && long[0] === short[0] && short[0].length >= 6;
   }
   return short.every((token) => long.includes(token));
@@ -305,13 +306,12 @@ async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST
     'User-Agent': BROWSER_USER_AGENT,
   };
   if (method === 'POST') headers['Content-Type'] = 'application/json';
-  const response = await fetch(url, {
+  const response = await fetchWithHttpsFallback(url, {
     method,
     body,
     redirect: expectedHost ? 'manual' : 'follow',
     headers,
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline));
   if (expectedHost && response.status >= 300 && response.status < 400) {
     throw new Error('Phenom widget API redirects are not accepted');
   }
@@ -528,11 +528,10 @@ async function validateTaleoCandidate(
 }
 
 async function successFactorsFeedAt(host: string, deadline: number) {
-  const response = await fetch(`https://${host}/sitemap.xml`, {
+  const response = await fetchWithHttpsFallback(`https://${host}/sitemap.xml`, {
     redirect: 'follow',
     headers: { Accept: 'application/rss+xml,application/xml,text/xml,*/*', 'User-Agent': BROWSER_USER_AGENT },
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return { host: host.toLowerCase(), feed: parseSuccessFactorsFeed(await response.text()) };
 }
@@ -549,14 +548,15 @@ async function validateSuccessFactorsCandidate(
   careerUrl.searchParams.set('career_ns', 'job_listing_summary');
   careerUrl.searchParams.set('navBarLevel', 'JOB_SEARCH');
   careerUrl.searchParams.set('lang', 'en_US');
-  const response = await fetch(careerUrl, {
+  const response = await fetchWithHttpsFallback(careerUrl, {
     redirect: 'follow',
     headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline));
   if (!response.ok) return { kind: 'unknown', reason: `SuccessFactors career page HTTP ${response.status}` };
   const finalHost = new URL(response.url || careerUrl.toString()).hostname.toLowerCase();
-  if (!rmkHost(finalHost)) return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  if (!rmkHost(finalHost)) {
+    return { kind: 'unreadable', platform: 'SAP SuccessFactors', reason: `Career page redirected to ${finalHost}` };
+  }
   try {
     const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
     if (!namesAgree(name, successFactorsBoardName(feed))) {
@@ -569,8 +569,12 @@ async function validateSuccessFactorsCandidate(
       careersUrl: `https://${host}/`,
       total: feed.items.length,
     };
-  } catch {
-    return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  } catch (error) {
+    return {
+      kind: 'unreadable',
+      platform: 'SAP SuccessFactors',
+      reason: (error as Error).message.slice(0, 160),
+    };
   }
 }
 
@@ -635,9 +639,9 @@ async function validatePhenomCandidate(
   deadline: number,
 ): Promise<BoardResolution> {
   const config = candidate.phenom;
-  if (!config) return { kind: 'unreadable', platform: 'Phenom' };
+  if (!config) return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom widget configuration was not found' };
   if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
-    return { kind: 'unreadable', platform: 'Phenom' };
+    return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom widget endpoint host did not match the careers page' };
   }
   try {
     const response = await fetchJson<unknown>(
@@ -652,8 +656,15 @@ async function validatePhenomCandidate(
       config.pageHost,
     );
     const parsed = parsePhenomResponse(response);
-    if (parsed.totalHits <= 0 || !namesAgree(name, config.companyName)) {
-      return { kind: 'unreadable', platform: 'Phenom' };
+    if (parsed.totalHits <= 0) {
+      return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom board has no open jobs' };
+    }
+    if (!namesAgree(name, config.companyName)) {
+      return {
+        kind: 'unreadable',
+        platform: 'Phenom',
+        reason: `Phenom board name did not match employer: ${(config.companyName ?? 'not found').slice(0, 120)}`,
+      };
     }
     return {
       kind: 'board',
@@ -662,8 +673,8 @@ async function validatePhenomCandidate(
       careersUrl: config.baseUrl,
       total: parsed.totalHits,
     };
-  } catch {
-    return { kind: 'unreadable', platform: 'Phenom' };
+  } catch (error) {
+    return { kind: 'unreadable', platform: 'Phenom', reason: (error as Error).message.slice(0, 160) };
   }
 }
 
@@ -915,14 +926,13 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       ) {
         throw new Error('iCIMS restricted host or path');
       }
-      response = await fetch(current, {
+      response = await fetchWithHttpsFallback(current, {
         redirect: 'manual',
         headers: {
           'User-Agent': BROWSER_USER_AGENT,
           Accept: 'text/html,application/xhtml+xml',
         },
-        signal: AbortSignal.timeout(timeoutFor(deadline)),
-      });
+      }, timeoutFor(deadline));
       if (response.status === 304 || response.status < 300 || response.status >= 400) break;
       const location = response.headers.get('location');
       if (!location) throw new Error(`redirect ${response.status} had no location`);

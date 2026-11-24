@@ -5,6 +5,7 @@ import {
 } from './careers';
 import { isNonEmployerBoard, NON_EMPLOYER_BOARDS } from './harvest';
 import { resolveBoard, type BoardResolution } from './resolve';
+import { fetchText, fetchWithHttpsFallback } from './http';
 
 export type ExpansionResult = BoardResolution
   | {
@@ -104,11 +105,10 @@ export async function careersLinks(pageUrl: string, deadline: number): Promise<s
   const remaining = deadline - Date.now();
   if (remaining <= 0) return [];
   try {
-    const response = await fetch(pageUrl, {
+    const response = await fetchWithHttpsFallback(pageUrl, {
       redirect: 'follow',
       headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-      signal: AbortSignal.timeout(Math.min(10_000, remaining)),
-    });
+    }, Math.min(10_000, remaining));
     const html = await response.text();
     const base = new URL(response.url || pageUrl);
     const anchors = html.matchAll(
@@ -257,6 +257,63 @@ export async function resolveWebsite(name: string, website: string, deadline: nu
     ?? { kind: 'unknown', reason: 'no supported board found' };
 }
 
+export async function resolveWdcPostingPages(
+  name: string,
+  domain: string,
+  pageUrls: string[],
+  deadline: number,
+): Promise<ExpansionResult | null> {
+  const homepage = new URL(`https://${domain}/`);
+  for (const pageValue of pageUrls.slice(0, 8)) {
+    if (Date.now() >= deadline) break;
+    let page: URL;
+    try {
+      page = new URL(pageValue);
+    } catch {
+      continue;
+    }
+    if (!['http:', 'https:'].includes(page.protocol) || !sameSite(page, homepage)) continue;
+    page.protocol = 'https:';
+    try {
+      await fetchText(page.toString(), Math.min(15_000, deadline - Date.now()));
+    } catch {
+      continue;
+    }
+
+    const board = await resolveBoard(name, page.toString(), deadline);
+    if (board.kind === 'board') return board;
+
+    const paths = [page.pathname];
+    const segments = page.pathname.split('/').filter(Boolean);
+    for (let length = Math.max(0, segments.length - 1); length >= 0; length -= 1) {
+      paths.push(length ? `/${segments.slice(0, length).join('/')}/` : '/');
+    }
+    const visited = new Set<string>();
+    for (const path of paths) {
+      if (Date.now() >= deadline) return null;
+      const target = new URL(path, page.origin);
+      if (!sameSite(target, homepage)) continue;
+      const key = target.toString();
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const probe = await inspectCareersPage(key, deadline);
+      if (probe.postings > 0) {
+        return {
+          kind: 'careers',
+          careersUrl: key,
+          postings: probe.postings,
+          matching: probe.matching,
+          postingPaths: probe.postingPaths,
+          postingIdentities: probe.postingIdentities,
+          examplePostingUrl: probe.examplePostingUrl,
+          truncated: probe.truncated,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 function canonicalCareersUrlObject(value: string): URL {
   const url = new URL(value);
   if (url.protocol === 'http:') url.protocol = 'https:';
@@ -321,9 +378,11 @@ export interface WebsiteCandidateFilterCounts {
   withJobPostingPages: number;
   afterOrganizationLimit: number;
   afterCountryFilter: number;
+  afterCountryCodeFilter: number;
   afterDomainFilter: number;
   afterTemplateFilter: number;
   templateOrganizationNames: number;
+  domainNameFallbacks: number;
 }
 
 interface MutableWdcDomain {
@@ -545,11 +604,23 @@ function topOrganization(aggregate: WdcDomainAggregate): { name: string; key: st
 }
 
 function isUsOrRemote(aggregate: WdcDomainAggregate): boolean {
-  const countries = Object.entries(aggregate.addressCountryCounts)
-    .filter(([, count]) => count > 0)
-    .map(([country]) => country.replace(/\s+/g, ' ').trim().toUpperCase());
-  return countries.some((country) => US_COUNTRY_NAMES.has(country))
-    || (countries.length === 0 && aggregate.telecommuteCount > 0);
+  let totalCountryCount = 0;
+  let usCountryCount = 0;
+  for (const [country, count] of Object.entries(aggregate.addressCountryCounts)) {
+    if (count <= 0) continue;
+    totalCountryCount += count;
+    if (US_COUNTRY_NAMES.has(country.replace(/\s+/g, ' ').trim().toUpperCase())) {
+      usCountryCount += count;
+    }
+  }
+  return totalCountryCount === 0
+    ? aggregate.telecommuteCount > 0
+    : usCountryCount * 2 >= totalCountryCount;
+}
+
+function isCountryCodeDomain(domain: string): boolean {
+  const tld = domain.toLowerCase().split('.').at(-1) ?? '';
+  return /^[a-z]{2}$/.test(tld) && !['us', 'io', 'ai', 'co'].includes(tld);
 }
 
 function isExcludedCandidateDomain(domain: string): boolean {
@@ -593,15 +664,19 @@ export function filterWebsiteCandidates(aggregates: WdcDomainAggregate[]): {
     return distinct.size <= 2;
   });
   const afterCountry = afterOrganization.filter(isUsOrRemote);
-  const afterDomain = afterCountry.filter((aggregate) => !isExcludedCandidateDomain(aggregate.domain));
-  const candidates = afterDomain
-    .filter((aggregate) => !templateNames.has(topNames.get(aggregate.domain)?.key ?? ''))
-    .map((aggregate) => {
+  const afterCountryCode = afterCountry.filter((aggregate) => !isCountryCodeDomain(aggregate.domain));
+  const afterDomain = afterCountryCode.filter((aggregate) => !isExcludedCandidateDomain(aggregate.domain));
+  const domainNameFallbacks = afterDomain.filter((aggregate) => {
+    const top = topNames.get(aggregate.domain);
+    return !top || templateNames.has(top.key) || top.key === 'google';
+  }).length;
+  const candidates = afterDomain.map((aggregate) => {
       const top = topNames.get(aggregate.domain);
+      const domainNameFallback = !top || templateNames.has(top.key) || top.key === 'google';
       return {
         ...aggregate,
-        name: top?.name ?? aggregate.domain,
-        topOrganizationName: top?.name ?? null,
+        name: domainNameFallback ? aggregate.domain : top.name,
+        topOrganizationName: domainNameFallback ? null : top.name,
       };
     });
 
@@ -612,9 +687,11 @@ export function filterWebsiteCandidates(aggregates: WdcDomainAggregate[]): {
       withJobPostingPages: withJobPostingPages.length,
       afterOrganizationLimit: afterOrganization.length,
       afterCountryFilter: afterCountry.length,
+      afterCountryCodeFilter: afterCountryCode.length,
       afterDomainFilter: afterDomain.length,
       afterTemplateFilter: candidates.length,
       templateOrganizationNames: templateNames.size,
+      domainNameFallbacks,
     },
   };
 }
@@ -697,7 +774,11 @@ export function isCareersSitesPayload(value: unknown): value is { results: Caree
         && (result.truncated === undefined || typeof result.truncated === 'boolean');
     }
     if (result.kind === 'unknown') return typeof result.reason === 'string' && result.reason.length <= 500;
-    if (result.kind === 'unreadable') return typeof result.platform === 'string' && result.platform.length <= 100;
+    if (result.kind === 'unreadable') {
+      return typeof result.platform === 'string'
+        && result.platform.length <= 100
+        && (result.reason === undefined || (typeof result.reason === 'string' && result.reason.length <= 500));
+    }
     return false;
   });
   return validResults

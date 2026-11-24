@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { request as httpsRequestRaw } from 'node:https';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import type { Readable, Transform } from 'node:stream';
@@ -16,6 +17,114 @@ export interface HttpsResponse {
   status: number;
   headers: Record<string, string | string[] | undefined>;
   text: string;
+}
+
+let httpsFallbackAttempts = 0;
+let httpsFallbackRecoveries = 0;
+const httpsFallbackContext = new AsyncLocalStorage<{ attempts: number; recoveries: number }>();
+
+export async function collectHttpsFallbackMetrics<T>(
+  operation: () => Promise<T>,
+): Promise<{ value: T; metrics: { attempts: number; recoveries: number } }> {
+  const metrics = { attempts: 0, recoveries: 0 };
+  const value = await httpsFallbackContext.run(metrics, operation);
+  return { value, metrics };
+}
+
+export function resetHttpsFallbackMetrics(): void {
+  httpsFallbackAttempts = 0;
+  httpsFallbackRecoveries = 0;
+}
+
+export function getHttpsFallbackMetrics(): { attempts: number; recoveries: number } {
+  return { attempts: httpsFallbackAttempts, recoveries: httpsFallbackRecoveries };
+}
+
+function shouldRetryOverHttps(error: unknown): boolean {
+  if (error instanceof HttpError) return [403, 429, 503].includes(error.status);
+  return !(error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name));
+}
+
+async function httpsFallbackRequest(
+  url: string | URL,
+  timeoutMs: number,
+  headers: Record<string, string | string[] | undefined>,
+  method = 'GET',
+  body?: string | Buffer | Uint8Array | null,
+  redirect: RequestRedirect = 'follow',
+  redirects = 0,
+): Promise<HttpsResponse> {
+  httpsFallbackAttempts += 1;
+  const context = httpsFallbackContext.getStore();
+  if (context) context.attempts += 1;
+  const result = await httpsRequest(url, { timeoutMs, headers, method, body: body ?? undefined });
+  const location = result.headers.location;
+  if (
+    redirect === 'follow'
+    && redirects < 8
+    && [301, 302, 303, 307, 308].includes(result.status)
+    && typeof location === 'string'
+  ) {
+    const target = new URL(location, url);
+    if (target.protocol === 'https:') {
+      const nextMethod = result.status === 303 || ([301, 302].includes(result.status) && method === 'POST')
+        ? 'GET'
+        : method;
+      return httpsFallbackRequest(
+        target,
+        timeoutMs,
+        headers,
+        nextMethod,
+        nextMethod === 'GET' ? undefined : body,
+        redirect,
+        redirects + 1,
+      );
+    }
+  }
+  if (result.status >= 200 && result.status < 300) {
+    httpsFallbackRecoveries += 1;
+    if (context) context.recoveries += 1;
+  }
+  return result;
+}
+
+function toFetchResponse(result: HttpsResponse): Response {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(result.headers)) {
+    if (value === undefined || /^(?:content-encoding|content-length)$/i.test(key)) continue;
+    headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+  }
+  return new Response([204, 304].includes(result.status) ? null : result.text, {
+    status: result.status,
+    headers,
+  });
+}
+
+export async function fetchWithHttpsFallback(
+  url: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    if (![403, 429, 503].includes(response.status)) return response;
+    await response.body?.cancel().catch(() => undefined);
+  } catch (error) {
+    if (!shouldRetryOverHttps(error)) throw error;
+  }
+  const headers = Object.fromEntries(new Headers(init.headers).entries());
+  const fallback = await httpsFallbackRequest(
+    url,
+    timeoutMs,
+    headers,
+    init.method ?? 'GET',
+    typeof init.body === 'string' || Buffer.isBuffer(init.body) || init.body instanceof Uint8Array
+      ? init.body
+      : undefined,
+    init.redirect ?? 'follow',
+  );
+  return toFetchResponse(fallback);
 }
 
 function decompressor(encoding: string): Transform | null {
@@ -254,15 +363,29 @@ export async function fetchJson<T = unknown>(url: string, timeoutMs = REFRESH.ti
 }
 
 export async function fetchText(url: string, timeoutMs = REFRESH.timeoutMs): Promise<string> {
-  const { response: res, release } = await request(url, timeoutMs, 'text/html,application/xhtml+xml');
+  let res: Response;
+  let release: () => void = () => {};
   try {
+    ({ response: res, release } = await request(url, timeoutMs, 'text/html,application/xhtml+xml'));
     if (!res.ok) {
       discardResponseBody(res);
       throw new HttpError(`HTTP ${res.status}`, res.status);
     }
-    return await res.text();
-  } finally {
+    const text = await res.text();
     release();
+    return text;
+  } catch (error) {
+    release();
+    if (!shouldRetryOverHttps(error)) throw error;
+    const fallback = await httpsFallbackRequest(url, timeoutMs, {
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9',
+    }, 'GET', undefined, 'follow');
+    if (fallback.status < 200 || fallback.status >= 300) {
+      throw new HttpError(`HTTP ${fallback.status}`, fallback.status);
+    }
+    return fallback.text;
   }
 }
 
