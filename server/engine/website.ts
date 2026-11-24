@@ -322,14 +322,17 @@ export async function resolveWdcPostingPages(
     page = new URL(mainSiteUrl(page.toString()));
     if (!sameSite(page, homepage)) continue;
     page.protocol = 'https:';
+    let postingPageLive = true;
     try {
       await fetchTextWithHttpsFallback(page.toString(), Math.min(15_000, deadline - Date.now()));
     } catch {
-      continue;
+      postingPageLive = false;
     }
 
-    const board = await resolveBoard(name, page.toString(), deadline, { useHttpsFallback: true });
-    if (board.kind === 'board') return board;
+    if (postingPageLive) {
+      const board = await resolveBoard(name, page.toString(), deadline, { useHttpsFallback: true });
+      if (board.kind === 'board') return board;
+    }
 
     const paths = [page.pathname];
     const segments = page.pathname.split('/').filter(Boolean);
