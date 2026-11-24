@@ -14,6 +14,9 @@ async function main(): Promise<void> {
   let notFoundRequests = 0;
   let activeRequests = 0;
   let maxActiveRequests = 0;
+  let stalledBodyRequests = 0;
+  let markStallStarted: () => void = () => {};
+  const stallStarted = new Promise<void>((resolve) => { markStallStarted = resolve; });
 
   const server = createServer((req, res) => {
     if (req.url === '/retry-after') {
@@ -33,6 +36,20 @@ async function main(): Promise<void> {
     if (req.url === '/not-found') {
       notFoundRequests += 1;
       res.writeHead(404).end();
+      return;
+    }
+    if (req.url === '/stalled-body') {
+      stalledBodyRequests += 1;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.flushHeaders();
+      res.write('{"waiting":');
+      if (stalledBodyRequests === 1) markStallStarted();
+      const finishTimer = setTimeout(() => res.end('true}'), 1_500);
+      res.on('close', () => clearTimeout(finishTimer));
+      return;
+    }
+    if (req.url === '/quick') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
       return;
     }
     if (req.url === '/limited') {
@@ -86,6 +103,23 @@ async function main(): Promise<void> {
     check(
       '404 is not retried',
       notFoundError instanceof HttpError && notFoundError.status === 404 && notFoundRequests === 1,
+    );
+
+    setHostConcurrencyLimit(host, 1);
+    const stalledRequest = fetchJson(`${baseUrl}/stalled-body`, 200).then(
+      () => ({ error: null as unknown }),
+      (error: unknown) => ({ error }),
+    );
+    await stallStarted;
+    const queuedRequest = fetchJson<{ ok: boolean }>(`${baseUrl}/quick`, 1_000);
+    const queuedResult = await queuedRequest;
+    const stalledResult = await stalledRequest;
+    check(
+      'timed-out response body rejects normally and frees the host slot for a queued request',
+      stalledResult.error instanceof Error
+        && !(stalledResult.error instanceof HttpError && stalledResult.error.status === 429)
+        && stalledBodyRequests === 2
+        && queuedResult.ok,
     );
 
     setHostConcurrencyLimit(host, 2);

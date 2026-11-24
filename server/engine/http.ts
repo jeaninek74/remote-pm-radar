@@ -187,7 +187,6 @@ async function request(
         'Accept-Language': 'en-US,en;q=0.9',
       },
     });
-    clearTimeout(timer);
     return { response, release };
   } catch (error) {
     release();
