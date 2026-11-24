@@ -107,7 +107,10 @@ async function greenhouse(employer: EmployerRow, known?: Set<string>): Promise<B
       rawContent = detail.content ?? '';
       description = clean(rawContent);
     } catch (error) {
-      if (error instanceof HttpError && (error.status === 429 || error.status === 503)) {
+      const errorName = (error as { name?: unknown } | null | undefined)?.name;
+      if ((error instanceof HttpError && (error.status === 429 || error.status === 503))
+        || errorName === 'AbortError'
+        || errorName === 'TimeoutError') {
         truncated = true;
         continue;
       }
