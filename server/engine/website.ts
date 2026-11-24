@@ -334,7 +334,7 @@ export async function resolveWdcPostingPages(
       if (board.kind === 'board') return board;
     }
 
-    const paths = [page.pathname];
+    const paths = postingPageLive ? [page.pathname] : [];
     const segments = page.pathname.split('/').filter(Boolean);
     for (let length = Math.max(0, segments.length - 1); length >= 0; length -= 1) {
       paths.push(length ? `/${segments.slice(0, length).join('/')}/` : '/');
