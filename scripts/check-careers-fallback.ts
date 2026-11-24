@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   candidatePostingLinks,
   careersLocationFields,
+  isSafeCareerPageUrl,
   looksLikePostingPage,
   postingPathFromUrl,
   sameCareersPostingSet,
@@ -58,6 +59,16 @@ check('sweep reader accepts generic-label posting links', sweepLinks.length === 
   && sweepLinks.some((link) => link.text === 'Apply now')
   && sweepLinks.some((link) => link.text === ''));
 check('sweep reader rejects generic non-job links and non-role titles', !sweepLinks.some((link) => link.url.endsWith('/about') || link.url.endsWith('123459')));
+check('manual career links stay on the same site, including www subdomains',
+  isSafeCareerPageUrl('https://www.example.com/jobs/123', 'example.com'));
+check('manual career links reject a different registrable site',
+  !isSafeCareerPageUrl('https://jobs.vendor.test/job/123', 'example.test'));
+check('manual career links reject IP, localhost, local and internal hosts',
+  !isSafeCareerPageUrl('http://127.0.0.1/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://[::1]/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://localhost/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://jobs.example.local/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://jobs.example.internal/job/123', 'example.com'));
 check(
   'posting-page heuristic recognizes a requisition with a role title',
   looksLikePostingPage('https://example.com/job/req-123456', 'Nurse Manager'),
