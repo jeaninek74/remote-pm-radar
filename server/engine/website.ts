@@ -59,6 +59,7 @@ export const ATS_HOSTS = [
 
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const NON_PRODUCTION_HOST_LABEL = /^(?:staging|stage|dev|test|qa|uat)\d*$/i;
 
 export function normalizeWebsite(website: string): string {
   const value = website.trim();
@@ -84,6 +85,17 @@ export function sameSite(url: URL, homepage: URL): boolean {
   if (host === homeHost || host.endsWith(`.${homeHost}`) || homeHost.endsWith(`.${host}`)) return true;
   const baseDomain = (value: string) => value.split('.').slice(-2).join('.');
   return baseDomain(host) === baseDomain(homeHost);
+}
+
+export function mainSiteUrl(value: string): string {
+  const url = new URL(value);
+  const labels = url.hostname.toLowerCase().split('.');
+  const domain = registrableDomain(url.hostname);
+  const subdomainCount = labels.length - domain.split('.').length;
+  if (labels.slice(0, subdomainCount).some((label) => NON_PRODUCTION_HOST_LABEL.test(label))) {
+    url.hostname = domain;
+  }
+  return url.toString();
 }
 
 export function isAtsHost(hostname: string): boolean {
@@ -123,15 +135,18 @@ export async function careersLinks(pageUrl: string, deadline: number): Promise<s
       try {
         const target = new URL(href, base);
         if ((target.protocol === 'https:' || target.protocol === 'http:') && sameSiteOrAts(target, base)) {
-          if (excludedCareerLink(href, text) && !isAtsHost(target.hostname)) continue;
           if (target.protocol === 'http:') target.protocol = 'https:';
-          const url = target.toString();
+          const careerTarget = isAtsHost(target.hostname)
+            ? target
+            : new URL(mainSiteUrl(target.toString()));
+          if (excludedCareerLink(href, text) && !isAtsHost(careerTarget.hostname)) continue;
+          const url = careerTarget.toString();
           if (seen.has(url)) continue;
           seen.add(url);
           const studentOnly = excludedCareerLink(href, text);
           const priority = studentOnly
             ? 3
-            : isAtsHost(target.hostname)
+            : isAtsHost(careerTarget.hostname)
               ? 0
               : STRONG_CAREERS_LINK.test(`${href}\n${text}`) ? 1 : 2;
           links.push({ url, priority, order: links.length });
@@ -151,7 +166,10 @@ export async function careersLinks(pageUrl: string, deadline: number): Promise<s
 export async function resolveWebsite(name: string, website: string, deadline: number): Promise<ExpansionResult> {
   let homepage: string;
   try {
-    homepage = normalizeWebsite(website);
+    const normalizedWebsite = normalizeWebsite(website);
+    homepage = isAtsHost(new URL(normalizedWebsite).hostname)
+      ? normalizedWebsite
+      : mainSiteUrl(normalizedWebsite);
   } catch (error) {
     return { kind: 'unknown', reason: `invalid website: ${(error as Error).message}` };
   }
@@ -172,13 +190,16 @@ export async function resolveWebsite(name: string, website: string, deadline: nu
     if (Date.now() >= deadline) return null;
     let normalizedUrl: string;
     try {
-      normalizedUrl = new URL(url).toString();
+      const target = new URL(url);
+      normalizedUrl = !isAtsHost(target.hostname) && sameSite(target, homepageUrl)
+        ? mainSiteUrl(target.toString())
+        : target.toString();
     } catch {
       return null;
     }
     if (triedUrls.has(normalizedUrl)) return null;
     triedUrls.add(normalizedUrl);
-    const result = await resolveBoard(name, url, deadline);
+    const result = await resolveBoard(name, normalizedUrl, deadline);
     if (result.kind === 'board') {
       return result;
     }
@@ -257,6 +278,20 @@ export async function resolveWebsite(name: string, website: string, deadline: nu
     ?? { kind: 'unknown', reason: 'no supported board found' };
 }
 
+export function bestCareersPage<T extends { careersUrl: string; postings: number }>(pages: T[]): T | null {
+  let best: T | null = null;
+  let bestDepth = Number.POSITIVE_INFINITY;
+  for (const page of pages) {
+    if (page.postings <= 0) continue;
+    const depth = new URL(page.careersUrl).pathname.split('/').filter(Boolean).length;
+    if (!best || page.postings > best.postings || (page.postings === best.postings && depth < bestDepth)) {
+      best = page;
+      bestDepth = depth;
+    }
+  }
+  return best;
+}
+
 export async function resolveWdcPostingPages(
   name: string,
   domain: string,
@@ -264,6 +299,16 @@ export async function resolveWdcPostingPages(
   deadline: number,
 ): Promise<ExpansionResult | null> {
   const homepage = new URL(`https://${domain}/`);
+  const visited = new Set<string>();
+  const careersPages: {
+    careersUrl: string;
+    postings: number;
+    matching: number;
+    postingPaths: string[];
+    postingIdentities: CareersPostingIdentity[];
+    examplePostingUrl?: string;
+    truncated: boolean;
+  }[] = [];
   for (const pageValue of pageUrls.slice(0, 8)) {
     if (Date.now() >= deadline) break;
     let page: URL;
@@ -273,6 +318,8 @@ export async function resolveWdcPostingPages(
       continue;
     }
     if (!['http:', 'https:'].includes(page.protocol) || !sameSite(page, homepage)) continue;
+    page = new URL(mainSiteUrl(page.toString()));
+    if (!sameSite(page, homepage)) continue;
     page.protocol = 'https:';
     try {
       await fetchText(page.toString(), Math.min(15_000, deadline - Date.now()));
@@ -288,9 +335,8 @@ export async function resolveWdcPostingPages(
     for (let length = Math.max(0, segments.length - 1); length >= 0; length -= 1) {
       paths.push(length ? `/${segments.slice(0, length).join('/')}/` : '/');
     }
-    const visited = new Set<string>();
     for (const path of paths) {
-      if (Date.now() >= deadline) return null;
+      if (Date.now() >= deadline) break;
       const target = new URL(path, page.origin);
       if (!sameSite(target, homepage)) continue;
       const key = target.toString();
@@ -298,8 +344,7 @@ export async function resolveWdcPostingPages(
       visited.add(key);
       const probe = await inspectCareersPage(key, deadline);
       if (probe.postings > 0) {
-        return {
-          kind: 'careers',
+        careersPages.push({
           careersUrl: key,
           postings: probe.postings,
           matching: probe.matching,
@@ -307,11 +352,12 @@ export async function resolveWdcPostingPages(
           postingIdentities: probe.postingIdentities,
           examplePostingUrl: probe.examplePostingUrl,
           truncated: probe.truncated,
-        };
+        });
       }
     }
   }
-  return null;
+  const best = bestCareersPage(careersPages);
+  return best ? { kind: 'careers', ...best } : null;
 }
 
 function canonicalCareersUrlObject(value: string): URL {
@@ -588,6 +634,22 @@ function normalizedOrganizationName(value: string): string {
   return value.toLocaleLowerCase('en-US').replace(/\s+/g, ' ').trim();
 }
 
+function compactName(value: string): string {
+  return value.toLocaleLowerCase('en-US').replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+function organizationNameMatchesDomain(name: string, domain: string): boolean {
+  const firstNameToken = compactName(name.trim().split(/\s+/)[0] ?? '');
+  const compactedName = compactName(name);
+  const domainLabel = compactName(domain.split('.')[0] ?? '');
+  return Boolean(domainLabel && (
+    domainLabel.includes(firstNameToken)
+    || domainLabel.includes(compactedName)
+    || firstNameToken.includes(domainLabel)
+    || compactedName.includes(domainLabel)
+  ));
+}
+
 function topOrganization(aggregate: WdcDomainAggregate): { name: string; key: string; count: number } | null {
   const grouped = new Map<string, { name: string; count: number }>();
   for (const [name, count] of Object.entries(aggregate.organizationNameCounts)) {
@@ -668,11 +730,17 @@ export function filterWebsiteCandidates(aggregates: WdcDomainAggregate[]): {
   const afterDomain = afterCountryCode.filter((aggregate) => !isExcludedCandidateDomain(aggregate.domain));
   const domainNameFallbacks = afterDomain.filter((aggregate) => {
     const top = topNames.get(aggregate.domain);
-    return !top || templateNames.has(top.key) || top.key === 'google';
+    return !top
+      || templateNames.has(top.key)
+      || top.key === 'google'
+      || !organizationNameMatchesDomain(top.name, aggregate.domain);
   }).length;
   const candidates = afterDomain.map((aggregate) => {
       const top = topNames.get(aggregate.domain);
-      const domainNameFallback = !top || templateNames.has(top.key) || top.key === 'google';
+      const domainNameFallback = !top
+        || templateNames.has(top.key)
+        || top.key === 'google'
+        || !organizationNameMatchesDomain(top.name, aggregate.domain);
       return {
         ...aggregate,
         name: domainNameFallback ? aggregate.domain : top.name,

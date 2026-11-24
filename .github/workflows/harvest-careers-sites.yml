@@ -30,6 +30,6 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: wdc-jobposting-2024-12-candidates.json
-          key: wdc-jobposting-2024-12-v2
+          key: wdc-jobposting-2024-12-v3
 
       - run: npx tsx scripts/harvest-careers-sites.ts

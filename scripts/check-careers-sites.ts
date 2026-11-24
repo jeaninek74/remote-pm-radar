@@ -1,7 +1,9 @@
 import {
   aggregateWdcQuads,
+  bestCareersPage,
   filterWebsiteCandidates,
   isCareersSitesPayload,
+  mainSiteUrl,
   mergeWdcAggregates,
   parseWdcQuad,
   type WdcDomainAggregate,
@@ -70,6 +72,13 @@ const fixtureLines = [
   ...posting('https://allowed-us.us/jobs/1', { organization: 'Allowed US', country: 'US' }),
   ...posting('https://generic-tech.tech/jobs/1', { organization: 'Generic Tech', country: 'US' }),
   ...posting('https://google-one.test/jobs/1', { organization: 'Google', country: 'US' }),
+  ...posting('https://resultsbydesign.com/careers/1', { organization: 'Kao Collins Inc.', country: 'US' }),
+  ...posting('https://seriousplaypro.com/jobs/1', { organization: 'Mars', country: 'US' }),
+  ...posting('https://seic.com/jobs/1', { organization: 'SEI1GLOBAL', country: 'US' }),
+  ...posting('https://resna.org/jobs/1', { organization: 'Confidential', country: 'US' }),
+  ...posting('https://republicservices.com/jobs/1', { organization: 'Republic Services', country: 'US' }),
+  ...posting('https://sendiks.com/jobs/1', { organization: "Sendik's Food Market", country: 'US' }),
+  ...posting('https://senecafoods.com/jobs/1', { organization: 'senecafood', country: 'US' }),
   ...posting('https://jobs.lever.co/acme/role', { organization: 'Acme', country: 'US' }),
   ...posting('https://remotejobs.io/roles/1', { organization: 'Remote Jobs', country: 'US' }),
   ...posting('https://jobgether.com/roles/1', { organization: 'Jobgether', country: 'US' }),
@@ -88,6 +97,13 @@ check('registrable-domain rule handles co.uk and ordinary domains',
     ...posting('https://careers.example.co.uk/jobs/1', { organization: 'Example UK', country: 'US' }),
     ...posting('https://jobs.example.com/jobs/1', { organization: 'Example US', country: 'US' }),
   ]).map((site) => site.domain).sort().join(',') === 'example.co.uk,example.com');
+check('staging careers host is replaced with the main host and same path',
+  mainSiteUrl('https://staging303.resultsbydesign.com/careers/role?source=wdc')
+    === 'https://resultsbydesign.com/careers/role?source=wdc');
+check('only matching non-production subdomain labels are removed',
+  mainSiteUrl('https://dev.example.com/jobs/') === 'https://example.com/jobs/'
+    && mainSiteUrl('https://development.example.com/careers/') === 'https://development.example.com/careers/'
+    && mainSiteUrl('https://dev.com/jobs/') === 'https://dev.com/jobs/');
 
 const part13 = aggregateWdcQuads(fixtureLines);
 const merged = new Map<string, WdcDomainAggregate>();
@@ -103,6 +119,15 @@ check('US careers page with an organization name is retained',
   byDomain.get('example.com')?.name === 'Example Corp');
 check('candidate without an organization name falls back to its domain',
   byDomain.get('unbranded.io')?.name === 'unbranded.io');
+check('mismatched top organization names fall back to the domain',
+  byDomain.get('resultsbydesign.com')?.name === 'resultsbydesign.com'
+    && byDomain.get('seriousplaypro.com')?.name === 'seriousplaypro.com'
+    && byDomain.get('seic.com')?.name === 'seic.com'
+    && byDomain.get('resna.org')?.name === 'resna.org');
+check('organization names matching the domain remain unchanged',
+  byDomain.get('republicservices.com')?.name === 'Republic Services'
+    && byDomain.get('sendiks.com')?.name === "Sendik's Food Market"
+    && byDomain.get('senecafoods.com')?.name === 'senecafood');
 check('US country counts at exactly half of the total are retained',
   byDomain.get('mixed-keep.com')?.name === 'Mixed Site');
 check('sites with less than half US country counts are rejected',
@@ -146,6 +171,21 @@ const manyPages = aggregateWdcQuads(Array.from({ length: 10 }, (_value, index) =
 check('domain aggregation keeps at most eight sample page URLs',
   manyPages.find((site) => site.domain === 'sample.net')?.pageCount === 10
     && manyPages.find((site) => site.domain === 'sample.net')?.pageUrls.length === 8);
+check('WDC fallback selects the parent listing with the most postings',
+  bestCareersPage([
+    { careersUrl: 'https://seniorlifestyle.com/jobs/search/concierge-5/', postings: 4 },
+    { careersUrl: 'https://seniorlifestyle.com/jobs/search/', postings: 18 },
+  ])?.careersUrl === 'https://seniorlifestyle.com/jobs/search/');
+check('WDC fallback breaks posting-count ties using the shallower path',
+  bestCareersPage([
+    { careersUrl: 'https://seniorlifestyle.com/jobs/search/concierge-5/', postings: 4 },
+    { careersUrl: 'https://seniorlifestyle.com/jobs/search/', postings: 4 },
+  ])?.careersUrl === 'https://seniorlifestyle.com/jobs/search/');
+check('one posting at a root careers URL remains eligible',
+  bestCareersPage([
+    { careersUrl: 'https://single-posting.example/careers', postings: 1 },
+    { careersUrl: 'https://single-posting.example/', postings: 1 },
+  ])?.careersUrl === 'https://single-posting.example/');
 
 const validPayload = {
   results: [{

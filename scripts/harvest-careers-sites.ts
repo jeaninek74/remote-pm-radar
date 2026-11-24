@@ -23,7 +23,7 @@ import {
 
 const WDC_BASE_URL = 'https://data.dws.informatik.uni-mannheim.de/structureddata/2024-12/quads/classspecific/JobPosting';
 const CAREERS_SITES_AUDIENCE = 'remote-pm-radar-careers-sites';
-const CACHE_VERSION = 'wdc-jobposting-2024-12-v2';
+const CACHE_VERSION = 'wdc-jobposting-2024-12-v3';
 const SOURCE = 'Web Data Commons JobPosting 2024-12';
 const REQUEST_PACE_MS = 200;
 const MAX_ATTEMPTS = 5;
