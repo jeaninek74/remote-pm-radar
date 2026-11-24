@@ -1,3 +1,6 @@
+import { Readable } from 'node:stream';
+import { gzipSync } from 'node:zlib';
+import { readGzipLines } from '../server/engine/wdc-stream';
 import {
   aggregateWdcQuads,
   bestCareersPage,
@@ -224,3 +227,26 @@ check('careers-sites payload guard rejects duplicate domains in one batch',
       { ...validPayload.results[0] },
     ],
   }));
+
+void (async () => {
+  const lines: string[] = [];
+  const lineCount = await readGzipLines(Readable.from([gzipSync('one\n two\n')]), (line) => lines.push(line));
+  check('WDC gzip reader emits lines while streaming',
+    lineCount === 2 && lines.join('|') === 'one| two');
+
+  const interrupted = Readable.from((async function* () {
+    yield gzipSync('one\n');
+    throw new Error('source stream interrupted');
+  })());
+  let streamError: unknown;
+  try {
+    await readGzipLines(interrupted, () => {});
+  } catch (error) {
+    streamError = error;
+  }
+  check('WDC source stream errors reject the reader for retry',
+    streamError instanceof Error && streamError.message === 'source stream interrupted');
+})().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

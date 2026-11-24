@@ -1,8 +1,7 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { createGunzip } from 'node:zlib';
+import { readGzipLines } from '../server/engine/wdc-stream';
 import {
   filterWebsiteCandidates,
   resolveWdcPostingPages,
@@ -90,8 +89,6 @@ async function readWdcPart(part: number): Promise<WdcDomainAggregate[]> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     let source: Readable | undefined;
-    let gunzip: ReturnType<typeof createGunzip> | undefined;
-    let lines: ReturnType<typeof createInterface> | undefined;
     try {
       await paceRequest();
       const response = await fetch(`${WDC_BASE_URL}/part_${part}.gz`, {
@@ -104,14 +101,8 @@ async function readWdcPart(part: number): Promise<WdcDomainAggregate[]> {
       }
       if (!response.body) throw new Error(`WDC part ${part} had no response body`);
       source = Readable.fromWeb(response.body as import('node:stream/web').ReadableStream<Uint8Array>);
-      gunzip = createGunzip();
-      lines = createInterface({ input: source.pipe(gunzip), crlfDelay: Infinity });
       const aggregator = new WdcAggregator();
-      let lineCount = 0;
-      for await (const line of lines) {
-        aggregator.addLine(line);
-        lineCount += 1;
-      }
+      const lineCount = await readGzipLines(source, (line) => aggregator.addLine(line));
       const aggregates = aggregator.finish();
       console.log(`[careers-sites] part ${part}: read ${lineCount.toLocaleString()} quads, ${aggregates.length.toLocaleString()} domains`);
       return aggregates;
@@ -123,9 +114,7 @@ async function readWdcPart(part: number): Promise<WdcDomainAggregate[]> {
         await sleep(delay);
       }
     } finally {
-      lines?.close();
       if (source && !source.destroyed) source.destroy();
-      if (gunzip && !gunzip.destroyed) gunzip.destroy();
     }
   }
   throw lastError ?? new Error(`Could not read WDC part ${part}`);
