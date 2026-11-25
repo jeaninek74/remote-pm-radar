@@ -49,13 +49,13 @@ function posting(
 
 const fixtureLines = [
   ...posting('https://jobs.example.com/careers/one', { organization: 'Example Corp', country: 'US' }),
-  ...posting('https://www.example.com/careers/two', { organization: 'Example Corp', country: 'USA' }),
   quad(
     '<https://jobs.example.com/careers/one/another>',
     'type',
     '<http://schema.org/JobPosting>',
     'https://jobs.example.com/careers/one',
   ),
+  ...posting('https://www.example.com/careers/two', { organization: 'Example Corp', country: 'USA' }),
   ...posting('https://agency-board.net/jobs/1', {
     organizations: ['First Employer', 'Second Employer', 'Third Employer'],
     country: 'US',
@@ -174,6 +174,39 @@ const manyPages = aggregateWdcQuads(Array.from({ length: 10 }, (_value, index) =
 check('domain aggregation keeps at most eight sample page URLs',
   manyPages.find((site) => site.domain === 'sample.net')?.pageCount === 10
     && manyPages.find((site) => site.domain === 'sample.net')?.pageUrls.length === 8);
+const orderingGraph = 'https://ordering.example.com/jobs/1';
+const organizationOrdering = aggregateWdcQuads([
+  ...posting(orderingGraph, { country: 'US' }).slice(0, 1),
+  quad('_:org-before', 'name', '"Ordering Company"', orderingGraph),
+  quad('_:posting-before', 'hiringOrganization', '_:org-before', orderingGraph),
+  quad('_:posting-after', 'hiringOrganization', '_:org-after', orderingGraph),
+  quad('_:org-after', 'name', '"Ordering Company"', orderingGraph),
+]);
+check('organization names resolve whether they precede or follow the hiringOrganization quad',
+  organizationOrdering.find((site) => site.domain === 'example.com')
+    ?.organizationNameCounts['Ordering Company'] === 2);
+const sharedBlankNode = aggregateWdcQuads([
+  ...posting('https://first-domain.test/jobs/1').slice(0, 1),
+  quad('_:b0', 'name', '"First Domain"', 'https://first-domain.test/jobs/1'),
+  quad('_:posting', 'hiringOrganization', '_:b0', 'https://first-domain.test/jobs/1'),
+  ...posting('https://second-domain.test/jobs/1').slice(0, 1),
+  quad('_:b0', 'name', '"Second Domain"', 'https://second-domain.test/jobs/1'),
+  quad('_:posting', 'hiringOrganization', '_:b0', 'https://second-domain.test/jobs/1'),
+]);
+check('blank-node names do not leak between page graphs',
+  sharedBlankNode.find((site) => site.domain === 'first-domain.test')
+    ?.organizationNameCounts['First Domain'] === 1
+    && sharedBlankNode.find((site) => site.domain === 'second-domain.test')
+      ?.organizationNameCounts['Second Domain'] === 1
+    && sharedBlankNode.find((site) => site.domain === 'first-domain.test')
+      ?.organizationNameCounts['Second Domain'] === undefined);
+const duplicateTypeGraph = 'https://duplicate-type.example/jobs/1';
+const duplicateTypePage = aggregateWdcQuads([
+  ...posting(duplicateTypeGraph, { country: 'US' }).slice(0, 1),
+  `<${duplicateTypeGraph}/another> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://schema.org/JobPosting> <${duplicateTypeGraph}> .`,
+]).find((site) => site.domain === 'duplicate-type.example');
+check('two JobPosting type quads in one graph count as one page',
+  duplicateTypePage?.pageCount === 1 && duplicateTypePage.pageUrls.length === 1);
 check('WDC fallback selects the parent listing with the most postings',
   bestCareersPage([
     { careersUrl: 'https://seniorlifestyle.com/jobs/search/concierge-5/', postings: 4 },

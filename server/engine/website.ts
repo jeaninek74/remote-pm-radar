@@ -439,7 +439,6 @@ export interface WebsiteCandidateFilterCounts {
 interface MutableWdcDomain {
   domain: string;
   pageCount: number;
-  seenPages: Set<string>;
   pageUrls: Set<string>;
   organizationNameCounts: Map<string, number>;
   addressCountryCounts: Map<string, number>;
@@ -483,21 +482,12 @@ function cleanOrganizationName(value: string): string {
   return value.replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
-function domainForGraph(graph: string, cache: Map<string, string>): string {
-  const cached = cache.get(graph);
-  if (cached) return cached;
-  const domain = registrableDomain(graph);
-  if (domain) cache.set(graph, domain);
-  return domain;
-}
-
 function mutableDomain(domain: string, domains: Map<string, MutableWdcDomain>): MutableWdcDomain {
   let result = domains.get(domain);
   if (!result) {
     result = {
       domain,
       pageCount: 0,
-      seenPages: new Set(),
       pageUrls: new Set(),
       organizationNameCounts: new Map(),
       addressCountryCounts: new Map(),
@@ -523,27 +513,35 @@ function rememberPageSample(sample: Set<string>, page: string): void {
 
 export class WdcAggregator {
   private readonly domains = new Map<string, MutableWdcDomain>();
-  private readonly graphDomains = new Map<string, string>();
-  private readonly nodeNames = new Map<string, string>();
-  private readonly postingOrganizations = new Map<string, string>();
+  private currentGraph: string | null = null;
+  private currentDomain = '';
+  private currentPageCounted = false;
+  private readonly pageNodeNames = new Map<string, string>();
+  private readonly pagePostingOrganizations = new Map<string, string>();
 
   addLine(line: string): void {
     const quad = parseWdcQuad(line);
     if (!quad) return;
-    const domain = domainForGraph(quad.graph, this.graphDomains);
-    if (!domain) return;
-    const site = mutableDomain(domain, this.domains);
-    const nodeKey = `${quad.graph}\u0000${quad.subject}`;
+    if (quad.graph !== this.currentGraph) {
+      this.flushPage();
+      this.currentGraph = quad.graph;
+      this.currentDomain = registrableDomain(quad.graph);
+      this.currentPageCounted = false;
+    }
+    if (!this.currentDomain) return;
+    const site = mutableDomain(this.currentDomain, this.domains);
     if (quad.property === 'type' && quad.object.includes('JobPosting')) {
-      if (!site.seenPages.has(quad.graph)) {
-        site.seenPages.add(quad.graph);
+      if (!this.currentPageCounted) {
+        // WDC quads are grouped by page, so one graph run counts once.
+        this.currentPageCounted = true;
         site.pageCount += 1;
-        rememberPageSample(site.pageUrls, quad.graph);
+        // Copy so the stored URL does not keep the whole quad line in memory.
+        rememberPageSample(site.pageUrls, Buffer.from(quad.graph).toString());
       }
     } else if (quad.property === 'hiringOrganization') {
-      this.postingOrganizations.set(nodeKey, quad.object);
+      this.pagePostingOrganizations.set(quad.subject, quad.object);
     } else if (quad.property === 'name') {
-      this.nodeNames.set(nodeKey, quad.object.slice(0, 80));
+      this.pageNodeNames.set(quad.subject, quad.object.slice(0, 80));
     } else if (quad.property === 'addressCountry') {
       const country = (literalValue(quad.object) ?? quad.object.replace(/[<>]/g, ''))
         .replace(/\s+/g, ' ')
@@ -556,22 +554,23 @@ export class WdcAggregator {
     }
   }
 
-  finish(): WdcDomainAggregate[] {
-    for (const [key, organization] of this.postingOrganizations) {
-      const separator = key.indexOf('\u0000');
-      if (separator < 0) continue;
-      const graph = key.slice(0, separator);
-      const domain = this.graphDomains.get(graph);
-      if (!domain) continue;
-      const nodeName = this.nodeNames.get(`${graph}\u0000${organization}`);
-      const rawName = nodeName ?? organization.slice(0, 80);
-      const name = cleanOrganizationName(literalValue(rawName) ?? (rawName.startsWith('<') ? '' : rawName));
-      if (!name) continue;
-      const site = this.domains.get(domain);
-      if (!site) continue;
-      site.organizationNameCounts.set(name, (site.organizationNameCounts.get(name) ?? 0) + 1);
+  private flushPage(): void {
+    const site = this.currentDomain ? this.domains.get(this.currentDomain) : undefined;
+    if (site) {
+      for (const organization of this.pagePostingOrganizations.values()) {
+        const nodeName = this.pageNodeNames.get(organization);
+        const rawName = nodeName ?? organization.slice(0, 80);
+        const name = cleanOrganizationName(literalValue(rawName) ?? (rawName.startsWith('<') ? '' : rawName));
+        if (!name) continue;
+        site.organizationNameCounts.set(name, (site.organizationNameCounts.get(name) ?? 0) + 1);
+      }
     }
+    this.pageNodeNames.clear();
+    this.pagePostingOrganizations.clear();
+  }
 
+  finish(): WdcDomainAggregate[] {
+    this.flushPage();
     return [...this.domains.values()].map((site) => ({
       domain: site.domain,
       pageCount: site.pageCount,
