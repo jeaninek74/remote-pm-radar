@@ -81,6 +81,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const active = tab === 'tab0' ? tab0 : tab === 'tab1' ? tab1 : tab === 'tab2' ? tab2 : tab === 'nopay' ? nopay : tracked;
 
   const [urgentOnly, setUrgentOnly] = useState(false);
+  const [ownCareersOnly, setOwnCareersOnly] = useState(false);
   /**
    * Immediate hires are counted across every tab, not the current one: the point of
    * the strip is to show that work is moving right now even when the visible tab is
@@ -91,19 +92,25 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
     [tab0, tab1, tab2, nopay],
   );
 
+  const listed = useMemo(() => {
+    const jobsToShow = urgentOnly ? urgent : active;
+    return ownCareersOnly
+      ? jobsToShow.filter((job) => job.employerAts === 'manual' || job.employerAts === 'browser')
+      : jobsToShow;
+  }, [active, ownCareersOnly, urgent, urgentOnly]);
+
   const counts = useMemo(() => {
-    const listed = urgentOnly ? urgent : active;
     return {
       all: listed.length,
       Nontechnical: listed.filter((job) => job.category === 'Nontechnical').length,
       Technical: listed.filter((job) => job.category === 'Technical').length,
       Hybrid: listed.filter((job) => job.category === 'Hybrid').length,
     };
-  }, [active, urgent, urgentOnly]);
+  }, [listed]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (urgentOnly ? urgent : active)
+    return listed
       .filter((job) => {
         if (category !== 'all' && job.category !== category) return false;
         if (needle) {
@@ -113,7 +120,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
         return true;
       })
       .sort(compareJobsByPostedDate);
-  }, [active, category, q, urgent, urgentOnly]);
+  }, [category, listed, q]);
 
   /**
    * The board must never render as an empty page. When nothing has cleared every rule
@@ -122,8 +129,11 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
    * a blank panel.
    */
   const fallback = useMemo(
-    () => (tab === 'tracked' ? [] : open.filter((job) => job.bucket === 'queue').sort(compareJobsByPostedDate)),
-    [open, tab],
+    () => (tab === 'tracked' ? [] : open
+      .filter((job) => job.bucket === 'queue')
+      .filter((job) => !ownCareersOnly || job.employerAts === 'manual' || job.employerAts === 'browser')
+      .sort(compareJobsByPostedDate)),
+    [open, ownCareersOnly, tab],
   );
   const current = TABS.find((item) => item.key === tab)!;
 
@@ -175,13 +185,22 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
           <strong>{urgent.length}</strong> {urgent.length === 1 ? 'role is' : 'roles are'} hiring immediately
           {urgent.length ? <span className="urgent-why"> — the posting itself says so</span> : null}
         </div>
-        <button
-          className="ghost-btn"
-          onClick={() => setUrgentOnly((value) => !value)}
-          disabled={!urgentOnly && urgent.length === 0}
-        >
-          {urgentOnly ? 'Show all roles' : 'Show immediate hires'}
-        </button>
+        <div className="urgent-actions">
+          <button
+            className="ghost-btn"
+            aria-pressed={ownCareersOnly}
+            onClick={() => setOwnCareersOnly((value) => !value)}
+          >
+            Own careers page only
+          </button>
+          <button
+            className="ghost-btn"
+            onClick={() => setUrgentOnly((value) => !value)}
+            disabled={!urgentOnly && urgent.length === 0}
+          >
+            {urgentOnly ? 'Show all roles' : 'Show immediate hires'}
+          </button>
+        </div>
       </div>
 
       <p className="tab-note">

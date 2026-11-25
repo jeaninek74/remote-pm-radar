@@ -809,3 +809,4 @@ table.plain tbody tr:hover { background: #fbf8ef; }
 .urgent-strip.on { background: #fbe6da; border-color: #e2b79c; }
 .urgent-strip .ghost-btn { white-space: nowrap; }
 .urgent-strip .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+.urgent-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

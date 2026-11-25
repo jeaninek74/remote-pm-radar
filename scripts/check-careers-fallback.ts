@@ -2,13 +2,15 @@ import { createHash } from 'node:crypto';
 import {
   candidatePostingLinks,
   careersLocationFields,
+  isSafeCareerPageUrl,
   looksLikePostingPage,
   postingPathFromUrl,
   sameCareersPostingSet,
   sweepCareersPostingLinks,
 } from '../server/engine/careers';
 import { evaluateLocation } from '../server/engine/location';
-import { careersSlug, normalizedCareersUrl } from './expansion-urls';
+import { registrableDomain } from '../server/engine/registrable-domain';
+import { careersSlug, normalizedCareersUrl } from '../server/engine/website';
 
 function check(name: string, condition: boolean): void {
   console.log(`${condition ? 'PASS' : 'FAIL'} ${name}`);
@@ -58,6 +60,24 @@ check('sweep reader accepts generic-label posting links', sweepLinks.length === 
   && sweepLinks.some((link) => link.text === 'Apply now')
   && sweepLinks.some((link) => link.text === ''));
 check('sweep reader rejects generic non-job links and non-role titles', !sweepLinks.some((link) => link.url.endsWith('/about') || link.url.endsWith('123459')));
+check('manual career links stay on the same site, including www subdomains',
+  isSafeCareerPageUrl('https://www.example.com/jobs/123', 'example.com'));
+check('manual career links allow sibling hosts within one registrable domain',
+  isSafeCareerPageUrl('https://jobs.acme.com/jobs/123', 'careers.acme.com'));
+check('manual career links reject a different registrable site',
+  !isSafeCareerPageUrl('https://evil.com/jobs/123', 'acme.com')
+    && !isSafeCareerPageUrl('https://jobs.vendor.test/job/123', 'example.test'));
+check('same registrable domain recognizes sibling subdomains under co.uk',
+  registrableDomain('careers.foo.co.uk') === 'foo.co.uk'
+    && registrableDomain('jobs.foo.co.uk') === 'foo.co.uk'
+    && isSafeCareerPageUrl('https://jobs.foo.co.uk/jobs/123', 'careers.foo.co.uk')
+    && !isSafeCareerPageUrl('https://jobs.bar.co.uk/jobs/123', 'careers.foo.co.uk'));
+check('manual career links reject IP, localhost, local and internal hosts',
+  !isSafeCareerPageUrl('http://127.0.0.1/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://[::1]/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://localhost/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://jobs.example.local/job/123', 'example.com')
+    && !isSafeCareerPageUrl('http://jobs.example.internal/job/123', 'example.com'));
 check(
   'posting-page heuristic recognizes a requisition with a role title',
   looksLikePostingPage('https://example.com/job/req-123456', 'Nurse Manager'),

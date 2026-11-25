@@ -1,6 +1,6 @@
 import type { Ats } from './types';
 import { isNonEmployerBoard } from './harvest';
-import { httpsRequest } from './http';
+import { fetchWithHttpsFallback, httpsRequest } from './http';
 import { fetchIcimsText, forbiddenIcimsPath, icimsDetailUrl, icimsHost, icimsHostFrom, icimsSitemapJobs } from './icims';
 import { jobPostingFrom } from './careers';
 import { parseSuccessFactorsFeed } from './successfactors';
@@ -84,7 +84,7 @@ export type BoardDetection =
 
 export type BoardResolution =
   | { kind: 'board'; ats: Ats; slug: string; careersUrl: string; total: number }
-  | { kind: 'unreadable'; platform: string }
+  | { kind: 'unreadable'; platform: string; reason?: string }
   | { kind: 'unknown'; reason: string };
 
 export function nameTokens(value: string): string[] {
@@ -104,7 +104,7 @@ export function namesAgree(company: string, boardName: string | null | undefined
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length === 1) {
     if (long.length === 1) return short[0] === long[0];
-    return long.length === 2 && long[0] === short[0] && short[0].length >= 6;
+    return long[0] === short[0] && short[0].length >= 6;
   }
   return short.every((token) => long.includes(token));
 }
@@ -299,19 +299,36 @@ function timeoutFor(deadline: number): number {
   return Math.min(PAGE_TIMEOUT_MS, remaining);
 }
 
-async function fetchJson<T>(url: string, deadline: number, method: 'GET' | 'POST' = 'GET', body?: string, expectedHost?: string): Promise<T> {
+async function fetchResolutionRequest(
+  url: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+  useHttpsFallback: boolean,
+): Promise<Response> {
+  return useHttpsFallback
+    ? fetchWithHttpsFallback(url, init, timeoutMs)
+    : fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+async function fetchJson<T>(
+  url: string,
+  deadline: number,
+  method: 'GET' | 'POST' = 'GET',
+  body?: string,
+  expectedHost?: string,
+  useHttpsFallback = false,
+): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'User-Agent': BROWSER_USER_AGENT,
   };
   if (method === 'POST') headers['Content-Type'] = 'application/json';
-  const response = await fetch(url, {
+  const response = await fetchResolutionRequest(url, {
     method,
     body,
     redirect: expectedHost ? 'manual' : 'follow',
     headers,
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline), useHttpsFallback);
   if (expectedHost && response.status >= 300 && response.status < 400) {
     throw new Error('Phenom widget API redirects are not accepted');
   }
@@ -434,10 +451,18 @@ async function validateUkgCandidate(
 async function validateAdpCandidate(
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
+  useHttpsFallback: boolean,
 ): Promise<BoardResolution> {
   const coordinates = adpCoordinates(candidate.slug);
   if (!coordinates) return { kind: 'unknown', reason: 'Invalid ADP Workforce Now board coordinates' };
-  const response = await fetchJson<AdpRequisitionsResponse>(adpListUrl(coordinates, 1, 0), deadline);
+  const response = await fetchJson<AdpRequisitionsResponse>(
+    adpListUrl(coordinates, 1, 0),
+    deadline,
+    'GET',
+    undefined,
+    undefined,
+    useHttpsFallback,
+  );
   const total = Number(response.meta?.totalNumber);
   if (!Array.isArray(response.jobRequisitions) || !Number.isFinite(total) || total < 0) {
     return { kind: 'unknown', reason: 'ADP response had no job list or numeric total' };
@@ -527,12 +552,11 @@ async function validateTaleoCandidate(
   };
 }
 
-async function successFactorsFeedAt(host: string, deadline: number) {
-  const response = await fetch(`https://${host}/sitemap.xml`, {
+async function successFactorsFeedAt(host: string, deadline: number, useHttpsFallback: boolean) {
+  const response = await fetchResolutionRequest(`https://${host}/sitemap.xml`, {
     redirect: 'follow',
     headers: { Accept: 'application/rss+xml,application/xml,text/xml,*/*', 'User-Agent': BROWSER_USER_AGENT },
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline), useHttpsFallback);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return { host: host.toLowerCase(), feed: parseSuccessFactorsFeed(await response.text()) };
 }
@@ -541,6 +565,7 @@ async function validateSuccessFactorsCandidate(
   name: string,
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
+  useHttpsFallback: boolean,
 ): Promise<BoardResolution> {
   const coordinates = candidate.successFactors;
   if (!coordinates) return { kind: 'unknown', reason: 'Missing SuccessFactors company coordinates' };
@@ -549,16 +574,17 @@ async function validateSuccessFactorsCandidate(
   careerUrl.searchParams.set('career_ns', 'job_listing_summary');
   careerUrl.searchParams.set('navBarLevel', 'JOB_SEARCH');
   careerUrl.searchParams.set('lang', 'en_US');
-  const response = await fetch(careerUrl, {
+  const response = await fetchResolutionRequest(careerUrl, {
     redirect: 'follow',
     headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-    signal: AbortSignal.timeout(timeoutFor(deadline)),
-  });
+  }, timeoutFor(deadline), useHttpsFallback);
   if (!response.ok) return { kind: 'unknown', reason: `SuccessFactors career page HTTP ${response.status}` };
   const finalHost = new URL(response.url || careerUrl.toString()).hostname.toLowerCase();
-  if (!rmkHost(finalHost)) return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  if (!rmkHost(finalHost)) {
+    return { kind: 'unreadable', platform: 'SAP SuccessFactors', reason: `Career page redirected to ${finalHost}` };
+  }
   try {
-    const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
+    const { host, feed } = await successFactorsFeedAt(finalHost, deadline, useHttpsFallback);
     if (!namesAgree(name, successFactorsBoardName(feed))) {
       return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };
     }
@@ -569,8 +595,12 @@ async function validateSuccessFactorsCandidate(
       careersUrl: `https://${host}/`,
       total: feed.items.length,
     };
-  } catch {
-    return { kind: 'unreadable', platform: 'SAP SuccessFactors' };
+  } catch (error) {
+    return {
+      kind: 'unreadable',
+      platform: 'SAP SuccessFactors',
+      reason: (error as Error).message.slice(0, 160),
+    };
   }
 }
 
@@ -633,11 +663,12 @@ async function validatePhenomCandidate(
   name: string,
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
+  useHttpsFallback: boolean,
 ): Promise<BoardResolution> {
   const config = candidate.phenom;
-  if (!config) return { kind: 'unreadable', platform: 'Phenom' };
+  if (!config) return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom widget configuration was not found' };
   if (!phenomEndpointMatchesPageHost(config.widgetApiEndpoint, config.pageHost)) {
-    return { kind: 'unreadable', platform: 'Phenom' };
+    return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom widget endpoint host did not match the careers page' };
   }
   try {
     const response = await fetchJson<unknown>(
@@ -650,10 +681,18 @@ async function validatePhenomCandidate(
         refNum: config.refNum, siteType: config.siteType, locale: config.locale, pageName: config.pageName,
       }),
       config.pageHost,
+      useHttpsFallback,
     );
     const parsed = parsePhenomResponse(response);
-    if (parsed.totalHits <= 0 || !namesAgree(name, config.companyName)) {
-      return { kind: 'unreadable', platform: 'Phenom' };
+    if (parsed.totalHits <= 0) {
+      return { kind: 'unreadable', platform: 'Phenom', reason: 'Phenom board has no open jobs' };
+    }
+    if (!namesAgree(name, config.companyName)) {
+      return {
+        kind: 'unreadable',
+        platform: 'Phenom',
+        reason: `Phenom board name did not match employer: ${(config.companyName ?? 'not found').slice(0, 120)}`,
+      };
     }
     return {
       kind: 'board',
@@ -662,8 +701,8 @@ async function validatePhenomCandidate(
       careersUrl: config.baseUrl,
       total: parsed.totalHits,
     };
-  } catch {
-    return { kind: 'unreadable', platform: 'Phenom' };
+  } catch (error) {
+    return { kind: 'unreadable', platform: 'Phenom', reason: (error as Error).message.slice(0, 160) };
   }
 }
 
@@ -716,6 +755,7 @@ async function validateZenopleCandidate(
 async function validateCrelateCandidate(
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
+  useHttpsFallback: boolean,
 ): Promise<BoardResolution> {
   if (!/^[a-z0-9-]+$/i.test(candidate.slug)) {
     return { kind: 'unknown', reason: 'Invalid Crelate portal slug' };
@@ -731,6 +771,10 @@ async function validateCrelateCandidate(
   const response = await fetchJson<{ Jobs?: unknown[]; IsError?: boolean }>(
     crelateJobsUrl(orgId),
     deadline,
+    'GET',
+    undefined,
+    undefined,
+    useHttpsFallback,
   );
   if (response.IsError || !Array.isArray(response.Jobs) || !response.Jobs.length) {
     return { kind: 'unknown', reason: 'Crelate GetAllJobs had no postings' };
@@ -747,11 +791,19 @@ async function validateCrelateCandidate(
 async function validateAvionteCandidate(
   candidate: Extract<BoardDetection, { kind: 'board' }>,
   deadline: number,
+  useHttpsFallback: boolean,
 ): Promise<BoardResolution> {
   const match = /^([a-z0-9_-]+)\/([a-z0-9_-]+)$/i.exec(candidate.slug);
   if (!match) return { kind: 'unknown', reason: 'Invalid Avionté board coordinates' };
   const [, bId, jbId] = match;
-  const response = await fetchJson<unknown>(avionteListUrl(bId, jbId), deadline);
+  const response = await fetchJson<unknown>(
+    avionteListUrl(bId, jbId),
+    deadline,
+    'GET',
+    undefined,
+    undefined,
+    useHttpsFallback,
+  );
   const posts = parseAvionteJobPosts(response);
   if (!posts?.length) return { kind: 'unknown', reason: 'Avionté board has no job posts' };
   return {
@@ -763,21 +815,30 @@ async function validateAvionteCandidate(
   };
 }
 
-async function validateCandidate(name: string, candidate: Extract<BoardDetection, { kind: 'board' }>, deadline: number): Promise<BoardResolution> {
+async function validateCandidate(
+  name: string,
+  candidate: Extract<BoardDetection, { kind: 'board' }>,
+  deadline: number,
+  useHttpsFallback: boolean,
+): Promise<BoardResolution> {
   try {
     if (isNonEmployerBoard(candidate.ats, candidate.slug)) {
       return { kind: 'unknown', reason: 'Board is a job aggregator, not an employer board' };
     }
-    if (candidate.ats === 'adp') return await validateAdpCandidate(candidate, deadline);
+    const getJson = <T>(url: string) =>
+      fetchJson<T>(url, deadline, 'GET', undefined, undefined, useHttpsFallback);
+    if (candidate.ats === 'adp') return await validateAdpCandidate(candidate, deadline, useHttpsFallback);
     if (candidate.ats === 'ukg') return await validateUkgCandidate(name, candidate, deadline);
     if (candidate.ats === 'taleo') return await validateTaleoCandidate(name, candidate, deadline);
-    if (candidate.ats === 'successfactors') return await validateSuccessFactorsCandidate(name, candidate, deadline);
+    if (candidate.ats === 'successfactors') {
+      return await validateSuccessFactorsCandidate(name, candidate, deadline, useHttpsFallback);
+    }
     if (candidate.ats === 'neogov') return await validateNeogovCandidate(name, candidate, deadline);
-    if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline);
+    if (candidate.ats === 'phenom') return await validatePhenomCandidate(name, candidate, deadline, useHttpsFallback);
     if (candidate.ats === 'haley') return await validateHaleyCandidate(candidate, deadline);
     if (candidate.ats === 'zenople') return await validateZenopleCandidate(candidate, deadline);
-    if (candidate.ats === 'crelate') return await validateCrelateCandidate(candidate, deadline);
-    if (candidate.ats === 'avionte') return await validateAvionteCandidate(candidate, deadline);
+    if (candidate.ats === 'crelate') return await validateCrelateCandidate(candidate, deadline, useHttpsFallback);
+    if (candidate.ats === 'avionte') return await validateAvionteCandidate(candidate, deadline, useHttpsFallback);
     if (candidate.ats === 'workday' && candidate.workday) {
       const { tenant, wd, site } = candidate.workday;
       const response = await httpsRequest(
@@ -811,20 +872,19 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     }
 
     if (candidate.ats === 'greenhouse') {
-      const data = await fetchJson<{ jobs?: unknown[] }>(`https://boards-api.greenhouse.io/v1/boards/${candidate.slug}/jobs?content=false`, deadline);
+      const data = await getJson<{ jobs?: unknown[] }>(`https://boards-api.greenhouse.io/v1/boards/${candidate.slug}/jobs?content=false`);
       if (!Array.isArray(data.jobs) || !data.jobs.length) return { kind: 'unknown', reason: 'Greenhouse board has no jobs' };
-      const meta = await fetchJson<{ name?: string }>(`https://boards-api.greenhouse.io/v1/boards/${candidate.slug}`, deadline);
+      const meta = await getJson<{ name?: string }>(`https://boards-api.greenhouse.io/v1/boards/${candidate.slug}`);
       if (!namesAgree(name, meta.name)) return { kind: 'unknown', reason: 'Greenhouse board name did not match employer' };
       return { kind: 'board', ats: candidate.ats, slug: candidate.slug, careersUrl: `https://boards.greenhouse.io/${candidate.slug}`, total: data.jobs.length };
     }
 
     if (candidate.ats === 'smartrecruiters') {
-      const data = await fetchJson<{ content?: unknown[]; totalFound?: unknown }>(
+      const data = await getJson<{ content?: unknown[]; totalFound?: unknown }>(
         `https://api.smartrecruiters.com/v1/companies/${candidate.slug}/postings?limit=1`,
-        deadline,
       );
       if (!Array.isArray(data.content) || !data.content.length) return { kind: 'unknown', reason: 'SmartRecruiters board has no jobs' };
-      const meta = await fetchJson<{ name?: string }>(`https://api.smartrecruiters.com/v1/companies/${candidate.slug}`, deadline);
+      const meta = await getJson<{ name?: string }>(`https://api.smartrecruiters.com/v1/companies/${candidate.slug}`);
       if (!namesAgree(name, meta.name)) return { kind: 'unknown', reason: 'SmartRecruiters board name did not match employer' };
       return {
         kind: 'board',
@@ -836,9 +896,8 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     }
 
     if (candidate.ats === 'workable') {
-      const data = await fetchJson<{ name?: string; jobs?: unknown[] }>(
+      const data = await getJson<{ name?: string; jobs?: unknown[] }>(
         `https://apply.workable.com/api/v1/widget/accounts/${candidate.slug}`,
-        deadline,
       );
       if (!Array.isArray(data.jobs) || !data.jobs.length) return { kind: 'unknown', reason: 'Workable board has no jobs' };
       if (!namesAgree(name, data.name)) return { kind: 'unknown', reason: 'Workable board name did not match employer' };
@@ -846,13 +905,13 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
     }
 
     if (candidate.ats === 'lever') {
-      const jobs = await fetchJson<unknown[]>(`https://api.lever.co/v0/postings/${candidate.slug}?mode=json`, deadline);
+      const jobs = await getJson<unknown[]>(`https://api.lever.co/v0/postings/${candidate.slug}?mode=json`);
       if (!Array.isArray(jobs) || !jobs.length) return { kind: 'unknown', reason: 'Lever board has no jobs' };
       return { kind: 'board', ats: candidate.ats, slug: candidate.slug, careersUrl: `https://jobs.lever.co/${candidate.slug}`, total: jobs.length };
     }
 
     if (candidate.ats === 'ashby') {
-      const data = await fetchJson<{ jobs?: unknown[] }>(`https://api.ashbyhq.com/posting-api/job-board/${candidate.slug}`, deadline);
+      const data = await getJson<{ jobs?: unknown[] }>(`https://api.ashbyhq.com/posting-api/job-board/${candidate.slug}`);
       if (!Array.isArray(data.jobs) || !data.jobs.length) return { kind: 'unknown', reason: 'Ashby board has no jobs' };
       return { kind: 'board', ats: candidate.ats, slug: candidate.slug, careersUrl: `https://jobs.ashbyhq.com/${candidate.slug}`, total: data.jobs.length };
     }
@@ -861,9 +920,8 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
       const slash = candidate.slug.lastIndexOf('/');
       const host = candidate.slug.slice(0, slash);
       const site = candidate.slug.slice(slash + 1);
-      const data = await fetchJson<{ items?: { TotalJobsCount?: unknown }[] }>(
+      const data = await getJson<{ items?: { TotalJobsCount?: unknown }[] }>(
         `https://${host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList&finder=findReqs;siteNumber=${encodeURIComponent(site)},limit=1,offset=0`,
-        deadline,
       );
       const total = data.items?.[0]?.TotalJobsCount;
       if (typeof total !== 'number' || !Number.isFinite(total)) {
@@ -904,7 +962,17 @@ async function validateCandidate(name: string, candidate: Extract<BoardDetection
   return { kind: 'unknown', reason: `Unsupported ATS candidate: ${candidate.ats}` };
 }
 
-export async function resolveBoard(name: string, careersUrl: string, deadline: number): Promise<BoardResolution> {
+export interface ResolveBoardOptions {
+  useHttpsFallback?: boolean;
+}
+
+export async function resolveBoard(
+  name: string,
+  careersUrl: string,
+  deadline: number,
+  options: ResolveBoardOptions = {},
+): Promise<BoardResolution> {
+  const useHttpsFallback = options.useHttpsFallback === true;
   try {
     let current = new URL(careersUrl);
     let response: Response | null = null;
@@ -915,14 +983,13 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
       ) {
         throw new Error('iCIMS restricted host or path');
       }
-      response = await fetch(current, {
+      response = await fetchResolutionRequest(current, {
         redirect: 'manual',
         headers: {
           'User-Agent': BROWSER_USER_AGENT,
           Accept: 'text/html,application/xhtml+xml',
         },
-        signal: AbortSignal.timeout(timeoutFor(deadline)),
-      });
+      }, timeoutFor(deadline), useHttpsFallback);
       if (response.status === 304 || response.status < 300 || response.status >= 400) break;
       const location = response.headers.get('location');
       if (!location) throw new Error(`redirect ${response.status} had no location`);
@@ -939,7 +1006,7 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
     }
     if (detected.kind === 'board') {
       const candidate = detected;
-      const validation = await validateCandidate(name, candidate, deadline);
+      const validation = await validateCandidate(name, candidate, deadline, useHttpsFallback);
       if (validation.kind === 'board') return validation;
       if (
         candidate.ats !== 'haley'
@@ -948,12 +1015,12 @@ export async function resolveBoard(name: string, careersUrl: string, deadline: n
         && candidate.ats !== 'avionte'
       ) return validation;
       detected = detect(html, finalUrl, true);
-      if (detected.kind === 'board') return validateCandidate(name, detected, deadline);
+      if (detected.kind === 'board') return validateCandidate(name, detected, deadline, useHttpsFallback);
     }
     const finalHost = current.hostname.toLowerCase();
     if (rmkHost(finalHost)) {
       try {
-        const { host, feed } = await successFactorsFeedAt(finalHost, deadline);
+        const { host, feed } = await successFactorsFeedAt(finalHost, deadline, useHttpsFallback);
         if (rmkHost(host)) {
           if (!namesAgree(name, successFactorsBoardName(feed))) {
             return { kind: 'unknown', reason: 'SuccessFactors board name did not match employer' };

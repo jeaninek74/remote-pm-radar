@@ -6,6 +6,7 @@ export interface Job {
   id: number;
   jobKey: string;
   company: string;
+  employerAts: string | null;
   title: string;
   category: Category;
   industry: string | null;

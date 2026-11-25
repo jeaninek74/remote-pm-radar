@@ -22,6 +22,7 @@
     "check:orphan": "tsx scripts/check-orphan.ts",
     "check:memory": "tsx scripts/check-memory.ts",
     "check:http": "tsx scripts/check-http.ts",
+    "check:careers-sites": "tsx scripts/check-careers-sites.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "seed:employers": "tsx scripts/seed-employers.ts",
     "refresh": "tsx scripts/refresh.ts"

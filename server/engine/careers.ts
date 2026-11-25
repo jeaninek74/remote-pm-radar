@@ -1,5 +1,7 @@
+import { isIP } from 'node:net';
 import { REFRESH } from '../config';
-import { fetchText } from './http';
+import { fetchText, fetchTextWithHttpsFallback } from './http';
+import { registrableDomain } from './registrable-domain';
 import { isRoleTitle } from './titles';
 import { isoDate, stripHtml } from './text';
 import type { BoardFetchResult, EmployerRow, RawJob } from './types';
@@ -205,17 +207,19 @@ function slugLooksLikeRole(url: string): boolean {
 }
 
 async function sitemapUrls(origin: string, deadline: number): Promise<string[]> {
+  const siteHost = new URL(origin).hostname;
   const out = new Set<string>();
   const queue = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`, `${origin}/jobs-sitemap.xml`];
   const seen = new Set<string>();
   while (queue.length && Date.now() < deadline) {
     const url = queue.shift()!;
-    if (seen.has(url)) continue;
+    if (seen.has(url) || !isSafeCareerPageUrl(url, siteHost)) continue;
     seen.add(url);
     let xml = '';
     try { xml = await fetchText(url, 15_000); } catch { continue; }
     for (const m of xml.matchAll(SITEMAP_TAG)) {
-      const loc = m[1];
+      const loc = absolute(m[1], url);
+      if (!loc || !isSafeCareerPageUrl(loc, siteHost)) continue;
       if (/sitemap[^/]*\.xml(?:\.gz)?$/i.test(loc)) { if (!/\.gz$/i.test(loc)) queue.push(loc); continue; }
       if (JOB_URL.test(loc)) out.add(loc);
     }
@@ -225,6 +229,23 @@ async function sitemapUrls(origin: string, deadline: number): Promise<string[]> 
 
 function absolute(href: string, base: string): string | null {
   try { return new URL(href, base).toString(); } catch { return null; }
+}
+
+export function isSafeCareerPageUrl(value: string, careersHost: string): boolean {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    if (
+      isIP(hostname)
+      || hostname === 'localhost'
+      || hostname.endsWith('.local')
+      || hostname.endsWith('.internal')
+    ) return false;
+    return registrableDomain(hostname) === registrableDomain(careersHost);
+  } catch {
+    return false;
+  }
 }
 
 /** Posting links from the careers page HTML itself (server-rendered lists). */
@@ -494,25 +515,33 @@ function titleFromUrl(url: string): string {
   }
 }
 
-export async function inspectCareersPage(url: string, deadline: number): Promise<CareersPageProbe> {
+export async function inspectCareersPage(
+  url: string,
+  deadline: number,
+  options: { useHttpsFallback?: boolean } = {},
+): Promise<CareersPageProbe> {
   const result: CareersPageProbe = { postings: 0, matching: 0, postingPaths: [], postingIdentities: [], truncated: false };
   if (Date.now() >= deadline) return { ...result, truncated: true };
-  let pageHtml: string;
+  const readPage = async (pageUrl: string, timeoutMs: number): Promise<{ text: string; url: string }> => {
+    if (options.useHttpsFallback) return fetchTextWithHttpsFallback(pageUrl, timeoutMs);
+    return { text: await fetchText(pageUrl, timeoutMs), url: pageUrl };
+  };
+  let page: { text: string; url: string };
   try {
-    pageHtml = await fetchText(url, Math.min(20_000, deadline - Date.now()));
+    page = await readPage(url, Math.min(20_000, deadline - Date.now()));
   } catch {
     return result;
   }
-  const pageUrl = new URL(url);
+  const requestedPageUrl = new URL(url);
   const candidates = new Map<string, { text: string }>();
-  for (const link of candidatePostingLinks(pageHtml, url)) {
+  for (const link of candidatePostingLinks(page.text, page.url)) {
     let candidate: URL;
     try {
       candidate = new URL(link.url);
     } catch {
       continue;
     }
-    if (!sameCareerSite(candidate.hostname, pageUrl.hostname)) continue;
+    if (!sameCareerSite(candidate.hostname, requestedPageUrl.hostname)) continue;
     candidate.hash = '';
     if (!candidates.has(candidate.toString())) candidates.set(candidate.toString(), { text: link.text });
   }
@@ -526,7 +555,7 @@ export async function inspectCareersPage(url: string, deadline: number): Promise
     if (NON_POSTING_FILE.test(candidateUrl)) continue;
     let html = '';
     try {
-      html = await fetchText(candidateUrl, Math.min(20_000, deadline - Date.now()));
+      html = (await readPage(candidateUrl, Math.min(20_000, deadline - Date.now()))).text;
     } catch {
       continue;
     }
@@ -556,25 +585,36 @@ export async function inspectCareersPage(url: string, deadline: number): Promise
 export async function fetchCareersPage(employer: EmployerRow, known?: Set<string>): Promise<BoardFetchResult> {
   const base = employer.careers_url ?? '';
   if (!/^https?:\/\//i.test(base)) return { jobs: [], ok: false, error: 'no careers url', totalListed: 0 };
+  const careersUrl = new URL(base);
+  if (!isSafeCareerPageUrl(base, careersUrl.hostname)) {
+    return { jobs: [], ok: false, error: 'unsafe careers url host', totalListed: 0 };
+  }
   const deadline = Date.now() + REFRESH.employerBudgetMs;
-  const origin = new URL(base).origin;
-  const source = `careers:${employer.slug || new URL(base).hostname}`;
+  const origin = careersUrl.origin;
+  const source = `careers:${employer.slug || careersUrl.hostname}`;
 
   const candidates = new Map<string, string>();
   try {
-    const html = await fetchText(base, 20_000);
-    for (const link of sweepCareersPostingLinks(html, base)) candidates.set(link.url, link.text);
+    const { text: html, url: listingUrl } = await fetchTextWithHttpsFallback(base, 20_000);
+    for (const link of sweepCareersPostingLinks(html, listingUrl)) {
+      if (isSafeCareerPageUrl(link.url, careersUrl.hostname)) candidates.set(link.url, link.text);
+    }
   } catch (err) {
     return { jobs: [], ok: false, error: `careers page: ${(err as Error).message}`, retryable: true, totalListed: 0 };
   }
   for (const url of await sitemapUrls(origin, deadline)) {
-    if (!candidates.has(url) && slugLooksLikeRole(url)) candidates.set(url, '');
+    if (
+      isSafeCareerPageUrl(url, careersUrl.hostname)
+      && !candidates.has(url)
+      && slugLooksLikeRole(url)
+    ) candidates.set(url, '');
   }
 
   const jobs: RawJob[] = [];
   let truncated = false;
   for (const [url, text] of candidates) {
     if (Date.now() > deadline) { truncated = true; break; }
+    if (!isSafeCareerPageUrl(url, careersUrl.hostname)) continue;
     if (nonPostingPath(url) || NON_POSTING_LINK_TEXT.test(text)) continue;
     const externalId = careersExternalId(origin, url);
     if (known?.has(`${source}:${externalId}`)) {
@@ -582,7 +622,7 @@ export async function fetchCareersPage(employer: EmployerRow, known?: Set<string
       continue;
     }
     let html = '';
-    try { html = await fetchText(url, 20_000); } catch { continue; }
+    try { html = (await fetchTextWithHttpsFallback(url, 20_000)).text; } catch { continue; }
     const rawJob = rawJobFromCareersPage(employer, source, origin, url, text, html);
     if (rawJob) jobs.push(rawJob);
   }

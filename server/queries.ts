@@ -6,6 +6,7 @@ export interface JobRow {
   id: number;
   jobKey: string;
   company: string;
+  employerAts: string | null;
   title: string;
   category: string;
   industry: string | null;
@@ -52,6 +53,7 @@ export interface JobRow {
 
 interface JobRecord {
   id: number; job_key: string; company: string; title: string; category: string;
+  employer_ats?: string | null;
   industry: string | null; company_size: string | null; hq_state: string | null;
   remote_status: string | null; ca_eligibility: string | null; ca_eligibility_note: string | null;
   employment_type: string | null; salary_min: number | null; salary_max: number | null;
@@ -72,6 +74,7 @@ function mapJob(row: JobRecord): JobRow {
     id: row.id,
     jobKey: row.job_key,
     company: row.company,
+    employerAts: row.employer_ats ?? null,
     title: row.title,
     category: row.category,
     industry: row.industry,
@@ -131,7 +134,8 @@ const JOB_COLUMNS = `
 const LIST_JOB_COLUMNS = JOB_COLUMNS.replace(
   'bucket, bucket_reason',
   "CASE WHEN duplicate_of IS NOT NULL THEN 'excluded' ELSE bucket END AS bucket, bucket_reason",
-);
+) + `,
+  (SELECT e.ats FROM employers e WHERE e.id = jobs.employer_id) AS employer_ats`;
 
 export async function listJobs(): Promise<JobRow[]> {
   const rows = await q<JobRecord>(
@@ -442,9 +446,14 @@ export async function updateTracking(id: number, patch: Record<string, unknown>)
 
   if (!sets.length) return null;
   values.push(id);
-  const rows = await q<JobRecord>(
-    `UPDATE jobs SET ${sets.join(', ')}, updated_at = now() WHERE id = $${index} RETURNING ${JOB_COLUMNS}`,
+  const updated = await q<{ id: number }>(
+    `UPDATE jobs SET ${sets.join(', ')}, updated_at = now() WHERE id = $${index} RETURNING id`,
     values,
+  );
+  if (!updated[0]) return null;
+  const rows = await q<JobRecord>(
+    `SELECT ${LIST_JOB_COLUMNS} FROM jobs WHERE id = $1`,
+    [updated[0].id],
   );
   return rows[0] ? mapJob(rows[0]) : null;
 }

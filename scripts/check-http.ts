@@ -1,5 +1,14 @@
 import { createServer } from 'node:http';
-import { fetchJson, HttpError, setHostConcurrencyLimit } from '../server/engine/http';
+import {
+  fetchJson,
+  fetchText,
+  fetchTextWithHttpsFallback,
+  getHttpsFallbackMetrics,
+  HttpError,
+  resetHttpsFallbackMetrics,
+  setHostConcurrencyLimit,
+  toFetchResponse,
+} from '../server/engine/http';
 
 let failures = 0;
 
@@ -9,12 +18,25 @@ function check(label: string, passed: boolean): void {
 }
 
 async function main(): Promise<void> {
+  const redirectedResponse = toFetchResponse({
+    status: 200,
+    headers: {},
+    text: 'ok',
+    url: 'https://redirected.example.test/careers/',
+  });
+  check(
+    'node:https fallback Response preserves its final URL',
+    redirectedResponse.url === 'https://redirected.example.test/careers/',
+  );
+
   let retryAfterRequests = 0;
   let exhaustedRequests = 0;
   let notFoundRequests = 0;
+  let forbiddenTextRequests = 0;
   let activeRequests = 0;
   let maxActiveRequests = 0;
   let stalledBodyRequests = 0;
+  let stalledTextRequests = 0;
   let delayedBodyRequests = 0;
   let markStallStarted: () => void = () => {};
   const stallStarted = new Promise<void>((resolve) => { markStallStarted = resolve; });
@@ -39,6 +61,11 @@ async function main(): Promise<void> {
       res.writeHead(404).end();
       return;
     }
+    if (req.url === '/text-forbidden') {
+      forbiddenTextRequests += 1;
+      res.writeHead(403).end();
+      return;
+    }
     if (req.url === '/stalled-body') {
       stalledBodyRequests += 1;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -46,6 +73,15 @@ async function main(): Promise<void> {
       res.write('{"waiting":');
       if (stalledBodyRequests === 1) markStallStarted();
       const finishTimer = setTimeout(() => res.end('true}'), 1_500);
+      res.on('close', () => clearTimeout(finishTimer));
+      return;
+    }
+    if (req.url === '/stalled-text') {
+      stalledTextRequests += 1;
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.flushHeaders();
+      res.write('waiting');
+      const finishTimer = setTimeout(() => res.end(' complete'), 1_500);
       res.on('close', () => clearTimeout(finishTimer));
       return;
     }
@@ -113,6 +149,21 @@ async function main(): Promise<void> {
       notFoundError instanceof HttpError && notFoundError.status === 404 && notFoundRequests === 1,
     );
 
+    resetHttpsFallbackMetrics();
+    let forbiddenTextError: unknown;
+    try {
+      await fetchText(`${baseUrl}/text-forbidden`);
+    } catch (error) {
+      forbiddenTextError = error;
+    }
+    check(
+      'fetchText does not retry sweep reads through node:https',
+      forbiddenTextError instanceof HttpError
+        && forbiddenTextError.status === 403
+        && forbiddenTextRequests === 1
+        && getHttpsFallbackMetrics().attempts === 0,
+    );
+
     setHostConcurrencyLimit(host, 1);
     const stalledRequest = fetchJson(`${baseUrl}/stalled-body`, 200).then(
       () => ({ error: null as unknown }),
@@ -136,6 +187,21 @@ async function main(): Promise<void> {
     check('host limiter never exceeds two concurrent requests', maxActiveRequests === 2);
 
     setHostConcurrencyLimit(host, null);
+    resetHttpsFallbackMetrics();
+    let stalledTextError: unknown;
+    try {
+      await fetchTextWithHttpsFallback(`${baseUrl}/stalled-text`, 150);
+    } catch (error) {
+      stalledTextError = error;
+    }
+    check(
+      'opt-in text fallback aborts a stalled fetch body without retrying over HTTPS',
+      stalledTextError instanceof Error
+        && ['AbortError', 'TimeoutError'].includes(stalledTextError.name)
+        && stalledTextRequests === 1
+        && getHttpsFallbackMetrics().attempts === 0,
+    );
+
     const delayedStartedAt = Date.now();
     const delayedResult = await fetchJson<{ ok: boolean }>(`${baseUrl}/delayed-body`, 500);
     const delayedElapsedMs = Date.now() - delayedStartedAt;
