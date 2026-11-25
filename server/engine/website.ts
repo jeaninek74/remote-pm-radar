@@ -535,7 +535,8 @@ export class WdcAggregator {
         // WDC quads are grouped by page, so one graph run counts once.
         this.currentPageCounted = true;
         site.pageCount += 1;
-        rememberPageSample(site.pageUrls, quad.graph);
+        // Copy so the stored URL does not keep the whole quad line in memory.
+        rememberPageSample(site.pageUrls, Buffer.from(quad.graph).toString());
       }
     } else if (quad.property === 'hiringOrganization') {
       this.pagePostingOrganizations.set(quad.subject, quad.object);
