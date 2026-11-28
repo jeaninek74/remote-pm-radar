@@ -94,6 +94,30 @@ const foreignCompanyBase = evaluateLocation({
 });
 check('foreign company base does not imply candidate eligibility', foreignCompanyBase.ca !== 'not_us');
 
+const negatedCanadaEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Candidates do not need to be based in Canada.',
+});
+check('negated Canada eligibility is not classified as foreign-only', negatedCanadaEligibility.ca !== 'not_us');
+
+const thirdPartyIndiaLocation = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'The successful candidate will work with our engineering team based in India.',
+});
+check('third-party team location is not candidate eligibility', thirdPartyIndiaLocation.ca !== 'not_us');
+
+const mixedCanadaAndUsEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Candidates must be based in Canada. Applicants located in the United States may also apply.',
+});
+check('US eligibility in a later clause prevents a foreign-only verdict', mixedCanadaAndUsEligibility.ca !== 'not_us');
+
 const usOrCanadaEligibility = evaluateLocation({
   locations: [],
   workplaceType: 'remote',

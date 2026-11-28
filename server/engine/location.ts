@@ -78,8 +78,10 @@ const ISO3_FOREIGN_CODE_TOKEN = /(?:^|[,\s-]|\()(?:POL|GBR|THA|CRI|CAN|MEX|IND|D
 const CANADIAN_PROVINCE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:ON|QC|BC|AB|MB|NS|NB|NL|SK|PE)\b/i;
 const AUSTRALIAN_STATE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:NSW|VIC|QLD)\b/i;
 const FOREIGN_CITY_MARKERS = /\b(london|warsaw|krakow|wroclaw|dublin|sydney|melbourne|toronto|montreal|vancouver|calgary|ottawa|singapore|manila|bangkok|sofia|bucharest|iasi|guadalajara|zapopan|monterrey|dordrecht|amsterdam|rotterdam|escazu|heredia|madrid|barcelona|paris|berlin|munich|frankfurt|tel aviv|tokyo|seoul|shanghai|beijing|bengaluru|bangalore|mumbai|pune|hyderabad|chennai|gurugram|gurgaon|noida|delhi|aurangabad|kolkata|são paulo|sao paulo|buenos aires|bogota|bogotá|lima|mexico city|cdmx)\b/i;
-const ELIGIBILITY_CLAUSE_LEAD = /\b(?:candidates?|applicants?|applications\s+from|you\s+(?:must|should|will\s+need\s+to)|must\s+be|open\s+to|eligible|residents?\s+of|time\s?zones?)\b/i;
+const ELIGIBILITY_CLAUSE_SUBJECT = /\b(?:candidates?|applicants?|applications\s+from|you|residents?\s+of|must\s+be|open\s+to)\b/i;
 const ELIGIBILITY_CLAUSE_SCOPE = /\b(?:based|located|residing|reside|living\s+in|within|time\s?zones?|eligible)\b/i;
+const ELIGIBILITY_CLAUSE_NEGATION = /\b(?:not|n't|no|never|need\s+not|without)\b/i;
+const ELIGIBILITY_CLAUSE_THIRD_PARTY = /\b(?:team|teams|office|offices|headquarters|colleagues|clients?|customers?|partners?|stakeholders|with)\b/i;
 const ELIGIBILITY_US_MARKERS = /\b(?:us|u\.s\.?|u\.s\.a\.?|usa|united states|america|americas|est|cst|mst|pst|et|ct|pt)\b/i;
 const ELIGIBILITY_FOREIGN_MARKERS = /\b(?:ghana|cet|gmt|ist|sgt|aest|eat|wat|cat)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
@@ -460,23 +462,45 @@ function usEligibilityFromText(description: string): boolean {
 
 export function foreignOnlyEligibilityFromText(description: string): string | null {
   const clauses = description.slice(0, 12_000).split(/(?<=[.!?])\s+|[;\n]+/);
+  const subjectPattern = new RegExp(ELIGIBILITY_CLAUSE_SUBJECT.source, 'gi');
+  const scopePattern = new RegExp(ELIGIBILITY_CLAUSE_SCOPE.source, 'gi');
+  let firstForeignClause: string | null = null;
+  let hasUsEligibility = false;
+
   for (const clause of clauses) {
-    if (
-      !affirmativeMatch(ELIGIBILITY_CLAUSE_LEAD, clause)
-      || !affirmativeMatch(ELIGIBILITY_CLAUSE_SCOPE, clause)
-    ) continue;
-    const namesForeignLocation = REGION_MARKERS.test(clause)
-      || FOREIGN_CITY_MARKERS.test(clause)
-      || ELIGIBILITY_FOREIGN_MARKERS.test(clause);
-    if (!namesForeignLocation) continue;
-    if (
-      US_MARKERS.test(clause)
-      || ELIGIBILITY_US_MARKERS.test(clause)
-      || detectStates(clause).length > 0
-    ) continue;
-    return clause.trim();
+    if (!affirmativeMatch(ELIGIBILITY_CLAUSE_SUBJECT, clause)) continue;
+    const subjects = [...clause.matchAll(subjectPattern)];
+    const scopes = [...clause.matchAll(scopePattern)];
+    for (const subject of subjects) {
+      const subjectEnd = (subject.index ?? 0) + subject[0].length;
+      for (const scope of scopes) {
+        const scopeStart = scope.index ?? 0;
+        if (scopeStart < subjectEnd) continue;
+        const between = clause.slice(subjectEnd, scopeStart);
+        const gapWords = between.trim() ? between.trim().split(/\s+/).length : 0;
+        if (
+          gapWords > 6
+          || ELIGIBILITY_CLAUSE_NEGATION.test(between)
+          || ELIGIBILITY_CLAUSE_THIRD_PARTY.test(between)
+        ) continue;
+
+        const tailStart = scopeStart + scope[0].length;
+        const tail = clause.slice(tailStart, tailStart + 140);
+        const namesUs = US_MARKERS.test(tail)
+          || ELIGIBILITY_US_MARKERS.test(tail)
+          || detectStates(tail).length > 0;
+        if (namesUs) {
+          hasUsEligibility = true;
+          continue;
+        }
+        const namesForeignLocation = REGION_MARKERS.test(tail)
+          || FOREIGN_CITY_MARKERS.test(tail)
+          || ELIGIBILITY_FOREIGN_MARKERS.test(tail);
+        if (namesForeignLocation && firstForeignClause === null) firstForeignClause = clause.trim();
+      }
+    }
   }
-  return null;
+  return hasUsEligibility ? null : firstForeignClause;
 }
 
 /**
