@@ -102,6 +102,22 @@ const negatedCanadaEligibility = evaluateLocation({
 });
 check('negated Canada eligibility is not classified as foreign-only', negatedCanadaEligibility.ca !== 'not_us');
 
+const contractedNegatedCanadaEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: "You don't need to be based in Canada.",
+});
+check('contracted negation does not classify Canada eligibility as foreign-only', contractedNegatedCanadaEligibility.ca !== 'not_us');
+
+const contractedNegatedUkEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: "Applicants won't need to be located in the UK.",
+});
+check('contracted negation does not classify UK eligibility as foreign-only', contractedNegatedUkEligibility.ca !== 'not_us');
+
 const thirdPartyIndiaLocation = evaluateLocation({
   locations: [],
   workplaceType: 'remote',
