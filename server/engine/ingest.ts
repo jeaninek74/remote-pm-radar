@@ -16,6 +16,7 @@ import { isOwnershipWatchTitle, isRoleTitle } from './titles';
 import { ACTIVE_ROLE_FAMILY } from './roles/active';
 import { companyKey, daysBetween, norm, slugify, truncate } from './text';
 import { checkLink, fetchJson, mapLimit } from './http';
+import { forEachWhileLocked } from './sweep-guard';
 import type { Ats, BoardFetchResult, EmployerRow, RawJob } from './types';
 import { adpBoardUrl, adpCoordinates } from './adp';
 import type { EvaluatedJob } from './types';
@@ -32,6 +33,15 @@ export { nameTokens, namesAgree };
 let running = false;
 let followUpRequested = false;
 let followUpsEnabled = true;
+
+const REFRESH_LOCK_LOST_MESSAGE = 'Refresh lock connection lost; stopping so a second sweep cannot overlap';
+
+class RefreshLockLostError extends Error {
+  constructor() {
+    super(REFRESH_LOCK_LOST_MESSAGE);
+    this.name = 'RefreshLockLostError';
+  }
+}
 
 export const SWEEP_EMPLOYER_WHERE = "active = TRUE AND careers_url IS NOT NULL AND ats <> 'browser'";
 
@@ -1070,13 +1080,14 @@ async function executeRun(
   running = true;
   const counters = emptyCounters();
   let completedSuccessfully = false;
+  let lockLost = false;
 
   // Progress writes carry the live counters too, so a run that dies mid-sweep still shows
   // how many employers it searched and how many postings it read, instead of zeros.
   const progress = async (message: string) => {
     // The lock lives on its own connection. If Neon dropped that connection the lock went
     // with it and another process may already be sweeping; stop rather than run two at once.
-    if (!lock.held) throw new Error('Refresh lock connection lost; stopping so a second sweep cannot overlap');
+    if (!lock.held) throw new RefreshLockLostError();
     await q(
       `UPDATE refresh_runs SET progress=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
       [runId, message.slice(0, 300), ...counterValues(counters)],
@@ -1123,11 +1134,9 @@ async function executeRun(
     const linkCandidates: number[] = [];
     let processed = 0;
 
-    // One employer's failure — a board timing out, or a statement lost to a dropped
-    // connection that outlived its retries — is recorded against that employer and the
-    // sweep moves on. It must never abort the run: that is how runs 12-20 died with zero
-    // employers searched while the boards themselves were fine.
-    await mapLimit(employers, REFRESH.concurrency, async (employer) => {
+    // Ordinary employer failures are recorded against that employer and the sweep moves on.
+    // The lock-aware guard below stops the run if the refresh lock itself is lost.
+    const { stoppedEarly } = await forEachWhileLocked(employers, REFRESH.concurrency, lock, async (employer) => {
       processed += 1;
       try {
         if (processed % 12 === 0) await progress(`Searching employer boards (${processed}/${employers.length})`);
@@ -1138,6 +1147,7 @@ async function executeRun(
         console.error(`[refresh] ${employer.ats}:${employer.slug} failed`, (err as Error).message);
       }
     });
+    if (stoppedEarly) throw new RefreshLockLostError();
 
     async function sweepEmployer(employer: EmployerRow): Promise<void> {
       // Postings already stored for this employer are recognised by key and not re-read in
@@ -1283,6 +1293,7 @@ async function executeRun(
       const result = await discoverEmployers(Date.now() + REFRESH.discoverBudgetMs, progress, REFRESH.discoverPerRun);
       counters.newEmployers += result.found;
     } catch (err) {
+      if (err instanceof RefreshLockLostError) throw err;
       counters.errors.push({ source: 'discovery', message: (err as Error).message.slice(0, 160) });
     }
 
@@ -1367,6 +1378,19 @@ async function executeRun(
   } catch (err) {
     const message = (err as Error).message;
     counters.errors.unshift({ source: 'engine', message });
+    if (err instanceof RefreshLockLostError) {
+      lockLost = true;
+      // Keep the row running so the watchdog can close it and start the catch-up sweep.
+      try {
+        await q(
+          `UPDATE refresh_runs SET message=$2, ${COUNTER_COLUMNS} WHERE id=$1 AND status='running'`,
+          [runId, 'Refresh lock connection lost; the watchdog restarts the sweep.', ...counterValues(counters)],
+        );
+      } catch (writeErr) {
+        console.error('[refresh] could not record lock loss', (writeErr as Error).message);
+      }
+      throw err;
+    }
     try {
       await q(
         `UPDATE refresh_runs SET status='failed', finished_at=now(), message=$2, ${COUNTER_COLUMNS} WHERE id=$1`,
@@ -1388,7 +1412,9 @@ async function executeRun(
     );
     if (followUpRequested) {
       followUpRequested = false;
-      if (followUpsEnabled && heapIsHigh(heapUsed, heapLimit)) {
+      if (lockLost) {
+        console.log(`[refresh] refresh ${runId} lost its lock; the watchdog will restart the sweep`);
+      } else if (followUpsEnabled && heapIsHigh(heapUsed, heapLimit)) {
         console.log(`[memory] heap high after refresh ${runId}; skipping follow-up so the server can restart before the next slot`);
       } else if (followUpsEnabled) {
         void startRefresh('follow-up')
