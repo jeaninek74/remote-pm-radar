@@ -3,7 +3,7 @@ import type { Job } from '../types';
 import { compareJobsByPostedDate } from '../job-sort';
 import {
   ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound,
-  isPayOnlyBlocker, salaryLabel, salarySubLabel,
+  isLocationBlocked, isPayOnlyBlocker, salaryLabel, salarySubLabel,
 } from '../lib';
 
 type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay' | 'tracked';
@@ -124,6 +124,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const fallback = useMemo(
     () => (tab === 'tracked' ? [] : open
       .filter((job) => job.bucket === 'queue')
+      .filter((job) => !isLocationBlocked(job))
       .filter((job) => !ownCareersOnly || job.employerAts === 'manual' || job.employerAts === 'browser')
       .sort(compareJobsByPostedDate)),
     [open, ownCareersOnly, tab],

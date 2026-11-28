@@ -16,7 +16,7 @@ import {
   SWEEP_HEADROOM_MS,
 } from '../server/engine/discovery-budget';
 import { REFRESH } from '../server/config';
-import { isPayOnlyBlocker } from '../client/src/lib';
+import { isLocationBlocked, isPayOnlyBlocker } from '../client/src/lib';
 
 let failures = 0;
 
@@ -81,6 +81,12 @@ check('unconfirmed remote-work reasons are not pay-only blockers',
     salaryMin: null,
     bucketReason: 'Work arrangement not confirmed remote — Nationwide US location, but remote work arrangement needs verification..',
   }));
+check('block a work arrangement that is not confirmed remote',
+  isLocationBlocked({
+    bucketReason: 'Work arrangement not confirmed remote — Nationwide US location, but remote work arrangement needs verification..',
+  }));
+check('allow a below-floor salary reason through the location filter',
+  !isLocationBlocked({ bucketReason: 'Published minimum of $80,000 is below the $90K floor.' }));
 check('residency-restricted reasons are not pay-only blockers',
   !isPayOnlyBlocker({ salaryMin: null, bucketReason: 'Residency restricted — employer limits hiring to selected states.' }));
 check('a missing base salary is a pay-only blocker',
