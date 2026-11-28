@@ -59,6 +59,71 @@ check('fully remote hybrid-team description without a location is unknown', full
 const noLocationOrDescription = evaluateLocation({ locations: [] });
 check('no location or description remains unknown', noLocationOrDescription.remote === 'unknown');
 
+const snvForeignTimeZones = evaluateLocation({
+  locations: ['OTHER, xx'],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Location: Flexible. We welcome applications from candidates based anywhere within the time zones spanning Ghana to Singapore.',
+});
+check(
+  'SNV flexible remote role limited to Ghana-to-Singapore time zones is not US-eligible',
+  snvForeignTimeZones.remote === 'remote' && snvForeignTimeZones.ca === 'not_us',
+);
+
+const emeaEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Candidates must be based in EMEA.',
+});
+check('remote candidates must be based in EMEA are not US-eligible', emeaEligibility.ca === 'not_us');
+
+const usOrCanadaEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Open to candidates in the US or Canada.',
+});
+check('remote US-or-Canada eligibility is not classified as foreign-only', usOrCanadaEligibility.ca !== 'not_us');
+
+const easternTimeEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Candidates must work Eastern time zone hours.',
+});
+check('Eastern time-zone hours do not imply foreign-only eligibility', easternTimeEligibility.ca !== 'not_us');
+
+const negatedIndiaEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'We are not open to candidates based in India.',
+});
+check('negated India eligibility is not classified as foreign-only', negatedIndiaEligibility.ca !== 'not_us');
+
+const remoteWithoutEligibility = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Join our team and help us build better products.',
+});
+check(
+  'remote posting without eligibility text remains unknown',
+  remoteWithoutEligibility.remote === 'remote' && remoteWithoutEligibility.ca === 'unknown',
+);
+
+const usWithForeignOffices = evaluateLocation({
+  locations: ['United States'],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Our offices are in London and Singapore.',
+});
+check(
+  'US remote scope stays US-wide when the description mentions foreign offices',
+  usWithForeignOffices.ca === 'us_wide',
+);
+
 const hybridCloudWithoutLocation = evaluateLocation({
   locations: [],
   description: 'Experience with hybrid cloud and multi-cloud environments',

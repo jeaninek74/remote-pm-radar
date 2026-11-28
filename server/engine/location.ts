@@ -68,7 +68,7 @@ const AMBIGUOUS_CODES = new Set(['IN', 'OR', 'ME', 'OK', 'HI', 'DE', 'AL', 'CO',
 // Workday lists offices and the remote option side by side ("US - VA, McLean, US - Remote (Any
 // location)"); the "US - Remote" entry is a nationwide scope, not a second office. A bare
 // "Remote (Any location)" says nothing about the country and is not treated as US.
-export const LOCATION_RULES_VERSION = 1;
+export const LOCATION_RULES_VERSION = 2;
 
 const US_MARKERS = /\b(united states|u\.s\.a\.?|usa|u\.s\.|nationwide|anywhere in the (?:us|u\.s\.|united states)|us[- ]based|us\s*-?\s*remote|united states\s*-\s*remote|remote[,\s-]+(?:us|usa|united states)|remote within the (?:us|united states)|(?:us|usa)\s*\/\s*(?:can|canada)|conus)\b/i;
 const REGION_MARKERS = /\b(emea|apac|latam|europe|european union|eu only|eu|united kingdom|uk|ireland|germany|deutschland|france|spain|españa|portugal|netherlands|poland|india|pakistan|philippines|australia|new zealand|singapore|japan|korea|china|brazil|argentina|mexico|méxico|colombia|chile|south africa|nigeria|kenya|africa|asia|canada|ontario|quebec|toronto|vancouver|israel|uae|dubai|sweden|norway|denmark|finland|lithuania|latvia|estonia|bulgaria|romania|hungary|czech|slovakia|austria|switzerland|belgium|italy|greece|turkey|ukraine|saudi arabia|qatar|egypt|morocco|nicaragua|costa rica|panama|panamá|peru|ecuador|guatemala|honduras|el salvador|dominican republic|thailand|vietnam|malaysia|indonesia|taiwan|hong kong)\b/i;
@@ -78,6 +78,10 @@ const ISO3_FOREIGN_CODE_TOKEN = /(?:^|[,\s-]|\()(?:POL|GBR|THA|CRI|CAN|MEX|IND|D
 const CANADIAN_PROVINCE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:ON|QC|BC|AB|MB|NS|NB|NL|SK|PE)\b/i;
 const AUSTRALIAN_STATE_CODE = /(?:^|[,;])\s*[^,;]+\s*,\s*(?:NSW|VIC|QLD)\b/i;
 const FOREIGN_CITY_MARKERS = /\b(london|warsaw|krakow|wroclaw|dublin|sydney|melbourne|toronto|montreal|vancouver|calgary|ottawa|singapore|manila|bangkok|sofia|bucharest|iasi|guadalajara|zapopan|monterrey|dordrecht|amsterdam|rotterdam|escazu|heredia|madrid|barcelona|paris|berlin|munich|frankfurt|tel aviv|tokyo|seoul|shanghai|beijing|bengaluru|bangalore|mumbai|pune|hyderabad|chennai|gurugram|gurgaon|noida|delhi|aurangabad|kolkata|são paulo|sao paulo|buenos aires|bogota|bogotá|lima|mexico city|cdmx)\b/i;
+const ELIGIBILITY_CLAUSE_LEAD = /\b(?:candidates|applicants|applications\s+from|you\s+must|must\s+be|open\s+to|based|located|residing|reside|living|time\s?zones?)\b/i;
+const ELIGIBILITY_CLAUSE_SCOPE = /\b(?:based|located|residing|reside|living\s+in|within|time\s?zones?|eligible)\b/i;
+const ELIGIBILITY_US_MARKERS = /\b(?:us|u\.s\.?|u\.s\.a\.?|usa|united states|america|americas|est|cst|mst|pst|et|ct|pt)\b/i;
+const ELIGIBILITY_FOREIGN_MARKERS = /\b(?:ghana|cet|gmt|ist|sgt|aest|eat|wat|cat)\b/i;
 const HYBRID_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|on[- ]?site|onsite|commutable|days? (?:a|per) week (?:in|on[- ]?site))\b/i;
 const HYBRID_DESCRIPTION_MARKERS = /\b(hybrid|partially remote|part remote|in[- ]office|commutable)\b/i;
 const EXPLICIT_ONSITE_MARKERS = /\b(?:in[- ]person\s+(?:role|position|work)\b|in[- ]person\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|on[- ]?site\s+(?:role|position|work|requirement)\b|on[- ]?site\s+(?:at|in)\s+(?:the|our)\s+(?:[a-z]+\s+)?(?:office|headquarters|workplace|facility)\b|in (?:the|our) office|office[- ]based|must (?:live|reside) within (?:a )?(?:commut\w*|\d+\s*(?:miles?|mi|km|minutes?))|within commuting distance|(?:must|required to|willing(?:ness)? to|expected to|need to) relocate|relocation (?:is )?required)\b/i;
@@ -396,6 +400,19 @@ function evaluateLocationCore(input: LocationInput): Omit<LocationVerdict, 'trav
     };
   }
 
+  if (remote === 'remote' && !hasUsScope && !hasRegionScope) {
+    const clause = foreignOnlyEligibilityFromText(description);
+    if (clause) {
+      return {
+        remote,
+        ca: 'not_us',
+        note: `Remote role limited to candidates outside the United States ("${clause.trim().slice(0, 160)}") — excluded.`,
+        states: allStates,
+        remoteLabel: labels,
+      };
+    }
+  }
+
   if (/worldwide|anywhere|global/i.test(scopeText)) {
     return {
       remote,
@@ -439,6 +456,27 @@ function usEligibilityFromText(description: string): boolean {
     || /remote\s+(?:within|in|across)\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
     || /(?:authorized|eligible)\s+to\s+work\s+in\s+(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text)
     || /open\s+to\s+(?:candidates\s+)?(?:residing\s+in\s+)?(?:the\s+)?(?:united states|u\.?s\.?a?\.?)\b/i.test(text);
+}
+
+export function foreignOnlyEligibilityFromText(description: string): string | null {
+  const clauses = description.slice(0, 12_000).split(/(?<=[.!?])\s+|[;\n]+/);
+  for (const clause of clauses) {
+    if (
+      !affirmativeMatch(ELIGIBILITY_CLAUSE_LEAD, clause)
+      || !affirmativeMatch(ELIGIBILITY_CLAUSE_SCOPE, clause)
+    ) continue;
+    const namesForeignLocation = REGION_MARKERS.test(clause)
+      || FOREIGN_CITY_MARKERS.test(clause)
+      || ELIGIBILITY_FOREIGN_MARKERS.test(clause);
+    if (!namesForeignLocation) continue;
+    if (
+      US_MARKERS.test(clause)
+      || ELIGIBILITY_US_MARKERS.test(clause)
+      || detectStates(clause).length > 0
+    ) continue;
+    return clause.trim();
+  }
+  return null;
 }
 
 /**
