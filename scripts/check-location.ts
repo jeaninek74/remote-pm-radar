@@ -78,6 +78,22 @@ const emeaEligibility = evaluateLocation({
 });
 check('remote candidates must be based in EMEA are not US-eligible', emeaEligibility.ca === 'not_us');
 
+const foreignHeadquarters = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'Our headquarters are located in London.',
+});
+check('foreign headquarters location does not imply candidate eligibility', foreignHeadquarters.ca !== 'not_us');
+
+const foreignCompanyBase = evaluateLocation({
+  locations: [],
+  workplaceType: 'remote',
+  isRemote: true,
+  description: 'We are a fintech based in Berlin, hiring remotely.',
+});
+check('foreign company base does not imply candidate eligibility', foreignCompanyBase.ca !== 'not_us');
+
 const usOrCanadaEligibility = evaluateLocation({
   locations: [],
   workplaceType: 'remote',
