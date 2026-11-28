@@ -16,6 +16,7 @@ import {
   SWEEP_HEADROOM_MS,
 } from '../server/engine/discovery-budget';
 import { REFRESH } from '../server/config';
+import { isLocationBlocked, isPayOnlyBlocker } from '../client/src/lib';
 
 let failures = 0;
 
@@ -71,8 +72,29 @@ check('eligible nonduplicate board is accepted',
   classifyBoardCandidate('Acme', [['United States']]) === 'added');
 check('Jobgether is listed as a non-employer board',
   isNonEmployerBoard('lever', 'jobgether'));
+check('LED FastStart is listed as a non-employer board',
+  isNonEmployerBoard('phenom', 'opportunities.ledfaststart.com/global/en'));
 check('a normal Lever board is unaffected',
   !isNonEmployerBoard('lever', 'acme'));
+check('unconfirmed remote-work reasons are not pay-only blockers',
+  !isPayOnlyBlocker({
+    salaryMin: null,
+    bucketReason: 'Work arrangement not confirmed remote — Nationwide US location, but remote work arrangement needs verification..',
+  }));
+check('block a work arrangement that is not confirmed remote',
+  isLocationBlocked({
+    bucketReason: 'Work arrangement not confirmed remote — Nationwide US location, but remote work arrangement needs verification..',
+  }));
+check('allow a below-floor salary reason through the location filter',
+  !isLocationBlocked({ bucketReason: 'Published minimum of $80,000 is below the $90K floor.' }));
+check('residency-restricted reasons are not pay-only blockers',
+  !isPayOnlyBlocker({ salaryMin: null, bucketReason: 'Residency restricted — employer limits hiring to selected states.' }));
+check('a missing base salary is a pay-only blocker',
+  isPayOnlyBlocker({ salaryMin: null, bucketReason: 'No base salary published' }));
+check('an OTE-only reason is a pay-only blocker',
+  isPayOnlyBlocker({ salaryMin: null, bucketReason: 'OTE only' }));
+check('a published salary minimum excludes a pay-only blocker',
+  !isPayOnlyBlocker({ salaryMin: 140000, bucketReason: 'No base salary published' }));
 check('strip a bare Ashby jobs title suffix',
   pageTitle('<title>OpenAI Jobs</title>') === 'OpenAI');
 check('strip ATS and job-title suffixes',

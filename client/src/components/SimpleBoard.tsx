@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Job } from '../types';
 import { compareJobsByPostedDate } from '../job-sort';
 import {
-  ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound, salaryLabel, salarySubLabel,
+  ageLabel, caBadge, categoryLabel, dateLabel, foundLabel, isNewlyFound,
+  isLocationBlocked, isPayOnlyBlocker, salaryLabel, salarySubLabel,
 } from '../lib';
 
 type BoardTab = 'tab0' | 'tab1' | 'tab2' | 'nopay' | 'tracked';
@@ -32,14 +33,6 @@ const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'Technical', label: 'Technical' },
   { key: 'Hybrid', label: 'Business-tech' },
 ];
-
-/** Roles held back only because the employer published no base salary. */
-function isPayOnlyBlocker(job: Job): boolean {
-  // Only roles where no base salary figure exists at all. A role whose published minimum merely falls
-  // in the $130,001-$149,999 gap is a different case and stays out of this tab.
-  if (job.salaryMin !== null && job.salaryMin !== undefined) return false;
-  return /salary|OTE|compensation/i.test(job.bucketReason ?? '');
-}
 
 interface Props {
   profile?: {
@@ -131,6 +124,7 @@ export function SimpleBoard({ profile, jobs, refreshing, progress, lastRefresh, 
   const fallback = useMemo(
     () => (tab === 'tracked' ? [] : open
       .filter((job) => job.bucket === 'queue')
+      .filter((job) => !isLocationBlocked(job))
       .filter((job) => !ownCareersOnly || job.employerAts === 'manual' || job.employerAts === 'browser')
       .sort(compareJobsByPostedDate)),
     [open, ownCareersOnly, tab],

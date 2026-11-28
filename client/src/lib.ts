@@ -179,6 +179,18 @@ export function categoryLabel(category: string): string {
   return category;
 }
 
+export function isPayOnlyBlocker(job: Pick<Job, 'salaryMin' | 'bucketReason'>): boolean {
+  const reason = job.bucketReason ?? '';
+  if (isLocationBlocked(job)) return false;
+  if (job.salaryMin !== null && job.salaryMin !== undefined) return false;
+  return /\b(salary|compensation)\b/i.test(reason) || /\bOTE\b/.test(reason);
+}
+
+export function isLocationBlocked(job: Pick<Job, 'bucketReason'>): boolean {
+  const reason = job.bucketReason ?? '';
+  return reason.startsWith('Work arrangement not confirmed remote') || reason.startsWith('Residency restricted');
+}
+
 export function urgencyClass(urgency: string): string {
   if (urgency === 'High') return 'high';
   if (urgency === 'Medium') return 'medium';
