@@ -14,7 +14,10 @@ export const HARVEST_ATS = [
 
 export type HarvestAts = (typeof HARVEST_ATS)[number];
 
-export const NON_EMPLOYER_BOARDS = new Set<string>(['lever:jobgether']);
+export const NON_EMPLOYER_BOARDS = new Set<string>([
+  'lever:jobgether',
+  'phenom:opportunities.ledfaststart.com/global/en',
+]);
 
 export function isNonEmployerBoard(ats: string, slug: string): boolean {
   return NON_EMPLOYER_BOARDS.has(`${ats.toLowerCase()}:${slug.toLowerCase()}`);
